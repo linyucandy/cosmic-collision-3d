@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>宇宙碰撞模拟器</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#04060f;
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; color:#dfe6ff; }
+  #space { position:fixed; inset:0; display:block; touch-action:none; cursor:crosshair; }
+
+  .panel {
+    position:fixed; top:14px; left:14px; z-index:10; width:230px;
+    background:rgba(10,14,30,.72); border:1px solid rgba(140,160,255,.18);
+    border-radius:14px; padding:14px 14px 12px; backdrop-filter:blur(10px);
+    box-shadow:0 8px 30px rgba(0,0,0,.45); user-select:none;
+  }
+  .panel h1 { font-size:15px; letter-spacing:1px; margin-bottom:10px; color:#aebfff; font-weight:600; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .btn {
+    flex:1 1 calc(50% - 6px); padding:6px 4px; font-size:12px; text-align:center;
+    background:rgba(70,90,180,.18); border:1px solid rgba(140,160,255,.25);
+    border-radius:8px; color:#cfd8ff; cursor:pointer; transition:.15s;
+  }
+  .btn:hover { background:rgba(90,110,220,.35); }
+  .btn.active { background:rgba(120,140,255,.45); border-color:#9db4ff; color:#fff;
+    box-shadow:0 0 10px rgba(130,150,255,.45); }
+  .slider-row { margin-bottom:10px; font-size:12px; color:#9aa8d8; }
+  .slider-row label { display:flex; justify-content:space-between; margin-bottom:3px; }
+  .slider-row input { width:100%; accent-color:#7d93ff; }
+  .check { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa8d8; margin-bottom:10px; }
+  .check input { accent-color:#7d93ff; }
+  .stats { font-size:12px; color:#8f9cd0; border-top:1px solid rgba(140,160,255,.15); padding-top:8px;
+    display:flex; justify-content:space-between; }
+  .stats b { color:#e6ebff; font-weight:600; }
+
+  .hint {
+    position:fixed; bottom:12px; left:50%; transform:translateX(-50%); z-index:10;
+    font-size:12px; color:rgba(190,200,240,.65); background:rgba(10,14,30,.5);
+    padding:6px 14px; border-radius:20px; border:1px solid rgba(140,160,255,.12);
+    backdrop-filter:blur(6px); white-space:nowrap; user-select:none; pointer-events:none;
+  }
+  @media (max-width:640px){ .panel{ width:190px; padding:10px; } .hint{ font-size:11px; } }
+</style>
+</head>
+<body>
+<canvas id="space"></canvas>
+
+<div class="panel">
+  <h1>🌌 宇宙碰撞模拟器</h1>
+  <div class="row" id="tools">
+    <div class="btn" data-type="asteroid">☄️ 小行星</div>
+    <div class="btn" data-type="planet">🪐 行星</div>
+    <div class="btn active" data-type="star">⭐ 恒星</div>
+    <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
+  </div>
+  <div class="slider-row">
+    <label><span>质量倍率（滚轮可调）</span><span id="massVal">×1.0</span></label>
+    <input id="massSlider" type="range" min="0.2" max="5" step="0.1" value="1">
+  </div>
+  <div class="slider-row">
+    <label><span>引力常数 G</span><span id="gVal">3.0</span></label>
+    <input id="gSlider" type="range" min="0.5" max="8" step="0.1" value="3">
+  </div>
+  <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨迹尾迹</label></div>
+  <div class="row">
+    <div class="btn" id="btnDemo">💥 演示碰撞</div>
+    <div class="btn" id="btnSystem">✨ 随机星系</div>
+    <div class="btn" id="btnPause">⏸ 暂停</div>
+    <div class="btn" id="btnReset">🗑 清空</div>
+    <div class="btn" id="btnSound">🔊 声音开</div>
+  </div>
+  <div class="stats">
+    <span>天体 <b id="statBodies">0</b></span>
+    <span>碰撞 <b id="statCollisions">0</b></span>
+    <span>粒子 <b id="statParticles">0</b></span>
+  </div>
+</div>
+
+<div class="hint">按住并拖动以发射天体（拖动方向 = 飞行方向） · 滚轮调整质量 · 看它们相撞吧</div>
+
+<script>
+"use strict";
+/* ================= 基础 ================= */
+const canvas = document.getElementById('space');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+let stars = [];
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  stars = [];
+  const n = Math.floor(W * H / 3500);
+  for (let i = 0; i < n; i++) stars.push({
+    x: Math.random() * W, y: Math.random() * H,
+    r: Math.random() * 1.3 + 0.3,
+    p: Math.random() * Math.PI * 2, s: 0.5 + Math.random() * 2
+  });
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ================= 天体定义 ================= */
+const TYPES = {
+  asteroid:  { base: 3,    rk: 2.0, color: '#b9b3a8' },
+  planet:    { base: 40,   rk: 1.7, color: '#5fb2ff' },
+  star:      { base: 600,  rk: 2.2, color: '#ffd27d' },
+  blackhole: { base: 2500, rk: 0.85,color: '#8a5cff' }
+};
+const PLANET_COLORS = ['#5fb2ff','#7de0a3','#e0a35f','#c98bff','#ff8b8b','#8be0dd'];
+const radiusFor = (type, mass) => Math.max(1.8, Math.cbrt(mass) * TYPES[type].rk);
+
+let nextId = 1;
+class Body {
+  constructor(x, y, vx, vy, mass, type) {
+    this.id = nextId++;
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.ax = 0; this.ay = 0;
+    this.mass = mass; this.type = type;
+    this.r = radiusFor(type, mass);
+    this.color = type === 'planet'
+      ? PLANET_COLORS[(Math.random() * PLANET_COLORS.length) | 0]
+      : TYPES[type].color;
+    this.spin = Math.random() * Math.PI * 2;
+    if (type === 'asteroid') {
+      this.shape = [];
+      const n = 8;
+      for (let i = 0; i < n; i++) this.shape.push(0.7 + Math.random() * 0.45);
+    }
+    if (type === 'blackhole') {
+      // 吸积盘流纹（内密外疏）
+      this.disk = [];
+      for (let i = 0; i < 38; i++) {
+        const rf = Math.pow(Math.random(), 0.7);
+        this.disk.push({
+          rf,                                  // 0=内缘 1=外缘
+          a0: Math.random() * Math.PI * 2,
+          spd: 1.5 + Math.random() * 2.0,
+          len: 0.25 + Math.random() * 0.7,
+          w: 0.5 + Math.random() * 1.0
+        });
+      }
+    }
+  }
+}
+
+/* ================= 状态 ================= */
+let bodies = [], particles = [], shockwaves = [];
+let G = 3, mMul = 1, curType = 'star';
+let paused = false, showTrails = true, muted = false;
+let collisions = 0, simTime = 0;
+
+/* ================= 物理 ================= */
+function step() {
+  const SUB = 2, dt = 1 / SUB;
+  for (let s = 0; s < SUB; s++) {
+    for (const b of bodies) { b.ax = 0; b.ay = 0; }
+    for (let i = 0; i < bodies.length; i++) {
+      const a = bodies[i];
+      for (let j = i + 1; j < bodies.length; j++) {
+        const b = bodies[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy + 60;           // 软化因子防奇点
+        const d = Math.sqrt(d2);
+        const f = G * a.mass * b.mass / d2;
+        const fx = f * dx / d, fy = f * dy / d;
+        a.ax += fx / a.mass; a.ay += fy / a.mass;
+        b.ax -= fx / b.mass; b.ay -= fy / b.mass;
+      }
+    }
+    for (const b of bodies) {
+      b.vx += b.ax * dt; b.vy += b.ay * dt;
+      b.x += b.vx * dt;  b.y += b.vy * dt;
+    }
+  }
+  handleCollisions();
+  // 移除飞太远的天体
+  const lim = Math.max(W, H) * 4, cx = W / 2, cy = H / 2;
+  bodies = bodies.filter(b => {
+    const dx = b.x - cx, dy = b.y - cy;
+    return dx * dx + dy * dy < lim * lim;
+  });
+}
+
+function handleCollisions() {
+  const dead = new Set();
+  for (let i = 0; i < bodies.length; i++) {
+    const a = bodies[i];
+    if (dead.has(a.id)) continue;
+    for (let j = i + 1; j < bodies.length; j++) {
+      const b = bodies[j];
+      if (dead.has(b.id)) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const rr = (a.r + b.r) * 0.8;
+      if (dx * dx + dy * dy < rr * rr) {
+        const big = a.mass >= b.mass ? a : b;
+        const small = big === a ? b : a;
+        // 黑洞总是存活；否则大质量存活
+        const survivor = small.type === 'blackhole' ? small : big;
+        const other = survivor === big ? small : big;
+        const M = survivor.mass + other.mass;
+        survivor.vx = (survivor.vx * survivor.mass + other.vx * other.mass) / M;
+        survivor.vy = (survivor.vy * survivor.mass + other.vy * other.mass) / M;
+        survivor.x = (survivor.x * survivor.mass + other.x * other.mass) / M;
+        survivor.y = (survivor.y * survivor.mass + other.y * other.mass) / M;
+        survivor.mass = M;
+        survivor.r = radiusFor(survivor.type, M);
+        explode(other.x, other.y, other);
+        dead.add(other.id);
+        collisions++;
+      }
+    }
+  }
+  if (dead.size) bodies = bodies.filter(b => !dead.has(b.id));
+}
+
+/* ================= 爆炸特效 ================= */
+function hexA(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function explode(x, y, body) {
+  const power = Math.min(1, Math.cbrt(body.mass) / 9);
+  const count = Math.round(Math.min(140, 12 + Math.sqrt(body.mass) * 4));
+  const isStar = body.type === 'star';
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = (0.4 + Math.random() * 2.6) * (0.6 + power * 1.6);
+    const life = 0.7 + Math.random() * 1.2;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      life, maxLife: life,
+      size: 1 + Math.random() * (isStar ? 3.5 : 2.2),
+      color: Math.random() < 0.35 ? '#ffffff' : body.color
+    });
+  }
+  // 闪光
+  particles.push({ x, y, vx: 0, vy: 0, life: 0.25, maxLife: 0.25,
+    size: body.r * (3 + power * 3), color: '#ffffff', flash: true });
+  shockwaves.push({ x, y, r: body.r * 0.5, vr: 2.5 + power * 4, alpha: 0.85, width: 2 + power * 3 });
+  if (isStar) shockwaves.push({ x, y, r: body.r * 0.3, vr: 1.5 + power * 2, alpha: 0.6, width: 6 });
+  boom(0.1 + power * 0.9);
+}
+
+function updateEffects() {
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.985; p.vy *= 0.985;
+    p.life -= 0.016;
+  }
+  particles = particles.filter(p => p.life > 0);
+  for (const s of shockwaves) { s.r += s.vr; s.vr *= 0.965; s.alpha *= 0.945; }
+  shockwaves = shockwaves.filter(s => s.alpha > 0.02);
+}
+
+/* ================= 音效 ================= */
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function boom(strength) {
+  if (muted || !audioCtx) return;
+  strength = Math.min(1, strength);
+  const dur = 0.25 + strength * 0.6;
+  const len = Math.floor(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass'; filter.frequency.value = 180 + strength * 700;
+  const gain = audioCtx.createGain(); gain.gain.value = Math.min(0.5, 0.12 + strength * 0.35);
+  src.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+  src.start();
+}
+
+/* ================= 渲染 ================= */
+function drawNebula() {
+  ctx.globalCompositeOperation = 'lighter';
+  const n1 = ctx.createRadialGradient(W*0.22, H*0.3, 0, W*0.22, H*0.3, W*0.35);
+  n1.addColorStop(0, 'rgba(70,50,160,0.10)'); n1.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = n1; ctx.fillRect(0, 0, W, H);
+  const n2 = ctx.createRadialGradient(W*0.8, H*0.7, 0, W*0.8, H*0.7, W*0.3);
+  n2.addColorStop(0, 'rgba(30,90,150,0.08)'); n2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = n2; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawStars(t) {
+  ctx.fillStyle = '#cdd6ff';
+  for (const s of stars) {
+    ctx.globalAlpha = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBody(b, t) {
+  if (b.type === 'star') {
+    const pulse = 1 + 0.06 * Math.sin(t * 3 + b.id);
+    const gr = b.r * 5 * pulse;
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, gr);
+    g.addColorStop(0, 'rgba(255,245,220,0.95)');
+    g.addColorStop(0.18, hexA(b.color, 0.6));
+    g.addColorStop(1, 'rgba(255,150,50,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(b.x, b.y, gr, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff7e8';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.75, 0, 7); ctx.fill();
+  } else if (b.type === 'blackhole') {
+    const tilt = 0.4;                            // 盘面倾角
+    const rot = b.spin + t * 0.3;                // 盘面缓慢进动
+    const innerR = b.r * 1.3, outerR = b.r * 3.4;
+    const TAU = Math.PI * 2;
+
+    // 外围紫色光晕
+    const halo = ctx.createRadialGradient(b.x, b.y, b.r * 0.5, b.x, b.y, outerR * 1.7);
+    halo.addColorStop(0, 'rgba(150,100,255,0.28)');
+    halo.addColorStop(0.5, 'rgba(110,70,220,0.10)');
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(b.x, b.y, outerR * 1.7, 0, 7); ctx.fill();
+
+    // ---- 吸积盘整体（背面先画） ----
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(rot);
+    ctx.scale(1, tilt);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 同心渐变环：内缘白热 → 橙 → 外缘暗紫红
+    const RINGS = 26;
+    const lw = (outerR - innerR) / RINGS * 1.9;
+    for (let k = 0; k < RINGS; k++) {
+      const f = k / (RINGS - 1);
+      const rr = innerR + (outerR - innerR) * f;
+      const heat = Math.pow(1 - f, 1.7);
+      let cr, cg, cb;
+      if (f < 0.45) {
+        const u = f / 0.45;
+        cr = 255; cg = Math.round(244 - 90 * u); cb = Math.round(224 - 160 * u);
+      } else {
+        const u = (f - 0.45) / 0.55;
+        cr = Math.round(255 - 150 * u); cg = Math.round(154 - 104 * u); cb = Math.round(64 + 60 * u);
+      }
+      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.14 + 0.55 * heat) * (1 - f * 0.75)})`;
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.stroke();
+    }
+
+    // 多普勒增亮：转向观测者的一侧更亮
+    const dop = ctx.createLinearGradient(-outerR, 0, outerR, 0);
+    dop.addColorStop(0, 'rgba(255,232,190,0.15)');
+    dop.addColorStop(0.55, 'rgba(255,255,255,0)');
+    dop.addColorStop(1, 'rgba(70,45,110,0.10)');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, outerR, 0, 7); ctx.clip();
+    ctx.fillStyle = dop;
+    ctx.fillRect(-outerR, -outerR, outerR * 2, outerR * 2);
+    ctx.restore();
+
+    // 旋转流纹（内侧角速度更快）
+    for (const s of b.disk) {
+      const rr = innerR + (outerR - innerR) * s.rf;
+      const ang = s.a0 + t * s.spd / (0.35 + s.rf * 1.4);
+      const heat = 1 - s.rf;
+      ctx.strokeStyle = `rgba(255,${Math.round(175 + 65 * heat)},${Math.round(95 + 135 * heat)},${0.5 * (1 - s.rf * 0.55)})`;
+      ctx.lineWidth = Math.max(0.6, s.w * b.r * 0.14);
+      ctx.beginPath(); ctx.arc(0, 0, rr, ang, ang + s.len); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 事件视界（遮住盘面背面，形成空间层次）
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+
+    // 光子环
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,214,150,0.9)';
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = 'rgba(255,242,218,0.95)';
+    ctx.lineWidth = Math.max(1.2, b.r * 0.12);
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.07, 0, 7); ctx.stroke();
+    ctx.restore();
+
+    // ---- 盘面前半部：从视界前方掠过 ----
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(rot);
+    ctx.scale(1, tilt);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < 4; k++) {
+      const f = k / 3 * 0.45;
+      const rr = innerR + (outerR - innerR) * f;
+      const heat = Math.pow(1 - f, 1.7);
+      ctx.strokeStyle = `rgba(255,${Math.round(205 + 35 * heat)},${Math.round(140 + 70 * heat)},${0.30 + 0.32 * heat})`;
+      ctx.lineWidth = lw * 1.15;
+      ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI); ctx.stroke();
+    }
+    for (const s of b.disk) {
+      const ang = ((s.a0 + t * s.spd / (0.35 + s.rf * 1.4)) % TAU + TAU) % TAU;
+      const mid = ((ang + s.len / 2) % TAU + TAU) % TAU;
+      // 靠近前半圆两端时平滑淡入淡出，避免流纹越过视界边缘时突现突隐（闪烁）
+      const fade = Math.min(1, Math.max(0, Math.min(mid, Math.PI - mid) / 0.5));
+      const a0c = Math.max(0, ang), a1c = Math.min(Math.PI, ang + s.len);
+      if (fade <= 0.01 || a1c <= a0c) continue;   // 只画前半部分
+      const rr = innerR + (outerR - innerR) * s.rf;
+      const heat = 1 - s.rf;
+      ctx.strokeStyle = `rgba(255,${Math.round(185 + 60 * heat)},${Math.round(105 + 125 * heat)},${0.45 * fade * (1 - s.rf * 0.5)})`;
+      ctx.lineWidth = Math.max(0.6, s.w * b.r * 0.14);
+      ctx.beginPath(); ctx.arc(0, 0, rr, a0c, a1c); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  } else if (b.type === 'asteroid') {
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin + t * 0.5);
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    for (let i = 0; i < b.shape.length; i++) {
+      const ang = i / b.shape.length * Math.PI * 2;
+      const rr = b.r * b.shape[i];
+      i === 0 ? ctx.moveTo(Math.cos(ang) * rr, Math.sin(ang) * rr)
+              : ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.arc(-b.r*0.2, -b.r*0.1, b.r*0.25, 0, 7); ctx.fill();
+    ctx.restore();
+  } else { // planet
+    const g = ctx.createRadialGradient(b.x - b.r*0.4, b.y - b.r*0.4, b.r*0.1, b.x, b.y, b.r);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, b.color); g.addColorStop(1, 'rgba(10,15,40,1)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = hexA(b.color, 0.35); ctx.lineWidth = b.r * 0.5;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.35, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function render(t) {
+  if (showTrails) {
+    ctx.fillStyle = 'rgba(4,6,15,0.28)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#04060f';
+    ctx.fillRect(0, 0, W, H);
+  }
+  drawNebula();
+  drawStars(t);
+
+  for (const s of shockwaves) {
+    ctx.strokeStyle = `rgba(255,220,170,${s.alpha})`;
+    ctx.lineWidth = s.width;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.stroke();
+  }
+
+  for (const b of bodies) drawBody(b, t);
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    const a = Math.max(0, p.life / p.maxLife);
+    if (p.flash) {
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(1, 'rgba(255,200,120,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+    } else {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  drawPreview();
+}
+
+/* ================= 交互：拖拽发射 ================= */
+let dragStart = null, dragCur = null;
+canvas.addEventListener('pointerdown', e => {
+  ensureAudio();
+  dragStart = { x: e.clientX, y: e.clientY };
+  dragCur = { ...dragStart };
+});
+canvas.addEventListener('pointermove', e => {
+  if (dragStart) dragCur = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('pointerup', () => {
+  if (!dragStart) return;
+  const dx = dragCur.x - dragStart.x, dy = dragCur.y - dragStart.y;
+  const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
+  let vx = dx * 0.055, vy = dy * 0.055;
+  const sp = Math.hypot(vx, vy), maxSp = 13;
+  if (sp > maxSp) { vx *= maxSp / sp; vy *= maxSp / sp; }
+  spawnBody(dragStart.x, dragStart.y, vx, vy, mass, curType);
+  dragStart = null;
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  mMul = Math.min(5, Math.max(0.2, mMul + (e.deltaY < 0 ? 0.2 : -0.2)));
+  massSlider.value = mMul;
+  massVal.textContent = '×' + mMul.toFixed(1);
+}, { passive: false });
+
+function spawnBody(x, y, vx, vy, mass, type) {
+  if (bodies.length >= 300) bodies.shift();
+  bodies.push(new Body(x, y, vx, vy, mass, type));
+}
+
+function drawPreview() {
+  if (!dragStart) return;
+  const mass = TYPES[curType].base * mMul;
+  const r = radiusFor(curType, mass);
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = TYPES[curType].color;
+  ctx.beginPath(); ctx.arc(dragStart.x, dragStart.y, r, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+  const dx = dragCur.x - dragStart.x, dy = dragCur.y - dragStart.y;
+  if (Math.hypot(dx, dy) > 4) {
+    ctx.strokeStyle = 'rgba(160,180,255,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(dragStart.x, dragStart.y); ctx.lineTo(dragCur.x, dragCur.y); ctx.stroke();
+    ctx.setLineDash([]);
+    const ang = Math.atan2(dy, dx);
+    ctx.fillStyle = 'rgba(160,180,255,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(dragCur.x, dragCur.y);
+    ctx.lineTo(dragCur.x - 10 * Math.cos(ang - 0.4), dragCur.y - 10 * Math.sin(ang - 0.4));
+    ctx.lineTo(dragCur.x - 10 * Math.cos(ang + 0.4), dragCur.y - 10 * Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+/* ================= 预设场景 ================= */
+function demoCollision() {
+  const y = H * 0.5 + (Math.random() - 0.5) * H * 0.2;
+  const m1 = 500 + Math.random() * 300, m2 = 400 + Math.random() * 300;
+  spawnBody(W * 0.12, y - 20,  2.4, 0.15, m1, 'star');
+  spawnBody(W * 0.88, y + 20, -2.4, -0.15, m2, 'star');
+  for (let i = 0; i < 6; i++) {
+    spawnBody(W * (0.3 + Math.random() * 0.4), H * (0.2 + Math.random() * 0.6),
+      (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5, 3 + Math.random() * 6, 'asteroid');
+  }
+}
+
+function randomSystem() {
+  const cx = W / 2, cy = H / 2;
+  const M = 700 + Math.random() * 500;
+  spawnBody(cx, cy, 0, 0, M, 'star');
+  const planets = 4 + (Math.random() * 5 | 0);
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  for (let i = 0; i < planets; i++) {
+    const r = 110 + i * (45 + Math.random() * 35) + Math.random() * 25;
+    const ang = Math.random() * Math.PI * 2;
+    const v = Math.sqrt(G * M / r) * (0.92 + Math.random() * 0.16);
+    const px = cx + Math.cos(ang) * r, py = cy + Math.sin(ang) * r;
+    const vx = -Math.sin(ang) * v * dir, vy = Math.cos(ang) * v * dir;
+    const type = Math.random() < 0.22 ? 'asteroid' : 'planet';
+    const mass = type === 'planet' ? 12 + Math.random() * 45 : 2 + Math.random() * 5;
+    spawnBody(px, py, vx, vy, mass, type);
+  }
+}
+
+/* ================= UI 绑定 ================= */
+const massSlider = document.getElementById('massSlider');
+const massVal = document.getElementById('massVal');
+const gSlider = document.getElementById('gSlider');
+const gVal = document.getElementById('gVal');
+
+document.querySelectorAll('#tools .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tools .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    curType = btn.dataset.type;
+  });
+});
+massSlider.addEventListener('input', () => {
+  mMul = parseFloat(massSlider.value);
+  massVal.textContent = '×' + mMul.toFixed(1);
+});
+gSlider.addEventListener('input', () => {
+  G = parseFloat(gSlider.value);
+  gVal.textContent = G.toFixed(1);
+});
+document.getElementById('trails').addEventListener('change', e => showTrails = e.target.checked);
+
+const btnPause = document.getElementById('btnPause');
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  bodies = []; particles = []; shockwaves = []; collisions = 0;
+});
+document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
+document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
+const btnSound = document.getElementById('btnSound');
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  btnSound.textContent = muted ? '🔇 声音关' : '🔊 声音开';
+});
+
+const statBodies = document.getElementById('statBodies');
+const statCollisions = document.getElementById('statCollisions');
+const statParticles = document.getElementById('statParticles');
+
+/* ================= 主循环 ================= */
+function loop() {
+  if (!paused) {
+    step();
+    updateEffects();
+    simTime += 0.016;
+  }
+  render(simTime);
+  statBodies.textContent = bodies.length;
+  statCollisions.textContent = collisions;
+  statParticles.textContent = particles.length;
+  requestAnimationFrame(loop);
+}
+
+/* 初始场景 */
+randomSystem();
+loop();
+</script>
+</body>
+</html>
