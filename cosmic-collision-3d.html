@@ -44,7 +44,9 @@
     padding:6px 14px; border-radius:20px; border:1px solid rgba(140,160,255,.12);
     backdrop-filter:blur(6px); white-space:nowrap; user-select:none; pointer-events:none;
   }
-  @media (max-width:640px){ .panel{ width:190px; padding:10px; } .hint{ font-size:11px; } }
+  .home-link { display:block; color:#aebfff; font-size:12px; margin-bottom:10px; text-decoration:none; }
+  .panel { max-height:calc(100dvh - 65px); overflow-y:auto; }
+  @media (max-width:640px){ .panel{ width:170px; padding:10px; } .hint{ font-size:10px; white-space:normal; width:95%; text-align:center; } }
 </style>
 <script type="importmap">
 {
@@ -59,6 +61,7 @@
 <canvas id="space"></canvas>
 
 <div class="panel">
+  <a class="home-link" href="index.html">← 游戏选择 / 作者信息</a>
   <h1>🌌 宇宙碰撞模拟器<span class="tag">3D</span></h1>
   <div class="row" id="tools">
     <div class="btn" data-type="asteroid">☄️ 小行星</div>
@@ -931,9 +934,50 @@ function removeBody(b) {
   scene.remove(b.trail.line);
   b.trail.line.geometry.dispose();
   b.trail.line.material.dispose();
-  if (b.mats) for (const m of b.mats) m.dispose();
+  const materials = new Set(b.mats || []);
+  b.mesh.traverse(object => {
+    if (object.material) {
+      for (const material of [].concat(object.material)) materials.add(material);
+    }
+  });
+  for (const material of materials) material.dispose();
+  if (b.impactTexture) b.impactTexture.dispose();
   const i = bodies.indexOf(b);
   if (i >= 0) bodies.splice(i, 1);
+}
+
+// 岩石表面保留实际碰撞痕迹；共享基础贴图仅在首次撞击时复制。
+function addImpactCrater(body, impactor) {
+  if (!['planet', 'asteroid'].includes(body.type)) return;
+  body.mesh.updateWorldMatrix(true, false);
+  const local = body.mesh.worldToLocal(impactor.mesh.position.clone()).normalize();
+  // PolyhedronGeometry 的经度原点与 SphereGeometry 相差半圈。
+  const u = ((Math.atan2(local.z, -local.x) / (Math.PI * 2)) +
+    (body.type === 'asteroid' ? 1.5 : 1)) % 1;
+  const v = Math.acos(THREE.MathUtils.clamp(local.y, -1, 1)) / Math.PI;
+  if (!body.impactTexture) {
+    const image = body.mesh.material.map.image;
+    const surface = document.createElement('canvas');
+    surface.width = image.width; surface.height = image.height;
+    surface.getContext('2d').drawImage(image, 0, 0);
+    const original = body.mesh.material.map;
+    body.impactTexture = new THREE.CanvasTexture(surface);
+    body.impactTexture.colorSpace = original.colorSpace;
+    body.impactTexture.anisotropy = original.anisotropy;
+    body.impactTexture.wrapS = original.wrapS;
+    body.impactTexture.wrapT = original.wrapT;
+    body.mesh.material.map = body.impactTexture;
+  }
+  const surface = body.impactTexture.image;
+  const g = surface.getContext('2d');
+  const size = surface.width * THREE.MathUtils.clamp(impactor.r / body.r * 0.16, 0.025, 0.09);
+  // 环绕接缝也画一份，避免经度边缘的坑被切断。
+  for (const offset of [-surface.width, 0, surface.width]) {
+    drawCrater(g, u * surface.width + offset, v * surface.height, size, 0.95);
+  }
+  body.impactTexture.needsUpdate = true;
+  body.impactCount = (body.impactCount || 0) + 1;
+  if (body.clouds) body.clouds.material.opacity = 0.25;
 }
 
 /* ================= 恒星光源池 ================= */
@@ -985,7 +1029,19 @@ const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
 
+function clearScene() {
+  selectBody(null);
+  while (bodies.length) removeBody(bodies[0]);
+  for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
+  for (const s of shockwaves.splice(0)) { scene.remove(s.mesh); s.mesh.material.dispose(); }
+  for (const f of flashes.splice(0)) { scene.remove(f.light, f.sp); f.sp.material.dispose(); }
+  collisions = 0;
+  document.querySelectorAll('#systems .btn').forEach(b => b.classList.remove('active'));
+}
+
 function explode(pos, body) {
+  // 群体碰撞限制并发特效，避免瞬时增加几十盏点光源。
+  if (explosions.length >= 12) return;
   const power = Math.min(1, Math.cbrt(body.mass) / 9);
   const count = Math.round(Math.min(220, 40 + Math.sqrt(body.mass) * 6));
   const posArr = new Float32Array(count * 3);
@@ -1024,7 +1080,7 @@ function explode(pos, body) {
   // 闪光
   const light = new THREE.PointLight(0xffe8c0, 15000 + power * 50000, 0, 2);
   light.position.copy(pos);
-  scene.add(light);
+  if (flashes.length < 3) scene.add(light);
   const flashSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true,
     blending: THREE.AdditiveBlending, depthWrite: false }));
   flashSp.position.copy(pos);
@@ -1239,6 +1295,7 @@ function handleCollisions() {
         const small = big === a ? b : a;
         const survivor = small.type === 'blackhole' ? small : big;
         const other = survivor === big ? small : big;
+        addImpactCrater(survivor, other);
         const M = survivor.mass + other.mass;
         survivor.vel.multiplyScalar(survivor.mass / M)
           .addScaledVector(other.vel, other.mass / M);
@@ -1466,7 +1523,7 @@ selRing.visible = false;
 scene.add(selRing);
 let selected = null;
 const focusChip = document.createElement('div');
-focusChip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:14px;padding:6px 14px;'
+focusChip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:58px;padding:6px 14px;'
   + 'background:rgba(10,16,28,.72);border:1px solid rgba(140,190,255,.35);border-radius:20px;'
   + 'color:#bfe0ff;font-size:13px;display:none;z-index:5;backdrop-filter:blur(4px);pointer-events:none';
 document.body.appendChild(focusChip);
@@ -1566,6 +1623,9 @@ canvas.addEventListener('pointerup', e => {
 
 /* ================= 预设场景 ================= */
 function demoCollision() {
+  clearScene();
+  camera.position.set(0, 180, 850);
+  controls.target.set(0, 0, 0);
   const m1 = 650 + Math.random() * 250, m2 = 550 + Math.random() * 250;
   spawnBody(-380, -14, 0,  2.6, 0.10, 0, m1, 'star');
   spawnBody( 380,  14, 0, -2.6, -0.10, 0, m2, 'star');
@@ -1580,8 +1640,7 @@ function demoCollision() {
 
 /* ================= 恒星系：单星 / 双星 / 三星 ================= */
 function makeStarSystem(kind) {
-  while (bodies.length) removeBody(bodies[0]);
-  collisions = 0;
+  clearScene();
   const cirV = (M, r) => Math.sqrt(G * M / r);
   // 在 XZ 平面插入圆轨道天体（y 给一点高度差，避免完全共面）
   const orbit = (Mtot, r, ang, mass, type, y) => {
@@ -1649,6 +1708,7 @@ function makeStarSystem(kind) {
 }
 
 function randomSystem() {
+  clearScene();
   /* 旋涡星系：金色核球 + 对数螺旋旋臂（内暖外蓝）+ 粉色电离氢区（参考真实星系照片） */
   const MCore = 26000;
   const core = spawnBody(0, 0, 0, 0, 0, 0, MCore, 'star', 0xffd9a0); // 金色核球中心
@@ -1668,14 +1728,14 @@ function randomSystem() {
       vx, -vz0 * sy, vz0 * cy, mass, type, col);
   };
   // 核球：暖色老年恒星（向内集中、薄盘化）
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 10; i++) {
     const r = 130 + Math.pow(Math.random(), 1.7) * 150;   // 内缘避开核心潮汐带(~95)
     const c = warm.clone().lerp(new THREE.Color(0xfff3d8), Math.random() * 0.8).getHex();
     put(r, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 30,
       15 + Math.random() * 40, 'star', c);
   }
   // 旋臂：内暖外蓝的年轻星族 + 沿臂成团 + 点缀行星
-  const perArm = arms >= 3 ? 30 : 44;
+  const perArm = arms >= 3 ? 12 : 18;
   for (let a = 0; a < arms; a++) {
     const phase = a * (Math.PI * 2 / arms);
     for (let i = 0; i < perArm; i++) {
@@ -1686,28 +1746,18 @@ function randomSystem() {
       const c = warm.clone().lerp(cool, Math.min(1, t * 1.25 + (Math.random() - 0.5) * 0.3)).getHex();
       put(r, ang, (Math.random() - 0.5) * 20 * (1 - t * 0.3),
         5 + Math.random() * 15, 'star', c);
-      // 沿臂成团：确定性槽位排布，保证成员间距（防出生即互捕）
-      if (Math.random() < 0.25) {
-        const nC = 1 + (Math.random() * 2 | 0);
-        for (let k = 0; k < nC; k++) {
-          const slot = k - (nC - 1) / 2;
-          put(r + slot * 30 + (Math.random() - 0.5) * 12,
-            ang + slot * 0.11 + (Math.random() - 0.5) * 0.03,
-            (Math.random() - 0.5) * 14, 4 + Math.random() * 10, 'star', c);
-        }
-      }
-      if (Math.random() < 0.1) {
+      if (i % 6 === 0) {
         put(r * (1.06 + Math.random() * 0.08), ang + 0.12, (Math.random() - 0.5) * 16,
           8 + Math.random() * 30, Math.random() < 0.6 ? 'planet' : 'ringplanet');
       }
     }
   }
   // 粉色电离氢区：槽位排布的恒星形成团（成员间隔 ~20）
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 4; i++) {
     const a = (Math.random() * arms | 0) * (Math.PI * 2 / arms);
     const t = Math.random();
     const r = 130 + t * 480, ang = a + dir * t * twist * Math.PI * 2;
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 3; k++) {
       put(r + (k - 1.5) * 20 + (Math.random() - 0.5) * 8,
         ang + (k - 1.5) * 0.055 + (Math.random() - 0.5) * 0.02,
         (Math.random() - 0.5) * 14, 2 + Math.random() * 2.5, 'star', 0xff9ec8);
@@ -1715,7 +1765,7 @@ function randomSystem() {
   }
   // 臂间背景星：弥散暗弱星族，衬托旋臂的密度反差
   const dim1 = new THREE.Color(0xcfd8e8), dim2 = new THREE.Color(0xe8d9c0);
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 10; i++) {
     const r = 140 + Math.random() * 500;
     const c = dim1.clone().lerp(dim2, Math.random()).getHex();
     put(r, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 36,
@@ -1725,7 +1775,7 @@ function randomSystem() {
   for (let g = 0; g < 2; g++) {
     const gr = 480 + Math.random() * 220;
     const ga = Math.random() * Math.PI * 2, gy = (Math.random() - 0.5) * 280;
-    for (let k = 0; k < 5; k++) {
+    for (let k = 0; k < 2; k++) {
       put(gr + (Math.random() - 0.5) * 50, ga + (Math.random() - 0.5) * 0.12,
         gy + (Math.random() - 0.5) * 50, 3 + Math.random() * 3, 'star', 0xf0d8b8);
     }
@@ -1794,8 +1844,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyT' && !e.repeat) cycleSpeed();
 });
 document.getElementById('btnReset').addEventListener('click', () => {
-  while (bodies.length) removeBody(bodies[0]);
-  collisions = 0;
+  clearScene();
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
@@ -1933,10 +1982,22 @@ function loop() {
   statParticles.textContent = explosions.reduce((n, e) => n + e.count, 0);
 }
 
-/* 支持 ?scene=bh / ?scene=demo 直达场景 */
+/* 支持选择首页直达场景 */
 const sceneParam = new URLSearchParams(location.search).get('scene');
 if (sceneParam === 'bh') spawnBody(0, 0, 0, 0, 0, 0, TYPES.blackhole.base, 'blackhole');
 else if (sceneParam === 'demo') demoCollision();
+else if (sceneParam === 'galaxy') randomSystem();
+else if (sceneParam === 'craters') {
+  const planet = spawnBody(0, 0, 0, 0, 0, 0, 50, 'planet');
+  planet.spinW = 0.015;
+  planet.mesh.material.emissive.setHex(0x26354b);
+  planet.mesh.material.emissiveIntensity = 0.7;
+  spawnBody(0, 1, 16, 0, 0, -0.1, 2, 'asteroid');
+  camera.position.set(0, 8, 34);
+  controls.target.set(0, 0, 0);
+  selectBody(planet);
+  selRing.visible = false;
+}
 else if (sceneParam === 'planets') {
   // 行星细节展示：远距光源 + 类地/气态/环行星并排
   // 质量均低于褐矮星阈值 90，且间距拉大，避免展示中演化/合并
@@ -1962,7 +2023,7 @@ else if (sceneParam === 'zoo') {
   spawnBody(720, -30, 340, -0.3, 0, 0.18, TYPES.wormhole.base, 'wormhole');
   spawnBody(880, 30, 420, -0.3, 0, 0.18, TYPES.wormhole.base, 'wormhole');
 }
-else randomSystem();
+else makeStarSystem(1);
 loop();
 </script>
 </body>

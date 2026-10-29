@@ -45,6 +45,7 @@
 </style>
 </head>
 <body>
+<a href="index.html" style="position:fixed;right:16px;top:16px;z-index:20;color:#cfd8ff;background:#101830;padding:10px 14px;border:1px solid #43558a;border-radius:10px;text-decoration:none;font-size:12px">← 游戏选择 / 作者信息</a>
 <canvas id="space"></canvas>
 
 <div class="panel">
@@ -556,6 +557,7 @@ function demoCollision() {
 }
 
 function randomSystem() {
+  bodies = []; particles = []; shockwaves = []; collisions = 0;
   const cx = W / 2, cy = H / 2;
   const M = 700 + Math.random() * 500;
   spawnBody(cx, cy, 0, 0, M, 'star');
