@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 发布一款游戏
+    url: https://linyucandy.github.io/cosmic-collision-3d/publish.html
+    about: 在游戏广场填写名称、网址和介绍，然后用 GitHub 账号确认提交。
+  - name: 游戏评分与玩家交流
+    url: https://linyucandy.github.io/cosmic-collision-3d/community.html
+    about: 找到游戏，在详情页准备评价或讨论草稿。

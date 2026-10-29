@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+community_data/
+.venv/
+.env
+/community-test-results.log
