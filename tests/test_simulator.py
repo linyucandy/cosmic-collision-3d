@@ -39,7 +39,7 @@ class SimulatorTests(unittest.TestCase):
         source = source.replace('\nloop();', '''
 paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
-  clearScene, explosions, shockwaves, flashes, step, updateEffects,
+  clearScene, explosions, shockwaves, flashes, step, updateEffects, explode,
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera) };
 loop();''')
@@ -120,6 +120,30 @@ loop();''')
         self.assertTrue(result['materialDisposed'], result)
         self.assertEqual(result['remaining'], 0, result)
 
+    def test_shockwave_ring_expands_fades_and_disposes(self):
+        self.open_sim()
+        result = self.page.evaluate('''() => {
+          sim.clearScene();
+          const body = sim.spawnBody(0,0,0,0,0,0,40,'planet');
+          sim.explode(body.mesh.position, body);
+          const wave = sim.shockwaves[0];
+          if (!wave.ring) return {hasRing:false};
+          const radius = wave.mesh.scale.x;
+          const opacity = wave.ring.material.opacity;
+          let disposed = false;
+          wave.ring.material.addEventListener('dispose', () => disposed = true);
+          for(let i=0; i<12; i++) sim.updateEffects();
+          const expanded = wave.mesh.scale.x > radius;
+          const faded = wave.ring.material.opacity < opacity;
+          for(let i=0; i<120; i++) sim.updateEffects();
+          return {hasRing:true, expanded, faded, disposed, count:sim.shockwaves.length};
+        }''')
+        self.assertTrue(result['hasRing'], result)
+        self.assertTrue(result['expanded'], result)
+        self.assertTrue(result['faded'], result)
+        self.assertTrue(result['disposed'], result)
+        self.assertEqual(result['count'], 0, result)
+
     def test_asteroid_crater_matches_mesh_uv_at_impact(self):
         self.open_sim()
         result = self.page.evaluate('''() => {
@@ -145,9 +169,16 @@ loop();''')
         self.assertNotEqual(result['before'], result['after'], result)
 
     def test_live_scene_entries_and_2d(self):
-        for scene in ['', '?scene=craters', '?scene=galaxy', '?scene=bh', '?scene=demo']:
+        for scene in ['', '?scene=craters', '?scene=galaxy', '?scene=bh', '?scene=demo', '?scene=shockwave']:
             self.page.goto(self.url + '/cosmic-collision-3d.html' + scene)
             self.page.wait_for_function("Number(document.getElementById('statBodies').textContent) > 0", timeout=60000)
+            if scene == '?scene=shockwave':
+                self.page.wait_for_function("Number(document.getElementById('statCollisions').textContent) > 0")
+                self.page.wait_for_timeout(100)
+                self.page.locator('#btnPause').click()
+                self.page.screenshot(path=str(ROOT / '.screenshots' / 'shockwave-verified.png'))
+                self.page.locator('#btnShockwave').click()
+                self.assertEqual(self.page.locator('#btnPause').inner_text(), '⏸ 暂停')
             self.page.wait_for_timeout(1200)
             self.assertTrue(self.page.locator('a[href="index.html"]').is_visible())
             if scene == '?scene=craters':

@@ -105,6 +105,7 @@
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
+  <div class="row"><button class="btn" id="btnShockwave">◎ 冲击波演示</button></div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
     <span>碰撞 <b id="statCollisions">0</b></span>
@@ -1029,11 +1030,32 @@ const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
 
+// 共享柔边光环贴图；碰撞时只创建轻量材质，避免逐次烘焙。
+const shockwaveCanvas = document.createElement('canvas');
+shockwaveCanvas.width = shockwaveCanvas.height = 256;
+const shockwaveContext = shockwaveCanvas.getContext('2d');
+const shockwaveGradient = shockwaveContext.createRadialGradient(128, 128, 0, 128, 128, 128);
+for (const [stop, color] of [[0, 'rgba(255,160,70,0)'], [0.72, 'rgba(255,160,70,0)'],
+  [0.81, 'rgba(255,160,70,0.25)'], [0.86, 'rgba(255,244,220,1)'],
+  [0.91, 'rgba(255,190,110,0.45)'], [1, 'rgba(255,160,70,0)']]) {
+  shockwaveGradient.addColorStop(stop, color);
+}
+shockwaveContext.fillStyle = shockwaveGradient;
+shockwaveContext.fillRect(0, 0, 256, 256);
+const shockwaveTexture = new THREE.CanvasTexture(shockwaveCanvas);
+shockwaveTexture.colorSpace = THREE.SRGBColorSpace;
+
+function removeShockwave(wave) {
+  scene.remove(wave.mesh);
+  wave.mesh.material.dispose();
+  wave.ring.material.dispose();
+}
+
 function clearScene() {
   selectBody(null);
   while (bodies.length) removeBody(bodies[0]);
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
-  for (const s of shockwaves.splice(0)) { scene.remove(s.mesh); s.mesh.material.dispose(); }
+  for (const s of shockwaves.splice(0)) removeShockwave(s);
   for (const f of flashes.splice(0)) { scene.remove(f.light, f.sp); f.sp.material.dispose(); }
   collisions = 0;
   document.querySelectorAll('#systems .btn').forEach(b => b.classList.remove('active'));
@@ -1069,13 +1091,20 @@ function explode(pos, body) {
   scene.add(pts);
   explosions.push({ pts, geo, mat, vel: velArr, life: 75, maxLife: 75, count });
 
-  // 冲击波
+  // 球形压力波 + 始终朝向视线的亮环，从各个视角都能看到扩散。
   const sw = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xffdcb0,
-    transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending,
+    transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending,
     depthWrite: false, side: THREE.BackSide }));
   sw.position.copy(pos);
+  const waveRing = new THREE.Sprite(new THREE.SpriteMaterial({ map: shockwaveTexture,
+    transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+  waveRing.scale.setScalar(2.6);
+  sw.add(waveRing);
+  const startRadius = Math.max(2, body.r * 0.8);
+  sw.scale.setScalar(startRadius);
   scene.add(sw);
-  shockwaves.push({ mesh: sw, r: body.r * 0.6, vr: 3 + power * 6 });
+  shockwaves.push({ mesh: sw, ring: waveRing, r: startRadius, vr: 2 + power * 4,
+    age: 0, duration: 1.2 + power * 0.4 });
 
   // 闪光
   const light = new THREE.PointLight(0xffe8c0, 15000 + power * 50000, 0, 2);
@@ -1111,11 +1140,14 @@ function updateEffects() {
   }
   for (let i = shockwaves.length - 1; i >= 0; i--) {
     const s = shockwaves[i];
-    s.r += s.vr; s.vr *= 0.95;
+    s.age += timeScale / 60;
+    s.r += s.vr * timeScale; s.vr *= Math.pow(0.975, timeScale);
     s.mesh.scale.setScalar(s.r);
-    s.mesh.material.opacity *= 0.93;
-    if (s.mesh.material.opacity < 0.02) {
-      scene.remove(s.mesh); s.mesh.material.dispose();
+    const alpha = Math.pow(Math.max(0, 1 - s.age / s.duration), 2);
+    s.mesh.material.opacity = 0.14 * alpha;
+    s.ring.material.opacity = 0.95 * alpha;
+    if (s.age >= s.duration) {
+      removeShockwave(s);
       shockwaves.splice(i, 1);
     }
   }
@@ -1622,6 +1654,16 @@ canvas.addEventListener('pointerup', e => {
 });
 
 /* ================= 预设场景 ================= */
+function demoShockwave() {
+  clearScene();
+  paused = false;
+  btnPause.textContent = '⏸ 暂停';
+  camera.position.set(0, 60, 210);
+  controls.target.set(0, 0, 0);
+  spawnBody(-4, 0, 0, 0.1, 0, 0, 40, 'planet');
+  spawnBody(4, 0, 0, -0.1, 0, 0, 40, 'planet');
+}
+
 function demoCollision() {
   clearScene();
   camera.position.set(0, 180, 850);
@@ -1847,6 +1889,7 @@ document.getElementById('btnReset').addEventListener('click', () => {
   clearScene();
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
+document.getElementById('btnShockwave').addEventListener('click', () => { ensureAudio(); demoShockwave(); });
 document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
 /* 恒星系统预设：单星 / 双星 / 三星 */
 document.querySelectorAll('#systems .btn').forEach(btn => {
@@ -1986,6 +2029,7 @@ function loop() {
 const sceneParam = new URLSearchParams(location.search).get('scene');
 if (sceneParam === 'bh') spawnBody(0, 0, 0, 0, 0, 0, TYPES.blackhole.base, 'blackhole');
 else if (sceneParam === 'demo') demoCollision();
+else if (sceneParam === 'shockwave') demoShockwave();
 else if (sceneParam === 'galaxy') randomSystem();
 else if (sceneParam === 'craters') {
   const planet = spawnBody(0, 0, 0, 0, 0, 0, 50, 'planet');
