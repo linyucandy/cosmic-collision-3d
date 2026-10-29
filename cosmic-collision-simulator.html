@@ -636,8 +636,9 @@ const statCollisions = document.getElementById('statCollisions');
 const statParticles = document.getElementById('statParticles');
 function stopShockwaveReplay() {
   shockwaveReplay = false;
-  document.getElementById('btnShockwave').textContent = '◎ 冲击波演示';
+  setShockwaveReplayUI(false);
 }
+window.addEventListener('stop-shockwave-replay', stopShockwaveReplay);
 function demoShockwave() {
   bodies = []; particles = []; shockwaves = []; collisions = 0;
   paused = false;
@@ -647,7 +648,7 @@ function demoShockwave() {
   spawnBody(x + 3,y,-0.1,0,40,'planet');
   shockwaveReplay = true;
   nextShockwaveAt = performance.now() + 3000;
-  document.getElementById('btnShockwave').textContent = '◎ 冲击波 · 自动重播中';
+  setShockwaveReplayUI(true);
 }
 document.getElementById('btnShockwave').addEventListener('click', () => {ensureAudio(); demoShockwave();});
 document.getElementById('nextPlanet').addEventListener('click', () => {

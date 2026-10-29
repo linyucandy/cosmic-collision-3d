@@ -1033,6 +1033,10 @@ const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
 let shockwaveReplay = false, nextShockwaveAt = 0;
+window.addEventListener('stop-shockwave-replay', () => {
+  shockwaveReplay = false;
+  setShockwaveReplayUI(false);
+});
 
 // 共享柔边光环贴图；碰撞时只创建轻量材质，避免逐次烘焙。
 const shockwaveCanvas = document.createElement('canvas');
@@ -1057,7 +1061,7 @@ function removeShockwave(wave) {
 
 function clearScene() {
   shockwaveReplay = false;
-  document.getElementById('btnShockwave').textContent = '◎ 冲击波演示';
+  setShockwaveReplayUI(false);
   selectBody(null);
   while (bodies.length) removeBody(bodies[0]);
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
@@ -1655,7 +1659,7 @@ canvas.addEventListener('pointerup', e => {
   if (v.length() > 9) v.setLength(9);
   const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
   shockwaveReplay = false;
-  document.getElementById('btnShockwave').textContent = '◎ 冲击波演示';
+  setShockwaveReplayUI(false);
   spawnBody(dragA.x, dragA.y, dragA.z, v.x, v.y, v.z, mass, curType);
   dragA = null;
   ghost.visible = false;
@@ -1676,7 +1680,7 @@ function demoShockwave() {
   spawnBody(4, 0, 0, -0.1, 0, 0, 40, 'planet');
   shockwaveReplay = true;
   nextShockwaveAt = performance.now() + 3000;
-  document.getElementById('btnShockwave').textContent = '◎ 冲击波 · 自动重播中';
+  setShockwaveReplayUI(true);
 }
 
 function demoCollision() {

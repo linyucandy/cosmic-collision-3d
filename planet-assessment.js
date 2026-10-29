@@ -38,8 +38,54 @@
     <label for="lifeMeter">生命存在指数 <b id="lifeScore">—</b></label>
     <meter id="lifeMeter" min="0" max="100" value="0"></meter>
     <p id="planetCondition">等待创建行星</p>
-    <small>游戏模拟评分 · 非实测生命概率</small>`;
+    <small>游戏模拟评分 · 非实测生命概率</small>
+    <details id="scoreExplanation"><summary>指数如何计算？</summary>
+    <p>地球相似指数：比较质量、半径和模拟表温与参考地球的接近程度。</p>
+    <p>生命存在指数：结合相似度、温度适宜度和碰撞热量估算环境潜力。</p>
+    <p>分值表示环境适宜程度，不代表已经发现生命。</p></details>`;
   document.body.appendChild(panel);
+
+  // 手机先露出画布，完整控制仍可随时展开；桌面保持展开。
+  const controls = document.querySelector('.panel');
+  const controlsBody = document.createElement('div');
+  controlsBody.id = 'panelControls';
+  for (const child of [...controls.children]) {
+    if (!child.matches('a, h1')) controlsBody.appendChild(child);
+  }
+  const toggle = document.createElement('button');
+  toggle.id = 'toggleControls';
+  toggle.type = 'button';
+  toggle.setAttribute('aria-controls', controlsBody.id);
+  const setControlsOpen = open => {
+    controls.classList.toggle('controls-collapsed', !open);
+    controlsBody.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? '收起控制 ▴' : '展开控制 ▾';
+  };
+  controls.append(toggle, controlsBody);
+  const mobileLayout = matchMedia('(max-width:640px)');
+  setControlsOpen(!mobileLayout.matches);
+  mobileLayout.addEventListener('change', event => setControlsOpen(!event.matches));
+  toggle.addEventListener('click', () => setControlsOpen(controlsBody.hidden));
+
+  const waveActions = document.createElement('div');
+  waveActions.className = 'shockwave-actions';
+  const waveTrigger = document.getElementById('btnShockwave');
+  const stopWave = document.createElement('button');
+  stopWave.id = 'btnStopShockwave';
+  stopWave.type = 'button';
+  stopWave.hidden = true;
+  stopWave.textContent = '停止';
+  stopWave.setAttribute('aria-label', '停止自动重播');
+  waveActions.append(waveTrigger, stopWave);
+  document.body.appendChild(waveActions);
+  globalThis.setShockwaveReplayUI = enabled => {
+    waveTrigger.textContent = enabled ? '◎ 冲击波重播中' : '◎ 冲击波演示';
+    stopWave.hidden = !enabled;
+  };
+  stopWave.addEventListener('click', () => {
+    window.dispatchEvent(new Event('stop-shockwave-replay'));
+  });
 
   globalThis.renderPlanetAssessment = (body, sources, label = '行星') => {
     const result = assessPlanet(body, sources);
