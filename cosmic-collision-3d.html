@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>宇宙碰撞模拟器 3D</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="game-overlays.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; overflow:hidden; background:#0a0f24;
@@ -105,7 +107,6 @@
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
-  <div class="row"><button class="btn" id="btnShockwave">◎ 冲击波演示</button></div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
     <span>碰撞 <b id="statCollisions">0</b></span>
@@ -114,6 +115,8 @@
 </div>
 
 <div class="hint">左键按住拖动发射天体 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
+<button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
+<script src="planet-assessment.js"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -1029,6 +1032,7 @@ function updateCometTail(b) {
 const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
+let shockwaveReplay = false, nextShockwaveAt = 0;
 
 // 共享柔边光环贴图；碰撞时只创建轻量材质，避免逐次烘焙。
 const shockwaveCanvas = document.createElement('canvas');
@@ -1052,6 +1056,8 @@ function removeShockwave(wave) {
 }
 
 function clearScene() {
+  shockwaveReplay = false;
+  document.getElementById('btnShockwave').textContent = '◎ 冲击波演示';
   selectBody(null);
   while (bodies.length) removeBody(bodies[0]);
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
@@ -1329,6 +1335,7 @@ function handleCollisions() {
         const other = survivor === big ? small : big;
         addImpactCrater(survivor, other);
         const M = survivor.mass + other.mass;
+        survivor.heat = Math.min(2, (survivor.heat || 0) + other.mass / M);
         survivor.vel.multiplyScalar(survivor.mass / M)
           .addScaledVector(other.vel, other.mass / M);
         survivor.mesh.position.multiplyScalar(survivor.mass / M)
@@ -1647,6 +1654,8 @@ canvas.addEventListener('pointerup', e => {
   const v = d.multiplyScalar(0.05);
   if (v.length() > 9) v.setLength(9);
   const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
+  shockwaveReplay = false;
+  document.getElementById('btnShockwave').textContent = '◎ 冲击波演示';
   spawnBody(dragA.x, dragA.y, dragA.z, v.x, v.y, v.z, mass, curType);
   dragA = null;
   ghost.visible = false;
@@ -1658,10 +1667,16 @@ function demoShockwave() {
   clearScene();
   paused = false;
   btnPause.textContent = '⏸ 暂停';
+  timeScale = 1;
+  btnSpeed.textContent = '⏩ ×1';
+  btnSpeed.classList.remove('active');
   camera.position.set(0, 60, 210);
   controls.target.set(0, 0, 0);
   spawnBody(-4, 0, 0, 0.1, 0, 0, 40, 'planet');
   spawnBody(4, 0, 0, -0.1, 0, 0, 40, 'planet');
+  shockwaveReplay = true;
+  nextShockwaveAt = performance.now() + 3000;
+  document.getElementById('btnShockwave').textContent = '◎ 冲击波 · 自动重播中';
 }
 
 function demoCollision() {
@@ -1909,11 +1924,22 @@ btnSound.addEventListener('click', () => {
 const statBodies = document.getElementById('statBodies');
 const statCollisions = document.getElementById('statCollisions');
 const statParticles = document.getElementById('statParticles');
+let lastAssessmentAt = 0;
+document.getElementById('nextPlanet').addEventListener('click', () => {
+  const candidates = bodies.filter(b => b.type === 'planet');
+  const list = candidates.length ? candidates : bodies;
+  const current = bodies.includes(selected) ? selected : candidates[0] || bodies[0];
+  if (list.length) selectBody(list[(list.indexOf(current) + 1) % list.length]);
+});
 
 /* ================= 主循环 ================= */
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
+    if (shockwaveReplay && performance.now() >= nextShockwaveAt && bodies.length) {
+      explode(bodies[0].mesh.position, bodies[0]);
+      nextShockwaveAt = performance.now() + 3000;
+    }
     step();
     updateEffects();
     simT += timeScale / 60;
@@ -2019,6 +2045,14 @@ function loop() {
     }
   } else if (selected) selectBody(null);
 
+  if (performance.now() - lastAssessmentAt > 200) {
+    const observed = bodies.includes(selected) ? selected : bodies.find(b => b.type === 'planet') || bodies[0];
+    const sources = observed ? bodies.filter(b => b !== observed && LIT_TYPES.has(b.type)).map(b => ({
+      type:b.type, mass:b.mass, distance:b.mesh.position.distanceTo(observed.mesh.position)
+    })) : [];
+    renderPlanetAssessment(observed, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
+    lastAssessmentAt = performance.now();
+  }
   if (composer) composer.render(); else renderer.render(scene, camera);
   statBodies.textContent = bodies.length;
   statCollisions.textContent = collisions;

@@ -77,7 +77,7 @@ loop();''')
           target.mesh.material.map.addEventListener('dispose', () => disposed = true);
           sim.removeBody(target);
           return { changed, unchanged, originalUnchanged: original.image === originalImage,
-            craterCount, disposed, removed: !sim.bodies.includes(impactor) };
+            craterCount, disposed, heat:target.heat, removed: !sim.bodies.includes(impactor) };
         }''')
         self.assertTrue(result['changed'], result)
         self.assertTrue(result['unchanged'], result)
@@ -85,6 +85,7 @@ loop();''')
         self.assertEqual(result['craterCount'], 1, result)
         self.assertTrue(result['disposed'], result)
         self.assertTrue(result['removed'], result)
+        self.assertGreater(result['heat'], 0, result)
         self.assertEqual(self.errors, [])
 
     def test_home_links_author_and_mobile_layout(self):
@@ -100,6 +101,61 @@ loop();''')
         self.page.set_viewport_size({'width': 390, 'height': 844})
         self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
         self.page.screenshot(path=str(ROOT / '.screenshots' / 'menu-mobile-verified.png'), full_page=True)
+        self.assertEqual(self.errors, [])
+
+    def test_planet_scores_respond_to_environment(self):
+        self.open_sim()
+        self.assertTrue(self.page.evaluate('typeof window.assessPlanet === "function"'))
+        result = self.page.evaluate('''() => {
+          const earth = {type:'planet', mass:40, heat:0};
+          const sun = [{type:'star', mass:800, distance:390}];
+          return {ideal:assessPlanet(earth,sun), frozen:assessPlanet(earth,[]),
+            hot:assessPlanet({...earth,heat:2},sun), gas:assessPlanet({type:'gasGiant',mass:70},sun)};
+        }''')
+        self.assertGreater(result['ideal']['earthSimilarity'], 90)
+        self.assertGreater(result['ideal']['lifePotential'], result['frozen']['lifePotential'])
+        self.assertGreater(result['ideal']['lifePotential'], result['hot']['lifePotential'])
+        self.assertEqual(result['gas']['lifePotential'], 0)
+
+    def test_scores_and_shockwave_controls_visible_in_both_modes(self):
+        for name in ['cosmic-collision-3d.html', 'cosmic-collision-simulator.html']:
+            self.page.goto(self.url + '/' + name)
+            self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+            self.assertTrue(self.page.locator('label[for="earthMeter"]').is_visible())
+            self.assertTrue(self.page.locator('label[for="lifeMeter"]').is_visible())
+            self.page.set_viewport_size({'width':390,'height':844})
+            button = self.page.locator('#btnShockwave')
+            self.assertTrue(button.is_visible())
+            self.assertLess(button.bounding_box()['y'], 65)
+            self.page.screenshot(path=str(ROOT / '.screenshots' / (name + '-scores-mobile.png')))
+            button.click()
+            self.page.wait_for_function("Number(document.getElementById('statCollisions').textContent)>0")
+            self.page.set_viewport_size({'width':1440,'height':900})
+            self.assertEqual(self.errors, [])
+
+    def test_shockwave_demo_replays_and_stops_on_scene_change(self):
+        self.open_sim()
+        self.page.locator('#btnShockwave').click()
+        self.page.wait_for_function('sim.shockwaves.length > 0')
+        self.page.wait_for_function('sim.shockwaves.length === 0', timeout=10000)
+        self.page.wait_for_function('sim.shockwaves.length > 0', timeout=10000)
+        self.page.locator('#btnReset').click()
+        self.page.wait_for_timeout(3200)
+        self.assertEqual(self.page.evaluate('sim.shockwaves.length'), 0)
+        self.assertEqual(self.page.evaluate('sim.bodies.length'), 0)
+        self.assertEqual(self.errors, [])
+        self.page.goto(self.url + '/cosmic-collision-simulator.html?scene=shockwave')
+        self.page.wait_for_function('shockwaves.length > 0')
+        self.page.wait_for_function('shockwaves.length === 0', timeout=10000)
+        self.page.wait_for_function('shockwaves.length > 0', timeout=10000)
+        self.page.locator('#btnPause').click()
+        radius = self.page.evaluate('shockwaves[0].r')
+        self.page.wait_for_timeout(200)
+        self.assertEqual(self.page.evaluate('shockwaves[0].r'), radius)
+        self.page.locator('#btnReset').click()
+        self.page.locator('#btnPause').click()
+        self.page.wait_for_timeout(3200)
+        self.assertEqual(self.page.evaluate('shockwaves.length'), 0)
         self.assertEqual(self.errors, [])
 
     def test_reset_removes_collision_effects_and_materials(self):
