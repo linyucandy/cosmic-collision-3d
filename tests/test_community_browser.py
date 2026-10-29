@@ -154,7 +154,7 @@ class CommunityBrowserTests(unittest.TestCase):
         try:
             page.goto(self.url+'/community.html?source=github')
             page.locator('.game-card').first.wait_for(timeout=20000)
-            self.assertEqual(page.locator('.game-card').count(),2)
+            self.assertEqual(page.locator('.game-card').count(),3)
             self.assertTrue(page.locator('#snapshotNotice').is_visible())
             self.assertIn('2026',page.locator('#snapshotNotice').inner_text())
         finally:

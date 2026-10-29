@@ -82,6 +82,11 @@ def create_app(config=None):
             conn.execute('INSERT OR IGNORE INTO games(id,title,description,category,play_url,author_name,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
                          (game_id,title,description,'sandbox',url,'晨晨',stamp,stamp))
         conn.execute('DELETE FROM sessions WHERE expires_at < ?', (int(time.time()),))
+        uni_url = 'https://linyucandy.github.io/uniSimBox/'
+        conn.execute('''INSERT INTO games(title,description,category,play_url,author_name,created_at,updated_at)
+          SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
+          ('uniSimBox · 宇宙模拟实验室','六个探索领域、十四个交互实验：宇宙图鉴、引力沙盘、飞船探索、恒星演化、星云观察，以及行星与星系碰撞。',
+           'sandbox',uni_url,'晨晨',stamp,stamp,uni_url))
         conn.commit()
 
     def db():

@@ -11,6 +11,7 @@
 - [游戏广场](https://linyucandy.github.io/cosmic-collision-3d/community.html)
 - [发布游戏](https://linyucandy.github.io/cosmic-collision-3d/publish.html)
 - [原宇宙游戏首页](https://linyucandy.github.io/cosmic-collision-3d/)
+- [uniSimBox 宇宙模拟实验室](https://linyucandy.github.io/uniSimBox/) · [源码](https://github.com/linyucandy/uniSimBox) · [评价与交流](https://linyucandy.github.io/cosmic-collision-3d/game.html?id=unisimbox)
 
 在发布页填写名称、游戏网址和介绍，点击准备草稿，再前往 GitHub 登录并确认 `Submit new issue`。**准备草稿不会自动发布**。评价、无评分讨论也使用相同确认方式；回复可直接在对应 GitHub 帖子中进行，网站可展开查看交流。网站不索要 GitHub 密码或访问令牌。
 
