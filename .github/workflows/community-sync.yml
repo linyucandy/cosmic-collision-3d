@@ -1,0 +1,49 @@
+name: Sync community snapshot
+on:
+  issues:
+    types: [opened, edited, closed, reopened, deleted, transferred]
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/community-sync.yml
+      - scripts/sync_community.py
+      - community-github-data.js
+permissions:
+  contents: write
+  issues: read
+  pages: write
+concurrency:
+  group: community-snapshot
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Export public records
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/sync_community.py
+      - name: Save complete snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add community-snapshot.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh public game community snapshot"
+            git pull --rebase origin main
+            git push origin main
+          fi
+      - name: Refresh existing Pages site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/sync_community.py --request-pages-build

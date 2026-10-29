@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent
 CATEGORIES = {'sandbox':'沙盒模拟', 'puzzle':'益智解谜', 'action':'动作挑战',
               'adventure':'冒险探索', 'casual':'休闲小游戏', 'other':'其他'}
 PUBLIC_FILES = {'index.html', 'community.html', 'game.html', 'publish.html',
-                'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'cosmic-collision-3d.html',
+                'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'community-snapshot.json', 'cosmic-collision-3d.html',
                 'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css'}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users (

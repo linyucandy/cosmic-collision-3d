@@ -15,7 +15,15 @@ function errorState(node,error,retry) {
   node.innerHTML=`<div class="error-state"><div class="state-icon" aria-hidden="true">↻</div><h2>${e(error.message)}</h2><p>目前没有载入完整社区记录，因此不显示可能不准确的评分。</p><button class="button" data-retry>重新同步</button> <a class="button" href="${M.base}/issues" ${external}>直接在 GitHub 查看 ↗</a></div>`;
   node.querySelector('[data-retry]').addEventListener('click',retry);
 }
-async function getData(force=false) {if(!data||force)data=await M.read(force);return data;}
+async function getData(force=false) {
+  if(!data||force)data=await M.read(force);
+  let notice=document.getElementById('snapshotNotice');
+  if(data.snapshot_at) {
+    if(!notice) {notice=document.createElement('div');notice.id='snapshotNotice';notice.className='status-banner';document.querySelector('main').prepend(notice);}
+    notice.textContent='GitHub 暂时无法直连，当前显示 '+new Date(data.snapshot_at).toLocaleString('zh-CN')+' 的公开快照。提交后需等待自动同步，再点击“同步最新”。';
+  } else notice?.remove();
+  return data;
+}
 function card(game) {
   return `<article class="game-card"><a class="game-art ${e(game.category)}" href="${local('game.html',{id:game.id})}" tabindex="-1" aria-hidden="true"><span class="card-badge">${e(categories[game.category])}</span><span class="art-symbol">${symbols[game.category]}</span></a><div class="card-content"><h2 class="card-title"><a href="${local('game.html',{id:game.id})}">${e(game.title)}</a></h2><p class="card-description">${e(game.description)}</p><div class="card-meta"><span class="card-author">by ${e(game.author_name)}</span><span class="rating-text">${game.rating_count?'★ '+game.rating_average.toFixed(1)+' · '+game.rating_count+' 人':'尚无评分'}</span></div></div></article>`;
 }
@@ -80,7 +88,7 @@ async function detail(force=false) {
       const target=document.getElementById('comments-'+button.dataset.comments);
       try {
         const comments=await M.comments(button.dataset.comments);
-        target.innerHTML=comments.map(comment=>`<div class="reply"><div class="review-date"><span class="review-author">${e(comment.user?.login||'GitHub 用户')}</span> · ${date(comment.created_at)}</div><p>${e((comment.body||'').slice(0,4000))}${comment.body?.length>4000?'…':''}</p></div>`).join('')||'<p class="field-note">暂时还没有回复。</p>';
+        target.innerHTML=(comments.snapshot_at?`<p class="field-note">交流快照：${e(date(comments.snapshot_at))}</p>`:'')+(comments.map(comment=>`<div class="reply"><div class="review-date"><span class="review-author">${e(comment.user?.login||'GitHub 用户')}</span> · ${date(comment.created_at)}</div><p>${e((comment.body||'').slice(0,4000))}${comment.body?.length>4000?'…':''}</p></div>`).join('')||'<p class="field-note">暂时还没有回复。</p>');
         button.textContent='交流已展开';
       } catch(problem) {target.textContent=problem.message;button.disabled=false;}
     }));

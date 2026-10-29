@@ -75,7 +75,7 @@
   async function requestAll(path,maxPages=20) {
     let url=apiBase+path,records=[];
     for(let page=0;page<maxPages;page++) {
-      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6000);
       let response;
       try {response=await fetch(url,{cache:'no-store',headers:{Accept:'application/vnd.github+json'},signal:controller.signal});}
       catch(_) {throw new Error('暂时无法连接 GitHub，请稍后重试。');}
@@ -92,21 +92,48 @@
     }
     throw new Error('公开记录较多，暂未能完整载入，请前往 GitHub 查看。');
   }
-  let cached=null;
+  let cached=null,snapshotComments={},snapshotTime=null;
+  async function loadSnapshot() {
+    const response=await fetch('./community-snapshot.json',{cache:'no-store'});
+    if(!response.ok) throw new Error('同站点社区快照暂不可用。');
+    const result=await response.json();
+    if(result.schema!==1||!Array.isArray(result.issues)||!Number.isFinite(Date.parse(result.generated_at))) throw new Error('社区快照格式无效。');
+    snapshotComments=result.comments||{};snapshotTime=result.generated_at;
+    return result;
+  }
+  function fromCache(entry) {
+    const result=build(entry.issues);
+    if(entry.snapshot_at) {
+      result.snapshot_at=entry.snapshot_at;snapshotTime=entry.snapshot_at;snapshotComments=entry.comments||{};
+    }
+    return result;
+  }
   async function read(force=false) {
-    if(!force&&cached&&Date.now()-cached.time<120000) return build(cached.issues);
+    if(!force&&cached&&Date.now()-cached.time<120000) return fromCache(cached);
     if(!force) {
       try {const saved=JSON.parse(sessionStorage.getItem('cosmic-github-community')||'null');
-        if(saved&&Array.isArray(saved.issues)&&Date.now()-saved.time<120000) {cached=saved;return build(saved.issues);}}
+        if(saved&&Array.isArray(saved.issues)&&Date.now()-saved.time<120000) {cached=saved;return fromCache(saved);}}
       catch(_) { /* Storage may be disabled. Public loading still works. */ }
     }
-    const issues=await requestAll('/issues?state=open&per_page=100&sort=created&direction=desc');
-    cached={time:Date.now(),issues};
+    try {
+      const issues=await requestAll('/issues?state=open&per_page=100&sort=created&direction=desc');
+      cached={time:Date.now(),issues};
+    } catch(error) {
+      try {const snapshot=await loadSnapshot();cached={time:Date.now(),issues:snapshot.issues,snapshot_at:snapshot.generated_at,comments:snapshot.comments};}
+      catch(_) {throw error;}
+    }
     try {sessionStorage.setItem('cosmic-github-community',JSON.stringify(cached));} catch(_) { /* Optional cache. */ }
-    return build(issues);
+    return fromCache(cached);
   }
   const model={repo,base,categories,validUrl,makeBody,parseBody,build,issueDraft,read,
-    comments:number=>requestAll(`/issues/${Number(number)}/comments?per_page=100`,10)};
+    comments:async number=>{
+      try {return await requestAll(`/issues/${Number(number)}/comments?per_page=100`,10);}
+      catch(error) {
+        if(!Object.hasOwn(snapshotComments,String(number))) await loadSnapshot();
+        if(!Array.isArray(snapshotComments[String(number)])) throw error;
+        const result=[...snapshotComments[String(number)]];result.snapshot_at=snapshotTime;return result;
+      }
+    }};
   if(typeof module!=='undefined'&&module.exports) module.exports=model;
   else globalThis.CommunityGitHub=model;
 })();

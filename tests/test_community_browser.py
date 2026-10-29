@@ -145,3 +145,17 @@ class CommunityBrowserTests(unittest.TestCase):
             self.assertEqual(errors,[])
         finally:
             page.close()
+
+    def test_github_network_failure_uses_dated_snapshot(self):
+        page=self.browser.new_page()
+        page.route('https://api.github.com/**',lambda route:route.abort())
+        snapshot={'schema':1,'generated_at':'2026-10-29T10:00:00Z','issues':[],'comments':{}}
+        page.route('**/community-snapshot.json*',lambda route:route.fulfill(json=snapshot))
+        try:
+            page.goto(self.url+'/community.html?source=github')
+            page.locator('.game-card').first.wait_for(timeout=20000)
+            self.assertEqual(page.locator('.game-card').count(),2)
+            self.assertTrue(page.locator('#snapshotNotice').is_visible())
+            self.assertIn('2026',page.locator('#snapshotNotice').inner_text())
+        finally:
+            page.close()
