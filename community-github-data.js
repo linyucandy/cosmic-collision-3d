@@ -26,6 +26,7 @@
     const games=[
       {id:'1',title:'宇宙碰撞 · 3D 宇宙',description:'创造天体，探索三维空间的引力、轨道和碰撞。观察黑洞、冲击波和行星环境指数。',category:'sandbox',play_url:'cosmic-collision-3d.html',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1},
       {id:'2',title:'宇宙碰撞 · 2D 引力沙盒',description:'拖动发射天体，在轻量二维沙盒里观察引力、星系演化与碰撞。随时开始一场宇宙实验。',category:'sandbox',play_url:'cosmic-collision-simulator.html',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1},
+      {id:'pixel-city',title:'像素小城 · 市长日记',description:'建道路、盖房子、经营街区。规划水电与就业，用公园和诊所照顾居民，经营一座可以自动保存的像素城市。',category:'sandbox',play_url:'pixel-city.html',author_name:'晨晨',author_login:'linyucandy',created_at:'2026-10-30T00:00:00Z',updated_at:'2026-10-30T00:00:00Z',published:1},
       {id:'unisimbox',title:'uniSimBox · 宇宙模拟实验室',description:'六个探索领域、十四个交互实验：宇宙图鉴、引力沙盘、飞船探索、恒星演化、星云观察，以及行星与星系碰撞。',category:'sandbox',play_url:'https://linyucandy.github.io/uniSimBox/',source_url:'https://github.com/linyucandy/uniSimBox',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1}
     ];
     const parsed=[];

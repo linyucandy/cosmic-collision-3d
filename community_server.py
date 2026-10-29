@@ -13,7 +13,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from flask import Flask, abort, g, jsonify, request, send_from_directory
+from flask import Flask, abort, g, jsonify, redirect, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -22,7 +22,8 @@ CATEGORIES = {'sandbox':'沙盒模拟', 'puzzle':'益智解谜', 'action':'动�
               'adventure':'冒险探索', 'casual':'休闲小游戏', 'other':'其他'}
 PUBLIC_FILES = {'index.html', 'community.html', 'game.html', 'publish.html',
                 'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'community-snapshot.json', 'cosmic-collision-3d.html',
-                'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css'}
+                'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css', 'pixel-city.html', 'pixel-city.css',
+                'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city.js'}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -87,6 +88,11 @@ def create_app(config=None):
           SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
           ('uniSimBox · 宇宙模拟实验室','六个探索领域、十四个交互实验：宇宙图鉴、引力沙盘、飞船探索、恒星演化、星云观察，以及行星与星系碰撞。',
            'sandbox',uni_url,'晨晨',stamp,stamp,uni_url))
+        city_url = '/pixel-city.html'
+        conn.execute('''INSERT INTO games(title,description,category,play_url,author_name,created_at,updated_at)
+          SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
+          ('像素小城 · 市长日记','建道路、盖房子、经营街区。规划水电与就业，用公园和诊所照顾居民，经营一座可以自动保存的像素城市。',
+           'sandbox',city_url,'晨晨',stamp,stamp,city_url))
         conn.commit()
 
     def db():
@@ -415,6 +421,11 @@ def create_app(config=None):
     def public_file(filename):
         if filename not in PUBLIC_FILES:
             abort(404, description='页面不存在。')
+        if filename == 'game.html' and request.args.get('id') == 'pixel-city' and request.args.get('source') != 'github':
+            with closing(connect()) as conn:
+                game = conn.execute('SELECT id FROM games WHERE play_url=? AND user_id IS NULL',('/pixel-city.html',)).fetchone()
+            if game:
+                return redirect('game.html?id='+str(game['id']))
         return send_from_directory(ROOT,filename)
 
     return app

@@ -38,6 +38,17 @@ class CommunityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.json)
         return response.json['game']['id']
 
+    def test_pixel_city_links_resolve_without_assuming_a_database_id(self):
+        response = self.client.get('/game.html?id=pixel-city')
+        self.assertEqual(response.status_code,302)
+        target_id = response.location.split('id=')[1]
+        detail = self.client.get('/api/games/'+target_id)
+        self.assertEqual(detail.json['game']['play_url'],'/pixel-city.html')
+        with self.client.get('/pixel-city.js') as static:
+            self.assertEqual(static.status_code,200)
+        with self.client.get('/game.html?id=pixel-city&source=github') as static:
+            self.assertEqual(static.status_code,200)
+
     def test_publish_is_shared_and_persists_across_app_restart(self):
         game_id = self.publish()
         second = create_app({'TESTING':True,'DATABASE':self.db}).test_client()

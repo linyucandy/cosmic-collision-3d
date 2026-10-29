@@ -7,7 +7,7 @@ test('publication keeps verified GitHub author and rejects unsafe game URLs', ()
   const data = model.build([issue(3,'real-author',body)]);
   assert.equal(data.games.find(g=>g.id==='gh-3').author_name,'real-author');
   const bad = model.makeBody('game',{title:'恶意游戏',description:'一个包含恶意游戏网址的无效发布，应当被模型拒绝。',category:'puzzle',play_url:'javascript:alert(1)'});
-  assert.equal(model.build([issue(4,'attacker',bad)]).games.length,3);
+  assert.equal(model.build([issue(4,'attacker',bad)]).games.length,4);
 });
 test('latest review per GitHub account counts once; author scores are excluded', () => {
   const records = [issue(3,'author',model.makeBody('game',{title:'星际迷宫',description:'一个可以让玩家探索迷宫并发现新星球的网页游戏。',category:'puzzle',play_url:'https://example.com/game'}))];
@@ -21,7 +21,7 @@ test('latest review per GitHub account counts once; author scores are excluded',
 });
 test('closed publications, pull requests and malformed metadata never become games', () => {
   const body=model.makeBody('game',{title:'不应发布',description:'这是一个关闭的作品，不应该出现在公开的游戏广场中。',category:'puzzle',play_url:'https://example.com/game'});
-  assert.equal(model.build([{...issue(3,'author',body),state:'closed'},{...issue(4,'author',body),pull_request:{}},issue(5,'author','invalid')]).games.length,3);
+  assert.equal(model.build([{...issue(3,'author',body),state:'closed'},{...issue(4,'author',body),pull_request:{}},issue(5,'author','invalid')]).games.length,4);
 });
 test('issue drafts round-trip unicode without pretending to publish', () => {
   const data={game_id:'1',rating:4,body:'很好玩 <script>文字</script>'};
@@ -48,4 +48,10 @@ test('uniSimBox has a playable public URL and accepts game-specific ratings', ()
   assert.equal(game.source_url,'https://github.com/linyucandy/uniSimBox');
   assert.equal(game.rating_average,4);
   assert.equal(game.rating_count,1);
+});
+test('pixel city is playable and has its own community rating', () => {
+  const data=model.build([issue(10,'city-player',model.makeBody('review',{game_id:'pixel-city',rating:5,body:'喜欢慢慢建设城市。'}))]);
+  const game=data.games.find(game=>game.id==='pixel-city');
+  assert.equal(game.play_url,'pixel-city.html');assert.equal(game.author_name,'晨晨');
+  assert.equal(game.rating_count,1);assert.equal(game.rating_average,5);
 });
