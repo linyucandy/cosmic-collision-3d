@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   if(location.hostname.endsWith('.github.io')||new URLSearchParams(location.search).get('source')==='github') {
-    import('./community-github.js?v=community4').catch(() => {
+    import('./community-github.js?v=community5').catch(() => {
       const target=document.getElementById('catalogueContent')||document.getElementById('detailContent')||document.getElementById('publishError');
       if(target) target.textContent='社区加载失败，请刷新页面重试。';
     });

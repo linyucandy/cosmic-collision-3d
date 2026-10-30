@@ -26,7 +26,7 @@
     const games=[
       {id:'1',title:'宇宙碰撞 · 3D 宇宙',description:'创造天体，探索三维空间的引力、轨道和碰撞。观察黑洞、冲击波和行星环境指数。',category:'sandbox',play_url:'cosmic-collision-3d.html',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1},
       {id:'2',title:'宇宙碰撞 · 2D 引力沙盒',description:'拖动发射天体，在轻量二维沙盒里观察引力、星系演化与碰撞。随时开始一场宇宙实验。',category:'sandbox',play_url:'cosmic-collision-simulator.html',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1},
-      {id:'pixel-city',title:'像素小城 · 市长日记',description:'建道路、盖房子、经营街区。规划水电与就业，用公园和诊所照顾居民，经营一座可以自动保存的像素城市。',category:'sandbox',play_url:'pixel-city.html',author_name:'晨晨',author_login:'linyucandy',created_at:'2026-10-30T00:00:00Z',updated_at:'2026-10-30T00:00:00Z',published:1},
+      {id:'pixel-city',title:'像素小城 · 市长日记',description:'《像素小城 · 市长日记》是一款轻松的像素风城市经营小游戏，由晨晨制作。你将担任市长，从一片河畔土地和 900 城币起步，亲手把小街区发展成热闹的城市。\n\n规划道路，建设住宅、商店与工厂，为居民提供住所和工作；配好太阳能与水塔，用公园和诊所提高幸福度。道路必须连到市政厅，建筑才能运作；工厂靠近住宅会带来污染，每个月还要支付维护费。\n\n你的目标是平衡人口、就业、水电和收支，逐步达成 20、50、100 人口里程碑，并挑战绿色宜居城。支持暂停规划、倍速运营、逐月结算、拆除退款和一次低资金援助，没有限时，按自己的节奏建设。\n\n电脑可点击建造、滚轮缩放、右键平移；手机可点选工具和地块，切换移动工具拖动画布。进度自动保存在当前浏览器，换设备不会同步；清理浏览器数据会删除存档。',category:'sandbox',play_url:'pixel-city.html',author_name:'晨晨',author_login:'linyucandy',created_at:'2026-10-30T00:00:00Z',updated_at:'2026-10-30T00:00:00Z',published:1},
       {id:'unisimbox',title:'uniSimBox · 宇宙模拟实验室',description:'六个探索领域、十四个交互实验：宇宙图鉴、引力沙盘、飞船探索、恒星演化、星云观察，以及行星与星系碰撞。',category:'sandbox',play_url:'https://linyucandy.github.io/uniSimBox/',source_url:'https://github.com/linyucandy/uniSimBox',author_name:'晨晨',author_login:'linyucandy',created_at:stamp,updated_at:stamp,published:1}
     ];
     const parsed=[];
