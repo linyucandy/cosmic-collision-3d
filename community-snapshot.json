@@ -1,6 +1,18 @@
 {
   "schema": 1,
-  "generated_at": "2026-10-30T13:42:19+00:00",
-  "issues": [],
+  "generated_at": "2026-10-30T14:03:33+00:00",
+  "issues": [
+    {
+      "number": 1,
+      "state": "open",
+      "body": "<!-- cosmic-game:v1 -->\n\n```json\n{\n  \"title\": \"多体重力模拟器（N体问题)\",\n  \"description\": \"多体重力模拟器（N体问题)\\n多体重力模拟器（N体问题)\\n多体重力模拟器（N体问题)\",\n  \"category\": \"sandbox\",\n  \"play_url\": \"https://novasolver.jp/zh/tools/n-body-gravity.html?slGNum=50&sl-G=50&slDtNum=30&sl-dt=30&slTsNum=50&sl-ts=50#preset=&slMassNum=100&sl-mass=100&slVelNum=10&sl-vel=10&slGNum=50&sl-G=50&slDtNum=30&sl-dt=30&slTsNum=50&sl-ts=50&tog-trail=1&tog-vel=0&tog-force=0&tog-glow=1\"\n}\n```\n\n此记录来自星游游戏广场。请保留上方标记和 JSON 字段，修改内容后返回游戏广场点击“同步最新”。关闭此 Issue 可撤下本条记录。",
+      "created_at": "2026-10-30T14:03:24Z",
+      "updated_at": "2026-10-30T14:03:24Z",
+      "comments": 0,
+      "user": {
+        "login": "linyucandy"
+      }
+    }
+  ],
   "comments": {}
 }
