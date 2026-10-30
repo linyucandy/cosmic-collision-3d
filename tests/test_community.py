@@ -57,6 +57,14 @@ class CommunityTests(unittest.TestCase):
         for file in ['/宇宙实验室_3D碰撞模拟器.html','/vendor/three.module.js','/vendor/THREE-LICENSE.txt']:
             with self.client.get(file) as result:self.assertEqual(result.status_code,200)
 
+    def test_new_canvas_games_have_working_local_entries(self):
+        for slug,file in [('cosmos-collision','cosmos_collision_lab.html'),('pixel-fishing','pickFish.html')]:
+            response=self.client.get('/game.html?id='+slug)
+            self.assertEqual(response.status_code,302)
+            game_id=response.location.split('id=')[1]
+            self.assertEqual(self.client.get('/api/games/'+game_id).json['game']['play_url'],'/'+file)
+            with self.client.get('/'+file) as result:self.assertEqual(result.status_code,200)
+
     def test_publish_is_shared_and_persists_across_app_restart(self):
         game_id = self.publish()
         second = create_app({'TESTING':True,'DATABASE':self.db}).test_client()

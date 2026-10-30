@@ -7,7 +7,7 @@ test('publication keeps verified GitHub author and rejects unsafe game URLs', ()
   const data = model.build([issue(3,'real-author',body)]);
   assert.equal(data.games.find(g=>g.id==='gh-3').author_name,'real-author');
   const bad = model.makeBody('game',{title:'恶意游戏',description:'一个包含恶意游戏网址的无效发布，应当被模型拒绝。',category:'puzzle',play_url:'javascript:alert(1)'});
-  assert.equal(model.build([issue(4,'attacker',bad)]).games.length,5);
+  assert.equal(model.build([issue(4,'attacker',bad)]).games.length,7);
 });
 test('latest review per GitHub account counts once; author scores are excluded', () => {
   const records = [issue(3,'author',model.makeBody('game',{title:'星际迷宫',description:'一个可以让玩家探索迷宫并发现新星球的网页游戏。',category:'puzzle',play_url:'https://example.com/game'}))];
@@ -21,7 +21,7 @@ test('latest review per GitHub account counts once; author scores are excluded',
 });
 test('closed publications, pull requests and malformed metadata never become games', () => {
   const body=model.makeBody('game',{title:'不应发布',description:'这是一个关闭的作品，不应该出现在公开的游戏广场中。',category:'puzzle',play_url:'https://example.com/game'});
-  assert.equal(model.build([{...issue(3,'author',body),state:'closed'},{...issue(4,'author',body),pull_request:{}},issue(5,'author','invalid')]).games.length,5);
+  assert.equal(model.build([{...issue(3,'author',body),state:'closed'},{...issue(4,'author',body),pull_request:{}},issue(5,'author','invalid')]).games.length,7);
 });
 test('issue drafts round-trip unicode without pretending to publish', () => {
   const data={game_id:'1',rating:4,body:'很好玩 <script>文字</script>'};
@@ -59,4 +59,11 @@ test('cosmic laboratory is separately published with its own rating', () => {
   const data=model.build([issue(11,'lab-player',model.makeBody('review',{game_id:'cosmic-lab',rating:4,body:'喜欢三种碰撞模式。'}))]);
   const game=data.games.find(game=>game.id==='cosmic-lab');
   assert.equal(game.play_url,'宇宙实验室_3D碰撞模拟器.html');assert.equal(game.rating_count,1);assert.equal(game.rating_average,4);
+});
+test('new canvas games have independent launch URLs and ratings',()=>{
+  const data=model.build([issue(12,'fish-player',model.makeBody('review',{game_id:'pixel-fishing',rating:5,body:'手机也能顺利收线。'}))]);
+  assert.equal(data.games.find(g=>g.id==='cosmos-collision').play_url,'cosmos_collision_lab.html');
+  assert.equal(data.games.find(g=>g.id==='pixel-fishing').play_url,'pickFish.html');
+  assert.equal(data.games.find(g=>g.id==='pixel-fishing').rating_average,5);
+  assert.equal(data.games.find(g=>g.id==='cosmos-collision').rating_count,0);
 });

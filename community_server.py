@@ -24,7 +24,7 @@ PUBLIC_FILES = {'index.html', 'community.html', 'game.html', 'publish.html',
                 'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'community-snapshot.json', 'cosmic-collision-3d.html',
                 'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css', 'pixel-city.html', 'pixel-city.css',
                 'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city.js',
-                '宇宙实验室_3D碰撞模拟器.html', 'vendor/three.module.js', 'vendor/THREE-LICENSE.txt'}
+                '宇宙实验室_3D碰撞模拟器.html', 'vendor/three.module.js', 'vendor/THREE-LICENSE.txt', 'cosmos_collision_lab.html', 'pickFish.html'}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -100,6 +100,10 @@ def create_app(config=None):
         conn.execute('''INSERT INTO games(title,description,category,play_url,author_name,created_at,updated_at)
           SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
           ('宇宙实验室 · 3D 碰撞模拟器','自由创建行星、恒星、卫星和小行星，在三维空间探索引力与碰撞。支持融合、反弹、碎裂三种模式，提供太阳系、双星、行星对撞与小行星带预设。可拖动天体、平移缩放视角、显示名称与轨迹，并导入导出 JSON 场景。采用可视化近似物理，不用于精密天文预测。','sandbox',lab_url,'晨晨',stamp,stamp,lab_url))
+        for title,description,category,url in [('Cosmos Lab · 星系碰撞实验室', '双星系交汇、行星撞击与自由引力沙盒。拖动投放小行星、行星、恒星或黑洞，调节引力与时间，观察轨迹、碰撞融合和潮汐演化；支持暂停、单步与画面导出。', 'sandbox', '/cosmos_collision_lab.html'), ('像素垂钓 · 湖畔时光', '驾驶小船探索湖面，瞄准抛竿、抓住咬钩时机，交替收线和放松张力，收集七种鱼并获得金币。支持键鼠、E键收线与手机触控，随时暂停；本局进度在页面关闭后结束。', 'casual', '/pickFish.html')]:
+            conn.execute('''INSERT INTO games(title,description,category,play_url,author_name,created_at,updated_at)
+              SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
+              (title,description,category,url,'晨晨',stamp,stamp,url))
         conn.commit()
 
     def db():
@@ -428,7 +432,7 @@ def create_app(config=None):
     def public_file(filename):
         if filename not in PUBLIC_FILES:
             abort(404, description='页面不存在。')
-        builtin_urls={'pixel-city':'/pixel-city.html','cosmic-lab':'/宇宙实验室_3D碰撞模拟器.html'}
+        builtin_urls={'cosmos-collision':'/cosmos_collision_lab.html','pixel-fishing':'/pickFish.html','pixel-city':'/pixel-city.html','cosmic-lab':'/宇宙实验室_3D碰撞模拟器.html'}
         if filename == 'game.html' and request.args.get('id') in builtin_urls and request.args.get('source') != 'github':
             with closing(connect()) as conn:
                 game = conn.execute('SELECT id FROM games WHERE play_url=? AND user_id IS NULL',(builtin_urls[request.args['id']],)).fetchone()

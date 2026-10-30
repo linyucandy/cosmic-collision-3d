@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060b18">
+<title>Cosmos Lab｜宇宙碰撞模拟器</title><link rel="icon" href="data:,"><meta name="description" content="双星系交汇、行星撞击与自由引力沙盒，拖动投放天体，观察轨道和融合。">
+<style>
+:root{color-scheme:dark;--bg:#060b18;--panel:#0d1629;--panel2:#111e35;--line:#22354d;--muted:#89a1ba;--text:#e9f5ff;--aqua:#65e4ff;--violet:#bb93ff;--orange:#ffb373;--green:#85efc6}
+*{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;font-family:Inter,"Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--aqua);outline-offset:3px}
+.app{height:100%;display:grid;grid-template-rows:70px minmax(0,1fr);background:radial-gradient(ellipse at 12% 3%,#132442,transparent 48%),#060b18}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid #24334c95;min-width:0;gap:18px;z-index:3}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}.brand-icon{width:40px;height:40px;border:1px solid #70d5ff73;background:radial-gradient(circle at 55% 42%,#75d6ffb5 1px,transparent 2px),radial-gradient(circle,#153355,#0b1428);border-radius:12px;display:grid;place-items:center;box-shadow:0 0 26px #3fc6ff26;flex-shrink:0}.brand-icon svg{width:29px;height:29px}.brand h1{font-size:17px;letter-spacing:.07em;margin:0;font-weight:760}.brand span{color:#849fb9;letter-spacing:.18em;font-size:10px;font-weight:700;display:block;margin-top:2px}.header-right{display:flex;align-items:center;gap:13px}.tag{font-size:11px;padding:7px 10px;border:1px solid #2a5361;border-radius:50px;color:#a8ebdf;background:#0b282d80;white-space:nowrap}.dot{height:6px;width:6px;border-radius:50%;display:inline-block;margin-right:7px;background:#63efc4;box-shadow:0 0 8px #63efc4}.head-sub{font-size:12px;color:#93abc4;white-space:nowrap}
+.workspace{min-height:0;display:grid;grid-template-columns:306px minmax(0,1fr)}
+.sidebar{border-right:1px solid #22344c;background:linear-gradient(160deg,#0e1a2ddb,#091323ef);overflow-y:auto;overscroll-behavior:contain;padding:24px 19px 22px;scrollbar-width:thin;scrollbar-color:#35516d transparent}
+.section{margin-bottom:28px}.section-title{display:flex;align-items:center;justify-content:space-between;color:#b7cde2;letter-spacing:.11em;font-size:11px;font-weight:750;margin:0 0 13px}.section-title .index{font-size:10px;color:#5b7794}
+.scenes{display:grid;gap:9px}.scene{background:#111f35;border:1px solid #263952;border-radius:12px;text-align:left;color:#d1e3f4;min-height:65px;padding:12px 13px;display:flex;align-items:center;gap:11px;transition:background .2s,border-color .2s}.scene:hover{border-color:#5c819a;background:#172942}.scene.selected{border-color:#67cbed;background:linear-gradient(104deg,#12405795,#14233b);box-shadow:inset 3px 0 #6ee4ff,0 0 20px #18c2fd0e}.scene .ico{font-size:22px;width:32px;text-align:center}.scene strong{font-size:12.5px;display:block;letter-spacing:.025em}.scene small{font-size:10px;color:#8ca9c3;display:block;margin-top:5px}
+.control{margin:17px 0 20px}.control-line{display:flex;justify-content:space-between;align-items:center;margin:0 0 9px;gap:10px}.control-line label{font-size:12px;color:#b6cee3}.control-line output{font-size:12px;font-variant-numeric:tabular-nums;color:var(--aqua);font-weight:700}input[type=range]{width:100%;margin:0;accent-color:#65d9fb;cursor:pointer;height:6px}
+.pill-toggle{border:1px solid #29465f;background:#132339;border-radius:8px;color:#9fbee0;font-size:11px;display:flex;align-items:center;padding:8px 9px;justify-content:space-between;width:100%;margin-top:9px}.pill-toggle.active{border-color:#3c8b96;color:#b6fff5}.switch{height:16px;width:29px;border-radius:12px;background:#31445c;position:relative;transition:background .2s;flex-shrink:0}.switch:after{content:"";position:absolute;left:3px;top:3px;background:#bdcfe0;height:10px;width:10px;border-radius:50%;transition:transform .2s}.active .switch{background:#197c91}.active .switch:after{transform:translateX(13px);background:#bffaff}
+.divider{height:1px;background:linear-gradient(90deg,transparent,#2a4059,transparent);margin:20px 0 23px}
+.add-types{display:grid;grid-template-columns:1fr 1fr;gap:8px}.type-button{background:#111f34;color:#b6cde4;border:1px solid #273d58;border-radius:9px;padding:10px 7px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px}.type-button.selected{border-color:#6abada;background:#1c3549;color:#e1faff}.type-button:hover{border-color:#83b8d0}.type-indicator{height:9px;width:9px;border-radius:50%;background:var(--color);box-shadow:0 0 9px var(--color)}
+.help{padding:13px;background:#102037b3;border:1px solid #233851;border-radius:11px;color:#8fa9c3;font-size:11px;line-height:1.85}.help b{color:#d1eafa;font-weight:600}.help kbd{border:1px solid #41536a;background:#15253b;border-radius:4px;padding:0 4px;font-family:inherit;color:#d6e5f4}
+.stage{position:relative;min-width:0;min-height:0;overflow:hidden;background:#030817}#universe{width:100%;height:100%;display:block;cursor:grab;touch-action:none}#universe.placing{cursor:crosshair}#universe.dragging{cursor:grabbing}
+.stage:after{content:"";pointer-events:none;position:absolute;inset:0;border:1px solid #41607c22}
+.overlay{pointer-events:none;position:absolute;z-index:1}.stage-heading{top:29px;left:34px;max-width:60%}.eyebrow{color:#6addf7;letter-spacing:.25em;font-size:10px;font-weight:800;text-shadow:0 0 12px #0d506b}.stage-heading h2{font-size:clamp(21px,2.35vw,34px);letter-spacing:.015em;font-weight:700;margin:8px 0 7px;text-shadow:0 3px 22px #0008}.stage-heading p{font-size:12px;line-height:1.65;color:#9db7d1;max-width:430px;margin:0;text-shadow:0 1px 7px #000e}
+.stats{position:absolute;right:29px;top:29px;z-index:1;display:flex;gap:9px;pointer-events:none}.stat{min-width:86px;padding:11px 14px;background:#0b1930b3;border:1px solid #2a4565a3;backdrop-filter:blur(12px);border-radius:10px;text-align:center}.stat span{display:block;color:#91adc7;font-size:10px;letter-spacing:.09em;margin-bottom:6px}.stat strong{font-size:20px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.crosshair{position:absolute;top:50%;left:50%;width:25px;height:25px;transform:translate(-50%,-50%);pointer-events:none;opacity:.15}.crosshair:before,.crosshair:after{content:"";position:absolute;background:#bde5ff}.crosshair:before{height:1px;width:25px;top:12px}.crosshair:after{width:1px;height:25px;left:12px}
+.bottom-bar{position:absolute;bottom:22px;left:23px;right:23px;z-index:2;display:flex;align-items:end;justify-content:space-between;gap:12px;pointer-events:none}.toolbar{pointer-events:auto;display:flex;align-items:center;gap:6px;padding:8px;background:#0d1d31db;border:1px solid #304763c7;border-radius:13px;backdrop-filter:blur(15px);box-shadow:0 10px 38px #0005}.tool{height:35px;min-width:35px;border-radius:8px;border:1px solid transparent;background:transparent;color:#bad2e7;padding:0 12px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}.tool:hover{background:#243a54}.tool.active{background:linear-gradient(135deg,#2bbad3,#3484c3);color:#001524;font-weight:800}.tool-outline{border-color:#34516b}.tool svg{width:14px;height:14px}.toolbar-sep{height:24px;width:1px;background:#36506a;margin:0 3px}.status{font-size:11px;color:#aac5e0;padding:10px 12px;border-radius:10px;background:#09172aa6;border:1px solid #2e4660a0;backdrop-filter:blur(12px);pointer-events:auto}.status .active-dot{display:inline-block;width:6px;height:6px;background:#6aefc6;border-radius:50%;margin-right:7px}.toast{position:absolute;z-index:4;bottom:94px;left:50%;transform:translateX(-50%) translateY(14px);border:1px solid #5588a5;color:#d5f3ff;background:#132f45df;padding:11px 18px;font-size:12px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;white-space:nowrap}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.scale{position:absolute;bottom:103px;right:30px;color:#779ab6;font-size:10px;letter-spacing:.06em;pointer-events:none}.scale div{border-top:1px solid #5c829b;margin:5px 0 0;width:85px;position:relative}.scale div:before,.scale div:after{content:"";position:absolute;top:-4px;width:1px;height:7px;background:#5c829b}.scale div:before{left:0}.scale div:after{right:0}
+.logs{position:absolute;right:28px;bottom:147px;display:grid;gap:7px;z-index:2;pointer-events:none}.log{font-size:10.5px;background:#11243bc9;color:#b9d9f1;border:1px solid #33506b;border-left:2px solid var(--orange);border-radius:7px;padding:9px 12px;box-shadow:0 7px 18px #0004;animation:appear .3s ease both;max-width:280px}@keyframes appear{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+footer{font-size:10px;color:#69829e;line-height:1.6;margin-top:19px}
+@media(max-width:1090px){.workspace{grid-template-columns:272px minmax(0,1fr)}.sidebar{padding:19px 15px}.stat{min-width:70px;padding:9px}.stats{top:26px;right:17px}.stage-heading{left:22px;top:24px}.stage-heading h2{font-size:24px}.stage-heading p{max-width:310px}.head-sub{display:none}}
+@media(max-width:760px){html,body{overflow:auto}.app{min-height:100dvh;height:auto;display:flex;flex-direction:column}header{height:64px;flex-shrink:0;padding:0 15px}.brand h1{font-size:14px}.tag{font-size:10px}.workspace{display:flex;flex-direction:column-reverse;min-height:calc(100dvh - 64px)}.stage{height:min(70dvh,650px);min-height:425px}.sidebar{border-right:0;border-top:1px solid #294057;overflow:visible;padding:20px}.sidebar .sections-container{display:grid;grid-template-columns:1fr 1fr;gap:20px}.stats{top:110px;right:11px;gap:5px}.stat{padding:7px;min-width:64px}.stat span{font-size:9px}.stat strong{font-size:15px}.stage-heading{left:16px;top:20px;max-width:90%}.stage-heading p{font-size:11px}.bottom-bar{bottom:12px;left:10px;right:10px;align-items:center}.toolbar{gap:2px;padding:6px}.tool{min-width:32px;padding:0 7px;font-size:11px;height:32px}.status{display:none}.scale{bottom:79px;right:17px}.logs{right:12px;bottom:112px}.section{margin-bottom:16px}}
+@media(max-width:430px){.sidebar .sections-container{display:block}.stage{min-height:415px}.stage-heading h2{font-size:21px}.stats{top:118px}.stat{min-width:61px}.toolbar-sep{margin:0}.tool{padding:0 7px}}
+.home-link{font-size:12px;color:#a8dcff;text-decoration:none;white-space:nowrap}@media(max-width:700px){.home-link{font-size:10px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand"><div class="brand-icon" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><ellipse cx="20" cy="20" rx="16" ry="7" transform="rotate(-32 20 20)" stroke="#6CE1FF" stroke-width="1.7"/><ellipse cx="20" cy="20" rx="16" ry="7" transform="rotate(55 20 20)" stroke="#9BA8FF" stroke-width="1.3" stroke-opacity=".7"/><circle cx="20" cy="20" r="5" fill="#BAEEFF"/><circle cx="20" cy="20" r="2.5" fill="#4DA8F5"/></svg></div><div><h1>COSMOS LAB <span>宇宙碰撞实验室</span></h1></div></div>
+  <div class="header-right"><a class="home-link" href="index.html">游戏首页 ↗</a><span class="head-sub">INTERACTIVE N-BODY EXPERIMENT</span><span class="tag"><i class="dot"></i>物理引擎运行中</span></div>
+</header>
+<div class="workspace">
+<aside class="sidebar">
+  <div class="section"><div class="section-title">选择实验场景 <span class="index">01 / 03</span></div><div class="scenes" role="group" aria-label="实验场景">
+    <button class="scene selected" data-scene="galaxy" type="button"><span class="ico">🌌</span><span><strong>双星系交汇</strong><small>引力潮汐 · 星系融合</small></span></button>
+    <button class="scene" data-scene="impact" type="button"><span class="ico">💥</span><span><strong>行星正面撞击</strong><small>动量守恒 · 碰撞合并</small></span></button>
+    <button class="scene" data-scene="sandbox" type="button"><span class="ico">🪐</span><span><strong>引力自由沙盒</strong><small>自由创建 · 轨道实验</small></span></button>
+  </div></div>
+  <div class="divider"></div>
+  <div class="sections-container"><div class="section"><div class="section-title">模拟参数 <span class="index">PHYSICS</span></div>
+    <div class="control"><div class="control-line"><label for="gravity">引力强度</label><output id="gravityValue">1.0 ×</output></div><input id="gravity" type="range" min="0.2" max="3" value="1" step="0.1"></div>
+    <div class="control"><div class="control-line"><label for="speed">时间流速</label><output id="speedValue">1.0 ×</output></div><input id="speed" type="range" min="0.1" max="3" value="1" step="0.1"></div>
+    <div class="control"><div class="control-line"><label for="mass">投放天体质量</label><output id="massValue">1.0 ×</output></div><input id="mass" type="range" min="0.25" max="4" value="1" step="0.25"></div>
+    <button id="trails" class="pill-toggle active" aria-pressed="true">显示运动轨迹<span class="switch" aria-hidden="true"></span></button>
+    <button id="effects" class="pill-toggle active" aria-pressed="true">显示碰撞特效<span class="switch" aria-hidden="true"></span></button>
+  </div>
+  <div class="section"><div class="section-title">投放天体 <span class="index">OBJECTS</span></div>
+    <div class="add-types" role="group" aria-label="投放类型">
+      <button type="button" data-type="asteroid" class="type-button selected"><i class="type-indicator" style="--color:#d0a78d"></i>小行星</button>
+      <button type="button" data-type="planet" class="type-button"><i class="type-indicator" style="--color:#69c9ff"></i>行星</button>
+      <button type="button" data-type="star" class="type-button"><i class="type-indicator" style="--color:#ffcf7d"></i>恒星</button>
+      <button type="button" data-type="blackhole" class="type-button"><i class="type-indicator" style="--color:#bb84ff"></i>黑洞</button>
+    </div>
+    <div style="margin-top:11px;color:#91abc5;font-size:10.5px;line-height:1.75">点击下方「投放天体」，在星空中拖动鼠标，即可设置发射方向和初速度。</div>
+  </div></div>
+  <div class="help"><b>操作指南</b><br>• 「观察」模式：拖动平移视角<br>• 滚轮：缩放星空<br>• 「投放」模式：按住拖出速度箭头<br>• <kbd>空格</kbd> 暂停 / 继续 · <kbd>R</kbd> 重置<br>• <kbd>Esc</kbd> 取消当前操作</div>
+  <footer>教学用二维近似模型 · 使用软化牛顿引力和非弹性合并 · 轨道与尺寸不采用真实宇宙比例</footer>
+</aside>
+<main class="stage" id="stage">
+  <canvas id="universe" aria-label="可交互的二维星系和天体碰撞模拟画布"></canvas>
+  <div class="overlay stage-heading"><div class="eyebrow" id="eyebrow">GALAXY ENCOUNTER / 01</div><h2 id="sceneTitle">当两个星系相遇</h2><p id="sceneDesc">数百颗恒星在引力作用下交错运行，形成壮观的潮汐长尾与星系融合。</p></div>
+  <div class="stats"><div class="stat"><span>天体数量</span><strong id="count">0</strong></div><div class="stat"><span>碰撞次数</span><strong id="collisions">0</strong></div><div class="stat"><span>模拟步数</span><strong id="ticks">0</strong></div></div>
+  <div class="crosshair"></div>
+  <div class="logs" id="logs" aria-live="polite"></div>
+  <div class="scale" id="scale">100 模拟距离单位<div></div></div>
+  <div class="bottom-bar"><div class="toolbar">
+    <button id="play" class="tool active" aria-label="暂停或继续" title="暂停 / 继续">❚❚ <span id="playText">暂停</span></button>
+    <button id="reset" class="tool tool-outline" title="重置当前场景">↻ 重置</button>
+    <button id="step" class="tool" title="单步前进">⏭</button>
+    <span class="toolbar-sep"></span>
+    <button id="watch" class="tool active" title="拖动视角">✥ 观察</button>
+    <button id="place" class="tool" title="点击并拖动投放天体">⊕ 投放</button>
+    <span class="toolbar-sep"></span>
+    <button id="center" class="tool" title="重置视角">⌖</button>
+    <button id="save" class="tool" title="保存画面为 PNG">↓</button>
+  </div><div class="status"><span class="active-dot"></span><span id="statusText">引力系统稳定 · 自由演化中</span></div></div>
+  <div class="toast" id="toast" role="status"></div>
+</main>
+</div>
+</div>
+<script>
+(()=>{'use strict';
+const cv=document.getElementById('universe'),ctx=cv.getContext('2d',{alpha:false}),stage=document.getElementById('stage');
+const $=id=>document.getElementById(id);const TAU=Math.PI*2,G0=.13;const rand=(a,b)=>Math.random()*(b-a)+a;const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const presets={
+ galaxy:{title:'当两个星系相遇',desc:'数百颗恒星在引力作用下交错运行，形成壮观的潮汐长尾与星系融合。',eyebrow:'GALAXY ENCOUNTER / 01',zoom:1100},
+ impact:{title:'一场行星级撞击',desc:'观察两颗巨大行星靠近、相互加速，并在碰撞后守恒动量、融合成更大的天体。',eyebrow:'PLANETARY COLLISION / 02',zoom:1000},
+ sandbox:{title:'创造你自己的宇宙',desc:'用不同质量的天体搭建轨道系统；释放恒星、行星和黑洞，探索不可预测的引力演化。',eyebrow:'GRAVITY SANDBOX / 03',zoom:1000}
+};
+const types={
+ asteroid:{mass:3,r:3.4,color:'#d4a98b',glow:'#eab288',name:'小行星'},
+ planet:{mass:170,r:13,color:'#76cbff',glow:'#4daaff',name:'行星'},
+ star:{mass:1800,r:16,color:'#ffd08c',glow:'#ffab4e',name:'恒星'},
+ blackhole:{mass:9000,r:12,color:'#d1a6ff',glow:'#8d6bff',name:'黑洞'},
+ core:{mass:14500,r:15,color:'#9bdcff',glow:'#56c7ff',name:'星系核心'},
+ tracer:{mass:.035,r:1.3,color:'#acd8ff',glow:'#689bff',name:'恒星粒子'}
+};
+let scene='galaxy',selectedType='asteroid',tool='watch',playing=true,trailsOn=true,effectsOn=true,gravity=1,speed=1,massFactor=1,ticks=0,collisions=0;
+let bodies=[],sparks=[],rings=[],backStars=[],logs=[],w=1,h=1,dpr=1,lastTime=0,simulationFrame=0,pointer=null,freezeCanvas=false;
+let cam={x:0,y:0,zoom:1},bodyId=0,toastTimer=null,backgroundCanvas=null;
+const MAX_BODIES=600;
+function body(type,x,y,vx=0,vy=0,opts={}){
+ if(bodies.length>=MAX_BODIES)return null;
+ const base=types[type],b={id:bodyId++,type,x,y,vx,vy,m:opts.mass??base.mass,r:opts.radius??base.r,color:opts.color??base.color,glow:opts.glow??base.glow,trail:[],phase:rand(0,TAU),special:!!opts.special,removed:false};bodies.push(b);return b;
+}
+function galaxy(cx,cy,sign,mainColor){
+ const ox=sign===1?.65:-.65,oy=sign===1?.12:-.12;
+ const core=body('core',cx,cy,ox,oy,{mass:14500,radius:15,color:mainColor,glow:mainColor,special:true});
+ for(let i=0;i<155;i++){
+   const arm=i%3,rr=26+Math.sqrt(Math.random())*216;
+   const theta=arm*TAU/3+rr*.022+rand(-.65,.65);
+   const x=cx+Math.cos(theta)*rr,y=cy+Math.sin(theta)*rr;
+   const vt=Math.sqrt(G0*core.m/(rr+3))*rand(.94,1.04);
+   const hue=sign===1?rand(182,224):rand(268,338);
+   const light=rand(66,94);const color=`hsl(${hue.toFixed(0)},${rand(63,98).toFixed(0)}%,${light.toFixed(0)}%)`;
+   const p=body('tracer',x,y,ox-Math.sin(theta)*vt*sign,oy+Math.cos(theta)*vt*sign,{mass:rand(.015,.075),radius:rand(.7,1.9),color,glow:color});
+   p.phase=rand(0,TAU);
+ }
+}
+function makeImpact(){
+ body('planet',-235,-22,3.8,.18,{mass:500,radius:29,color:'#71d6ff',glow:'#359aff'});
+ body('planet',235,22,-3.7,-.18,{mass:450,radius:27,color:'#ffae77',glow:'#f87e54'});
+ const core=body('star',0,-285,.0,.08,{mass:5400,radius:21,color:'#fff0b5',glow:'#ffc64a',special:true});
+ for(let i=0;i<34;i++){
+   const ang=rand(0,TAU),rad=rand(245,500),x=Math.cos(ang)*rad,y=Math.sin(ang)*rad;
+   const vc=Math.sqrt(G0*core.m/(rad+50))*.6;
+   body('asteroid',x,y,-Math.sin(ang)*vc+rand(-1,1),Math.cos(ang)*vc+rand(-1,1),{mass:rand(.4,2.2),radius:rand(1,2.5),color:'#c4aec2'});
+ }
+}
+function makeSandbox(){
+ const sun=body('star',0,0,0,0,{mass:8500,radius:23,color:'#ffde96',glow:'#ffaf58',special:true});
+ for(const [rad,a,m,r,col] of [[155,.2,85,11,'#72c8ff'],[265,1.6,115,14,'#d8aaff'],[365,3.1,40,9,'#ffad75']]){
+   const vel=Math.sqrt(G0*sun.m/rad);
+   body('planet',Math.cos(a)*rad,Math.sin(a)*rad,-Math.sin(a)*vel,Math.cos(a)*vel,{mass:m,radius:r,color:col,glow:col});
+ }
+}
+function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2200)}
+function reset(which=scene){
+ clearPointer();scene=which;bodies=[];sparks=[];rings=[];logs=[];bodyId=0;ticks=0;collisions=0;simulationFrame=0;pointer=null;
+ if(scene==='galaxy'){galaxy(-320,-45,1,'#67dfff');galaxy(320,45,-1,'#df90ff')}
+ else if(scene==='impact'){makeImpact()}
+ else{makeSandbox()}
+ const p=presets[scene];$('sceneTitle').textContent=p.title;$('sceneDesc').textContent=p.desc;$('eyebrow').textContent=p.eyebrow;
+ document.querySelectorAll('[data-scene]').forEach(el=>el.classList.toggle('selected',el.dataset.scene===scene));
+ centerCamera();$('logs').replaceChildren();updateStats();
+}
+function centerCamera(){cam.x=0;cam.y=0;cam.zoom=clamp(Math.min(w/presets[scene].zoom,h/690),.24,1.5);updateScale()}
+function resize(){const rect=stage.getBoundingClientRect(),nw=Math.max(1,rect.width),nh=Math.max(1,rect.height),ratio=Math.min(devicePixelRatio||1,2);
+ if(nw===w&&nh===h&&ratio===dpr&&backgroundCanvas)return;
+ const first=!backgroundCanvas;w=nw;h=nh;dpr=ratio;cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);makeBackground();buildBackdrop();if(first)centerCamera();else updateScale();}
+
+function makeBackground(){let seed=80291;function random(){seed=(Math.imul(1664525,seed)+1013904223)>>>0;return seed/4294967296}backStars=[];for(let i=0;i<Math.round(w*h/2900);i++){backStars.push({x:random()*w,y:random()*h,r:random()*1.1+.15,a:random()*.55+.16,p:random()*TAU})}}
+function worldToScreen(x,y){return{x:(x-cam.x)*cam.zoom+w/2,y:(y-cam.y)*cam.zoom+h/2}}
+function screenToWorld(x,y){return{x:(x-w/2)/cam.zoom+cam.x,y:(y-h/2)/cam.zoom+cam.y}}
+function updateStats(){$('count').textContent=bodies.length;$('collisions').textContent=collisions;$('ticks').textContent=ticks.toLocaleString('zh-CN');$('statusText').textContent=playing?'引力系统稳定 · 自由演化中':'模拟已暂停 · 可单步前进'}
+function setPlaying(on){playing=on;$('playText').textContent=playing?'暂停':'继续';$('play').classList.toggle('active',playing);$('play').firstChild.textContent=playing?'❚❚ ':'▶ ';updateStats()}
+function setTool(next){tool=next;$('watch').classList.toggle('active',tool==='watch');$('place').classList.toggle('active',tool==='place');cv.classList.toggle('placing',tool==='place');clearPointer();}
+function toggler(id,on){$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on))}
+// Softened Newtonian point-mass gravity. Galaxy tracers are test particles: only massive bodies
+// act as gravitational sources, preventing unrealistic star-star scattering at this scale.
+function accelerate(){
+ const sources=bodies.filter(b=>b.m>=15);
+ for(const p of bodies){let ax=0,ay=0;for(const s of sources){if(s===p)continue;const dx=s.x-p.x,dy=s.y-p.y;const soft=s.type==='core'||s.type==='blackhole'?18:Math.max(12,s.r*.8);const d2=dx*dx+dy*dy+soft*soft;const inv=1/Math.sqrt(d2),factor=G0*gravity*s.m*inv/d2;ax+=dx*factor;ay+=dy*factor}p.ax=ax;p.ay=ay}
+}
+function physics(dt){
+ accelerate();for(const b of bodies){b.vx+=b.ax*dt*.5;b.vy+=b.ay*dt*.5;b.x+=b.vx*dt;b.y+=b.vy*dt}
+ accelerate();for(const b of bodies){b.vx+=b.ax*dt*.5;b.vy+=b.ay*dt*.5}
+ collisionsStep();ticks++;simulationFrame++;
+ if(trailsOn&&simulationFrame%3===0){for(const b of bodies){if(b.type==='tracer'&&b.id%3!==0)continue;b.trail.push({x:b.x,y:b.y});let limit=b.type==='core'||b.type==='blackhole'?95:b.type==='tracer'?18:65;if(b.trail.length>limit)b.trail.shift()}}
+ if(simulationFrame%12===0)updateStats();
+}
+function collisionsStep(){
+ // Star tracers in galaxy simulations represent populations; direct tracer/tracer collisions are omitted.
+ let doomed=new Set(),newBodies=[];
+ const sorted=bodies.slice().sort((a,b)=>b.m-a.m);
+ for(let i=0;i<sorted.length;i++){
+ const a=sorted[i];if(a.m<.2)break;if(doomed.has(a.id))continue;
+ for(let j=i+1;j<sorted.length;j++){
+ const b=sorted[j];if(doomed.has(b.id))continue;
+ if(a.type==='tracer'&&b.type==='tracer')continue;
+ if(scene==='galaxy'&&a.type==='asteroid'&&b.type==='asteroid')continue;
+ let dx=a.x-b.x,dy=a.y-b.y,rs=a.r+b.r;
+ if(dx*dx+dy*dy>rs*rs*.78)continue;
+ if(a.m<.2&&b.m<.2)continue;
+ const m=a.m+b.m,vx=(a.vx*a.m+b.vx*b.m)/m,vy=(a.vy*a.m+b.vy*b.m)/m;
+ const x=(a.x*a.m+b.x*b.m)/m,y=(a.y*a.m+b.y*b.m)/m;
+ const energy=.5*a.m*((a.vx-vx)**2+(a.vy-vy)**2)+.5*b.m*((b.vx-vx)**2+(b.vy-vy)**2);
+ let ty=a.m>=b.m?a.type:b.type;if(a.type==='blackhole'||b.type==='blackhole')ty='blackhole';else if(a.type==='core'||b.type==='core')ty='core';
+ const radius=Math.min(42,Math.max(a.r,b.r,Math.sqrt(a.r*a.r+b.r*b.r)*.97));
+ // Small tracer accretion doesn't count as a significant "collision" event.
+ const major=b.m>=2 && a.m>=2;
+ a.m=m;a.x=x;a.y=y;a.vx=vx;a.vy=vy;a.r=radius;a.type=ty;
+ if(ty==='blackhole'){a.color=types.blackhole.color;a.glow=types.blackhole.glow}
+ doomed.add(b.id);
+ if(major){collisions++;if(effectsOn)impactEffect(x,y,Math.min(1,Math.sqrt(energy)/210),a.color);if(collisions<=200)logEvent(`${types[ty]?.name||'天体'}碰撞融合 · 新质量 ${Math.round(m).toLocaleString()}`)}
+ else if(effectsOn&&Math.random()<.07)impactEffect(x,y,.17,b.color);
+ }
+ }
+ if(doomed.size)bodies=bodies.filter(b=>!doomed.has(b.id));
+}
+function logEvent(message){const el=document.createElement('div');el.className='log';el.textContent=`✦  ${message}`;$('logs').prepend(el);while($('logs').children.length>3)$('logs').lastChild.remove()}
+function impactEffect(x,y,power,color){rings.push({x,y,rad:4,life:1,color,spd:2.5+power*8});const n=Math.round(14+power*65);for(let i=0;i<n;i++){const a=rand(0,TAU),v=rand(.4,4+power*8);sparks.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:rand(.45,1),color,r:rand(.6,1.8)})}if(sparks.length>600)sparks.splice(0,sparks.length-600);if(rings.length>64)rings.splice(0,rings.length-64)}
+function particlesStep(elapsed){for(const p of sparks){p.x+=p.vx*elapsed;p.y+=p.vy*elapsed;p.vx*=.989;p.vy*=.989;p.life-=.015*elapsed}sparks=sparks.filter(x=>x.life>0);for(const r of rings){r.rad+=r.spd*elapsed;r.life-=.019*elapsed}rings=rings.filter(r=>r.life>0)}
+function roundRect(x,y,r,fill){ctx.fillStyle=fill;ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill()}
+function buildBackdrop(){
+ backgroundCanvas=document.createElement('canvas');backgroundCanvas.width=Math.ceil(w);backgroundCanvas.height=Math.ceil(h);const bg=backgroundCanvas.getContext('2d');
+ let gradient=bg.createLinearGradient(0,0,w,h);gradient.addColorStop(0,'#050b1a');gradient.addColorStop(.48,'#090e24');gradient.addColorStop(1,'#020815');bg.fillStyle=gradient;bg.fillRect(0,0,w,h);
+ for(const n of [{x:.21,y:.37,r:.6,c:'48,64,137',a:.1},{x:.78,y:.73,r:.62,c:'78,32,112',a:.12},{x:.61,y:.22,r:.38,c:'26,113,146',a:.055}]){
+  const radius=Math.max(w,h)*n.r,g=bg.createRadialGradient(w*n.x,h*n.y,0,w*n.x,h*n.y,radius);g.addColorStop(0,`rgba(${n.c},${n.a})`);g.addColorStop(1,`rgba(${n.c},0)`);bg.fillStyle=g;bg.fillRect(0,0,w,h);
+ }
+}
+function drawBackdrop(t){ctx.drawImage(backgroundCanvas,0,0,w,h);for(const star of backStars){ctx.globalAlpha=star.a*(.86+.14*Math.sin(t*.0007+star.p));roundRect(star.x,star.y,star.r,'#d8e9ff')}ctx.globalAlpha=1;}
+
+function drawTrail(b){const trail=b.trail;if(trail.length<2)return;
+ if(b.type==='tracer'&&b.id%3!==0)return;
+ ctx.save();ctx.lineWidth=(b.type==='core'?1.8:b.type==='tracer'?.7:1.2)*Math.sqrt(Math.max(cam.zoom,.3));ctx.strokeStyle=b.color;ctx.lineJoin='round';
+ const stride=trail.length>40?2:1;
+ for(let band=0;band<4;band++){ctx.globalAlpha=((band+.5)/4)**1.8*(b.type==='tracer'?.23:.42);ctx.beginPath();let drawn=false;
+  for(let k=stride;k<trail.length;k+=stride){if(Math.min(3,Math.floor(k/trail.length*4))!==band)continue;const a=worldToScreen(trail[k-stride].x,trail[k-stride].y),z=worldToScreen(trail[k].x,trail[k].y);ctx.moveTo(a.x,a.y);ctx.lineTo(z.x,z.y);drawn=true;}
+  if(drawn)ctx.stroke();
+ }
+ ctx.restore();
+}
+
+function drawBody(b,t){const s=worldToScreen(b.x,b.y),r=Math.max(b.r*cam.zoom,b.type==='tracer'?.65:1.25);if(s.x< -100||s.x>w+100||s.y< -100||s.y>h+100)return;
+ if(b.type==='tracer'||b.type==='asteroid'){ctx.globalAlpha=.75+.25*Math.sin(t*.0016+b.phase);roundRect(s.x,s.y,r,b.color);ctx.globalAlpha=1;return}
+ const br=b.type==='blackhole';const glowR=clamp(r*(br?4:3.2),18,140);
+ const gradient=ctx.createRadialGradient(s.x,s.y,br?r*.82:0,s.x,s.y,glowR);gradient.addColorStop(0,br?'rgba(124,64,211,.32)':toRgba(b.glow,.25));gradient.addColorStop(1,'rgba(4,9,25,0)');ctx.fillStyle=gradient;ctx.fillRect(s.x-glowR,s.y-glowR,glowR*2,glowR*2);
+ if(br){ctx.save();ctx.translate(s.x,s.y);ctx.rotate(t*.0002);ctx.strokeStyle='#a982f9';ctx.globalAlpha=.87;ctx.lineWidth=clamp(r*.32,2,6);ctx.beginPath();ctx.ellipse(0,0,r*1.48,r*.7,-.38,0,TAU);ctx.stroke();ctx.globalAlpha=1;roundRect(0,0,r*.82,'#03030b');ctx.lineWidth=Math.max(1,r*.12);ctx.strokeStyle='#e5c6ff';ctx.stroke();ctx.restore();return}
+ const gradient2=ctx.createRadialGradient(s.x-r*.33,s.y-r*.38,r*.05,s.x,s.y,r*1.1);gradient2.addColorStop(0,'#fff9e8');gradient2.addColorStop(.31,b.color);gradient2.addColorStop(1,toRgba(b.glow,.74));ctx.fillStyle=gradient2;ctx.beginPath();ctx.arc(s.x,s.y,r,0,TAU);ctx.fill();
+ if(b.type==='planet'){ctx.save();ctx.globalAlpha=.2;ctx.strokeStyle='#ffffff';ctx.lineWidth=1;ctx.beginPath();ctx.arc(s.x+r*.2,s.y-r*.2,r*.71,-1,1.7);ctx.stroke();ctx.restore()}
+}
+function toRgba(color,alpha){if(color[0]==='#'&&color.length===7){const n=parseInt(color.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${alpha})`}return color}
+function drawEffects(){for(const r of rings){const p=worldToScreen(r.x,r.y);ctx.globalAlpha=r.life*.75;ctx.strokeStyle=r.color;ctx.lineWidth=2.2*r.life;ctx.beginPath();ctx.arc(p.x,p.y,r.rad*cam.zoom,0,TAU);ctx.stroke()}for(const p of sparks){const s=worldToScreen(p.x,p.y);ctx.globalAlpha=clamp(p.life,0,1);roundRect(s.x,s.y,Math.max(.7,p.r*cam.zoom),p.color)}ctx.globalAlpha=1}
+function drawPlacement(){if(!pointer||pointer.kind!=='place')return;const a=pointer.start,b=pointer.current,dist=Math.hypot(b.x-a.x,b.y-a.y);const t=types[selectedType];
+ ctx.save();ctx.strokeStyle='#88e6ff';ctx.lineWidth=2;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);const angle=Math.atan2(b.y-a.y,b.x-a.x);if(dist>8){ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-Math.cos(angle-.5)*13,b.y-Math.sin(angle-.5)*13);ctx.lineTo(b.x-Math.cos(angle+.5)*13,b.y-Math.sin(angle+.5)*13);ctx.closePath();ctx.fillStyle='#89eaff';ctx.fill()}
+ ctx.globalAlpha=.75;roundRect(a.x,a.y,t.r*cam.zoom,t.color);ctx.globalAlpha=1;
+ ctx.font='12px "Segoe UI",sans-serif';ctx.fillStyle='#ccefff';ctx.fillText(`初速度 ≈ ${(dist/cam.zoom*.035).toFixed(1)}`,a.x+14,a.y-14);ctx.restore();
+}
+function draw(t){drawBackdrop(t);if(trailsOn)for(const b of bodies)drawTrail(b);for(const b of bodies)drawBody(b,t);drawEffects();drawPlacement()}
+function updateScale(){let unit=Math.round(85/cam.zoom/10)*10;if(unit<10)unit=10;const px=unit*cam.zoom;$('scale').textContent=`${unit} 模拟距离单位`;let d=document.createElement('div');d.style.width=`${px}px`;$('scale').appendChild(d)}
+function addObject(pt,delta){let x=screenToWorld(pt.x,pt.y);const t=types[selectedType];const m=t.mass*massFactor;let r=t.r*Math.pow(massFactor,1/3);const created=body(selectedType,x.x,x.y,delta.x/cam.zoom*.035,delta.y/cam.zoom*.035,{mass:m,radius:r});if(!created){toast('已达到 600 个天体上限，请重置或切换场景');return;}updateStats();toast(`已投放${t.name} · 质量 ${Math.round(m)}`)}
+function loop(t){if(freezeCanvas)return;if(document.hidden){lastTime=0;requestAnimationFrame(loop);return;}const elapsed=clamp(lastTime?(t-lastTime)/16.667:1,.1,2);lastTime=t;
+ if(playing){const total=.68*elapsed*speed;const substeps=Math.max(1,Math.ceil(total/.58));for(let k=0;k<substeps;k++)physics(total/substeps)}particlesStep(elapsed);draw(t);requestAnimationFrame(loop)}
+function eventPos(e){const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+cv.addEventListener('pointerdown',e=>{if(pointer||e.button!==0&&e.button!==1)return;e.preventDefault();cv.setPointerCapture(e.pointerId);const pos=eventPos(e);const kind=e.button===1||e.shiftKey?'pan':tool==='place'?'place':'pan';pointer={kind,start:pos,current:pos,camStart:{...cam},id:e.pointerId};cv.classList.toggle('dragging',kind==='pan')});
+cv.addEventListener('pointermove',e=>{if(!pointer||pointer.id!==e.pointerId)return;const p=eventPos(e);pointer.current=p;if(pointer.kind==='pan'){cam.x=pointer.camStart.x-(p.x-pointer.start.x)/cam.zoom;cam.y=pointer.camStart.y-(p.y-pointer.start.y)/cam.zoom}});
+function clearPointer(){const active=pointer;pointer=null;cv.classList.remove('dragging');if(active&&cv.hasPointerCapture(active.id))cv.releasePointerCapture(active.id);}
+function finishPointer(e,cancelled=false){if(!pointer||pointer.id!==e.pointerId)return;const p=eventPos(e);if(!cancelled&&pointer.kind==='place'){const v={x:p.x-pointer.start.x,y:p.y-pointer.start.y};addObject(pointer.start,v)}clearPointer()}
+cv.addEventListener('pointerup',e=>finishPointer(e));cv.addEventListener('pointercancel',e=>finishPointer(e,true));cv.addEventListener('lostpointercapture',clearPointer);window.addEventListener('blur',()=>{clearPointer();lastTime=0});
+cv.addEventListener('wheel',e=>{e.preventDefault();const p=eventPos(e),before=screenToWorld(p.x,p.y);cam.zoom=clamp(cam.zoom*Math.exp(-e.deltaY*.0011),.075,5);const after=screenToWorld(p.x,p.y);cam.x+=before.x-after.x;cam.y+=before.y-after.y;updateScale()},{passive:false});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+for(const btn of document.querySelectorAll('[data-scene]'))btn.addEventListener('click',()=>{reset(btn.dataset.scene);toast('已切换场景并重置模拟')});
+for(const btn of document.querySelectorAll('[data-type]'))btn.addEventListener('click',()=>{selectedType=btn.dataset.type;document.querySelectorAll('[data-type]').forEach(e=>e.classList.toggle('selected',e===btn));setTool('place');toast('拖动星空投放：'+types[selectedType].name)});
+for(const [id,target,callback] of [['gravity','gravityValue',v=>gravity=v],['speed','speedValue',v=>speed=v],['mass','massValue',v=>massFactor=v]]){$(id).addEventListener('input',()=>{const v=Number($(id).value);$(target).textContent=v.toFixed(1)+' ×';callback(v)})}
+$('trails').addEventListener('click',()=>{trailsOn=!trailsOn;toggler('trails',trailsOn);if(!trailsOn)bodies.forEach(b=>b.trail=[])});
+$('effects').addEventListener('click',()=>{effectsOn=!effectsOn;toggler('effects',effectsOn);if(!effectsOn){rings=[];sparks=[]}});
+$('play').addEventListener('click',()=>setPlaying(!playing));$('reset').addEventListener('click',()=>{reset();toast('场景已重置')});
+$('step').addEventListener('click',()=>{setPlaying(false);physics(.65);draw(performance.now());updateStats()});
+$('watch').addEventListener('click',()=>setTool('watch'));$('place').addEventListener('click',()=>setTool('place'));
+$('center').addEventListener('click',()=>{centerCamera();toast('已重置视角')});
+$('save').addEventListener('click',()=>{draw(performance.now());const a=document.createElement('a');a.download=`cosmos-${scene}-${Date.now()}.png`;a.href=cv.toDataURL('image/png');a.click();toast('已保存模拟画面 PNG')});
+window.addEventListener('keydown',e=>{if(/INPUT|BUTTON|A|SELECT|TEXTAREA/.test(e.target.tagName))return;if(e.code==='Space'){e.preventDefault();setPlaying(!playing)}else if(e.key.toLowerCase()==='r'){reset();toast('场景已重置')}else if(e.key==='Escape'){pointer=null;setTool('watch')}});
+window.addEventListener('resize',resize);const ro=new ResizeObserver(resize);ro.observe(stage);resize();reset();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
