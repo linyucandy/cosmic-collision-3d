@@ -37,3 +37,5 @@
 - [FAO 鲤鱼资料](https://www.fao.org/fishery/docs/CDrom/aquaculture/I1129m/file/en/en_commoncarp.htm)、[新西兰DOC 锦鲤资料](https://www.doc.govt.nz/nature/pests-and-threats/freshwater-pests/koi-carp/)：黄金鲤鱼、锦鲤王标注游戏变体，皇冠与王者身份为虚构，不编造其营养数值。
 
 测试覆盖实际钓获入包、原子扣除升级、唯一奖励、四区完整通关、存档一致性、手机面板、暂停状态、活动抛竿切区限制及存储失败提示。
+
+实际运行补测发现咬钩窗口增加后，旧提示圆仍使用固定0.95秒归一化，可能产生负半径并中断动画。现将计时与绘制统一到本次 `biteDuration`，并限制归一化比例。增加全部水域/钓具等级的绘制检查，以及保留真实动画循环、通过按键完成钓获并保存背包的测试。

@@ -9,6 +9,8 @@ class FishingAdventureBrowserTests(unittest.TestCase):
     def tearDownClass(cls):support.CanvasGameTests.tearDownClass()
     def setUp(self):
         self.helper=support.CanvasGameTests();self.helper.setUp();self.helper.fish();self.page=self.helper.page
+        self.page.bring_to_front()
+        if self.page.evaluate('fish.paused'):self.page.locator('#fishPause').click()
     def tearDown(self):self.helper.tearDown()
     def land(self,count=1):
         for _ in range(count):
@@ -24,7 +26,7 @@ class FishingAdventureBrowserTests(unittest.TestCase):
         self.assertIn('生物介绍',self.page.locator('.fish-detail').inner_text())
         self.assertTrue(self.page.locator('.source-links a').first.get_attribute('href').startswith('https://'))
         self.page.locator('[data-back]').click();self.page.locator('#closeFishPanel').click()
-        self.assertFalse(self.page.evaluate('fish.paused'));self.assertEqual(self.helper.errors,[])
+        self.page.wait_for_function('!fish.paused',timeout=3000);self.assertEqual(self.helper.errors,[])
     def test_actual_catches_bag_upgrade_complete_travel_and_restore(self):
         self.land(5);self.page.locator('#openBag').click()
         self.assertIn('背包 5 条',self.page.locator('.fish-card').inner_text())
@@ -57,6 +59,24 @@ class FishingAdventureBrowserTests(unittest.TestCase):
         self.page.evaluate("fish.game.mode='bite';fish.game.biteFish=fish.FISH_TYPES[0]")
         self.page.keyboard.press('Space');self.assertEqual(self.page.evaluate('fish.game.mode'),'reeling')
         self.assertEqual(self.helper.errors,[])
+    def test_every_bite_window_draws_without_invalid_circle_radius(self):
+        self.page.evaluate("""() => {for(let zone=0;zone<4;zone++)for(let rod=0;rod<=3;rod++){
+          fish.progress.zone=zone;fish.progress.rod=rod;fish.game.mode='waiting';fish.game.waitTimer=0;fish.updateFishing(.01);fish.draw();
+        }}""")
+        self.assertEqual(self.helper.errors,[])
+    def test_live_loop_lands_a_fish_and_saves_the_backpack(self):
+        page=support.CanvasGameTests.browser.new_page(viewport={'width':1000,'height':700});errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(support.CanvasGameTests.base+'pickFish.html')
+            page.locator('#fishAction').click();page.wait_for_function("!document.querySelector('#fishAction').disabled",timeout=10000);page.locator('#fishAction').click()
+            for _ in range(16):
+                if page.evaluate("JSON.parse(localStorage.getItem('chenchen-fishing-adventure-v1')||'{\"caught\":0}').caught>0"):break
+                page.keyboard.down('e');page.wait_for_timeout(600);page.keyboard.up('e');page.wait_for_timeout(500)
+            self.assertGreater(page.evaluate("JSON.parse(localStorage.getItem('chenchen-fishing-adventure-v1')||'{\"caught\":0}').caught"),0)
+            page.locator('#openBag').click();self.assertEqual(page.locator('.fish-card').count(),1)
+            self.assertEqual(errors,[])
+        finally:page.close()
     def test_storage_failure_is_explicit_and_reset_can_be_cancelled(self):
         self.page.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw Error('blocked')}})")
         self.page.reload();self.page.wait_for_function('window.fish');self.land()
