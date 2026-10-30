@@ -23,7 +23,8 @@ CATEGORIES = {'sandbox':'沙盒模拟', 'puzzle':'益智解谜', 'action':'动�
 PUBLIC_FILES = {'index.html', 'community.html', 'game.html', 'publish.html',
                 'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'community-snapshot.json', 'cosmic-collision-3d.html',
                 'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css', 'pixel-city.html', 'pixel-city.css',
-                'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city.js'}
+                'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city.js',
+                '宇宙实验室_3D碰撞模拟器.html', 'vendor/three.module.js', 'vendor/THREE-LICENSE.txt'}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -95,6 +96,10 @@ def create_app(config=None):
            'sandbox',city_url,'晨晨',stamp,stamp,city_url))
         conn.execute('UPDATE games SET description=? WHERE play_url=? AND user_id IS NULL',
                      ('《像素小城 · 市长日记》是一款轻松的像素风城市经营小游戏，由晨晨制作。你将担任市长，从一片河畔土地和 900 城币起步，亲手把小街区发展成热闹的城市。\n\n规划道路，建设住宅、商店与工厂，为居民提供住所和工作；配好太阳能与水塔，用公园和诊所提高幸福度。道路必须连到市政厅，建筑才能运作；工厂靠近住宅会带来污染，每个月还要支付维护费。\n\n你的目标是平衡人口、就业、水电和收支，逐步达成 20、50、100 人口里程碑，并挑战绿色宜居城。支持暂停规划、倍速运营、逐月结算、拆除退款和一次低资金援助，没有限时，按自己的节奏建设。\n\n电脑可点击建造、滚轮缩放、右键平移；手机可点选工具和地块，切换移动工具拖动画布。进度自动保存在当前浏览器，换设备不会同步；清理浏览器数据会删除存档。',city_url))
+        lab_url = '/宇宙实验室_3D碰撞模拟器.html'
+        conn.execute('''INSERT INTO games(title,description,category,play_url,author_name,created_at,updated_at)
+          SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM games WHERE play_url=?)''',
+          ('宇宙实验室 · 3D 碰撞模拟器','自由创建行星、恒星、卫星和小行星，在三维空间探索引力与碰撞。支持融合、反弹、碎裂三种模式，提供太阳系、双星、行星对撞与小行星带预设。可拖动天体、平移缩放视角、显示名称与轨迹，并导入导出 JSON 场景。采用可视化近似物理，不用于精密天文预测。','sandbox',lab_url,'晨晨',stamp,stamp,lab_url))
         conn.commit()
 
     def db():
@@ -423,9 +428,10 @@ def create_app(config=None):
     def public_file(filename):
         if filename not in PUBLIC_FILES:
             abort(404, description='页面不存在。')
-        if filename == 'game.html' and request.args.get('id') == 'pixel-city' and request.args.get('source') != 'github':
+        builtin_urls={'pixel-city':'/pixel-city.html','cosmic-lab':'/宇宙实验室_3D碰撞模拟器.html'}
+        if filename == 'game.html' and request.args.get('id') in builtin_urls and request.args.get('source') != 'github':
             with closing(connect()) as conn:
-                game = conn.execute('SELECT id FROM games WHERE play_url=? AND user_id IS NULL',('/pixel-city.html',)).fetchone()
+                game = conn.execute('SELECT id FROM games WHERE play_url=? AND user_id IS NULL',(builtin_urls[request.args['id']],)).fetchone()
             if game:
                 return redirect('game.html?id='+str(game['id']))
         return send_from_directory(ROOT,filename)

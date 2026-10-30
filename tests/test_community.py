@@ -49,6 +49,14 @@ class CommunityTests(unittest.TestCase):
         with self.client.get('/game.html?id=pixel-city&source=github') as static:
             self.assertEqual(static.status_code,200)
 
+    def test_cosmic_lab_static_assets_and_details_are_published(self):
+        response=self.client.get('/game.html?id=cosmic-lab')
+        self.assertEqual(response.status_code,302)
+        game_id=response.location.split('id=')[1]
+        self.assertEqual(self.client.get('/api/games/'+game_id).json['game']['play_url'],'/宇宙实验室_3D碰撞模拟器.html')
+        for file in ['/宇宙实验室_3D碰撞模拟器.html','/vendor/three.module.js','/vendor/THREE-LICENSE.txt']:
+            with self.client.get(file) as result:self.assertEqual(result.status_code,200)
+
     def test_publish_is_shared_and_persists_across_app_restart(self):
         game_id = self.publish()
         second = create_app({'TESTING':True,'DATABASE':self.db}).test_client()

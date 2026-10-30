@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>宇宙实验室 · 3D 碰撞模拟器</title><link rel="icon" href="data:,"><meta name="description" content="创建天体、探索引力与三种碰撞模式，导入导出自己的三维宇宙实验。">
+<style>
+:root{color-scheme:dark;--bg:#050914;--panel:#0b1424;--line:#24364f;--text:#e8f2ff;--muted:#93a9c7;--blue:#368bff;--cyan:#75dcff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden}
+header{height:56px;display:flex;align-items:center;gap:12px;padding:0 18px;background:#08101e;border-bottom:1px solid var(--line);position:relative;z-index:2}
+.logo{font-size:22px}header strong{font-size:17px;letter-spacing:.04em}header .sub{color:var(--muted);margin-left:6px}header .right{margin-left:auto;display:flex;gap:8px}
+button,select,input{font:inherit}button,select{color:var(--text);background:#132239;border:1px solid #2b4261;border-radius:8px;padding:8px 11px;cursor:pointer}button:hover{border-color:#65baff;background:#193150}button.primary{background:#1768cf;border-color:#3488ef}button.danger{background:#48212a;border-color:#84404d}
+main{height:calc(100vh - 56px);display:grid;grid-template-columns:270px minmax(0,1fr) 245px;gap:10px;padding:10px}
+.panel{background:linear-gradient(155deg,#0d192b,#091220);border:1px solid var(--line);border-radius:12px;overflow:auto;min-height:0}
+.section{padding:14px;border-bottom:1px solid #1d2b40}.section:last-child{border:0}h3{font-size:14px;margin:0 0 12px;color:#d9eaff;letter-spacing:.03em}.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 5px;color:var(--muted)}.row output{color:var(--cyan);font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--blue)}select{width:100%}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}.grid2 button{padding:9px 5px}.wide{width:100%;margin-top:8px}.hint{font-size:12px;color:var(--muted);line-height:1.55}.scene{position:relative;min-width:0;min-height:0;border:1px solid #23344d;border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#111e3a,#040812 70%)}
+#view{display:block;width:100%;height:100%;touch-action:none;outline:none}.hud{position:absolute;top:12px;left:14px;pointer-events:none;text-shadow:0 2px 6px #000;line-height:1.8;color:#d5e5ff}.hud b{color:#7ee6ff}.hudright{position:absolute;right:12px;top:12px;text-align:right;color:#c6d7f3;font-size:12px;text-shadow:0 2px 6px #000;pointer-events:none}.bottomhint{position:absolute;bottom:12px;left:14px;color:#a6bad9;background:#07101dbb;border:1px solid #263951;padding:8px 10px;border-radius:8px;font-size:12px;pointer-events:none}.playbar{position:absolute;bottom:12px;right:12px;display:flex;gap:6px;background:#07101ddd;border:1px solid #2a3b53;padding:6px;border-radius:10px}.playbar button{padding:7px 10px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stat{padding:10px;background:#0a1322;border:1px solid #20334b;border-radius:9px}.stat small{display:block;color:var(--muted)}.stat strong{font-size:20px;display:block;margin-top:3px}.objectlist{display:flex;flex-direction:column;gap:5px;max-height:190px;overflow:auto}.obj{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#0c1728;padding:8px}.dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex:none}.obj.selected{border-color:#69c8ff;background:#112b47}.check{display:flex;gap:8px;align-items:center;color:var(--muted);margin:8px 0}.check input{accent-color:var(--blue)}.footer{color:#7f94b3;font-size:11px;padding:10px 14px;line-height:1.5}
+@media(max-width:1050px){main{grid-template-columns:230px minmax(0,1fr)}.rightpanel{display:none}}
+@media(max-width:700px){body{overflow:auto}header{height:auto;min-height:54px;flex-wrap:wrap;padding:10px}header .sub{display:none}main{height:auto;min-height:calc(100vh - 54px);display:flex;flex-direction:column}.scene{height:58vh;min-height:360px;order:0}.leftpanel{order:1}.rightpanel{display:block;order:2}.panel{overflow:visible}.headerbtn{display:none}}
+a.home-link{color:#a8dfff;align-self:center;font-size:12px;white-space:nowrap}#labelsLayer{position:absolute;inset:0;pointer-events:none;overflow:hidden}#labelsLayer span{position:absolute;color:#dbedff;font-size:11px;background:#07101da0;padding:1px 4px;border-radius:3px;white-space:nowrap;transform:translate(-50%,-100%)}@media(max-width:700px){header .right{flex-wrap:wrap}header strong{font-size:15px}.bottomhint{bottom:65px;font-size:10px}.playbar{left:12px;right:auto}}
+</style>
+</head>
+<body>
+<header><span class="logo">🪐</span><strong>宇宙实验室</strong><span class="sub">3D 引力 · 碰撞 · 演化</span><div class="right"><a href="index.html" class="home-link">游戏首页 ↗</a><a class="home-link" href="game.html?id=cosmic-lab">介绍与评价 ↗</a><button id="save">导出场景</button><button id="load">导入场景</button><button id="resetTop">重置</button><input id="file" type="file" accept=".json,application/json" hidden></div></header>
+<main>
+<aside class="panel leftpanel">
+ <div class="section"><h3>创建天体</h3><div class="grid2">
+ <button data-kind="planet" class="primary">🌍 行星</button><button data-kind="star">☀ 恒星</button><button data-kind="moon">🌑 卫星</button><button data-kind="asteroid">☄ 小行星</button></div>
+ <div class="row"><label for="mass">质量</label><output id="massOut">1.0</output></div><input id="mass" type="range" min=".2" max="8" step=".1" value="1">
+ <div class="row"><label for="radius">半径</label><output id="radiusOut">1.0</output></div><input id="radius" type="range" min=".35" max="2.5" step=".05" value="1">
+ <div class="row"><label for="velocity">初速度</label><output id="velocityOut">2.0</output></div><input id="velocity" type="range" min="0" max="12" step=".2" value="2">
+ <button class="wide primary" id="add">＋ 添加到场景</button><p class="hint">这些参数用于创建新天体。点击天体选中，拖动它可移动位置；最多保留 100 个天体。</p></div>
+ <div class="section"><h3>物理设置</h3>
+ <div class="row"><label for="collision">碰撞模式</label></div><select id="collision"><option value="merge">合并（融合）</option><option value="bounce">反弹（弹性近似）</option><option value="fragment">碎裂（爆炸效果）</option></select>
+ <div class="row"><label for="gravity">引力强度</label><output id="gravityOut">1.0×</output></div><input id="gravity" type="range" min="0" max="3" step=".1" value="1">
+ <div class="row"><label for="timescale">时间流速</label><output id="timescaleOut">1.0×</output></div><input id="timescale" type="range" min=".1" max="3" step=".1" value="1">
+ <label class="check"><input type="checkbox" id="trails" checked>显示运动轨迹</label><label class="check"><input type="checkbox" id="orbits" checked>显示轨道参考线</label><label class="check"><input type="checkbox" id="labels" checked>显示天体名称</label>
+ </div>
+ <div class="section"><h3>场景预设</h3><div class="grid2"><button data-scene="solar">☀ 太阳系</button><button data-scene="binary">🪐 双星系统</button><button data-scene="impact">💥 行星对撞</button><button data-scene="asteroids">☄ 小行星带</button></div></div>
+</aside>
+<section class="scene"><canvas id="view" tabindex="0"></canvas><div id="labelsLayer" aria-hidden="true"></div><div class="hud">COSMIC LAB / 3D<br>状态：<b id="status">运行中</b><br>天体数量：<b id="count">0</b>　碰撞：<b id="hits">0</b><br><span id="event" role="status">宇宙准备就绪</span></div><div class="hudright" id="selectedInfo">未选择天体</div><div class="bottomhint">左键拖动：旋转视角　·　滚轮：缩放　·　右键拖动：平移<br>点击天体选中；拖动选中的天体可移动它</div><div class="playbar"><button id="pause">Ⅱ 暂停</button><button id="step">单步 ▶</button><button id="focus">◎ 聚焦</button></div></section>
+<aside class="panel rightpanel">
+ <div class="section"><h3>宇宙状态</h3><div class="stats"><div class="stat"><small>天体数量</small><strong id="statCount">0</strong></div><div class="stat"><small>碰撞次数</small><strong id="statHits">0</strong></div><div class="stat"><small>模拟时间</small><strong id="clock">0.0 s</strong></div><div class="stat"><small>总质量</small><strong id="totalMass">0</strong></div></div></div>
+ <div class="section"><h3>选中天体</h3><div id="details" class="hint">点击场景中的天体查看属性。</div><button id="delete" class="wide danger">删除选中天体</button><button id="launch" class="wide">施加随机推力</button></div>
+ <div class="section"><h3>场景天体</h3><div id="objects" class="objectlist"></div></div>
+ <div class="section"><h3>操作提示</h3><p class="hint">• 选择碰撞模式后，天体相互接触时会触发对应效果。<br>• 引力采用软化的牛顿模型，适合直观实验，不是精密天文预测。<br>• 轨迹和运动速度为可视化单位，不对应真实公里或秒。</p></div>
+ <div class="footer">晨晨 · 宇宙实验室。Three.js 随站点提供，无需连接外部 CDN。导出场景可保存进度；参考环是示意线，不是预测轨道。</div>
+</aside>
+</main>
+<script type="module" onerror="document.getElementById('event').textContent='3D 组件加载失败，请刷新页面或返回首页。'">
+import * as THREE from './vendor/three.module.js';
+const $=id=>document.getElementById(id);
+const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let uiDirty=true,lastUI=0;
+const canvas=$('view');
+let renderer;try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false})}catch(error){$('event').textContent='无法启动 3D：请启用浏览器硬件加速，或返回首页使用 2D 沙盒。';throw error}
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x030713);scene.fog=new THREE.FogExp2(0x030713,.0015);
+const camera=new THREE.PerspectiveCamera(55,1,.1,2000);camera.position.set(0,28,75);
+scene.add(new THREE.HemisphereLight(0x91bfff,0x161020,1.2));
+const keyLight=new THREE.PointLight(0xffe2b1,2600,500,1.7);keyLight.position.set(-25,18,-20);scene.add(keyLight);
+const fillLight=new THREE.PointLight(0x408bff,700,260);fillLight.position.set(30,-10,25);scene.add(fillLight);
+const starGeo=new THREE.BufferGeometry(),starPos=[];for(let i=0;i<2800;i++){const r=180+Math.random()*700,t=Math.random()*Math.PI*2,u=Math.acos(2*Math.random()-1);starPos.push(r*Math.sin(u)*Math.cos(t),r*Math.cos(u),r*Math.sin(u)*Math.sin(t))}
+starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));const starField=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xc5d9ff,size:.65,sizeAttenuation:true}));scene.add(starField);
+const nebula=new THREE.Mesh(new THREE.SphereGeometry(260,32,24),new THREE.MeshBasicMaterial({color:0x111e43,side:THREE.BackSide,transparent:true,opacity:.16,wireframe:false}));scene.add(nebula);
+const orbitGroup=new THREE.Group();scene.add(orbitGroup);
+const kinds={planet:{color:0x3288df,name:'行星'},star:{color:0xffbd57,name:'恒星'},moon:{color:0xb5c3d9,name:'卫星'},asteroid:{color:0x9d806a,name:'小行星'}};
+let bodies=[],selected=null,hits=0,simTime=0,running=true,nextId=1,dragBody=null,dragPlane=new THREE.Plane(),dragOffset=new THREE.Vector3(),pointerDown=null,mouse={x:0,y:0},rotating=false,panning=false,prev={x:0,y:0},yaw=0,pitch=.28,camDist=82,target=new THREE.Vector3(),panStart=null;
+const raycaster=new THREE.Raycaster(),ndc=new THREE.Vector2(),planePoint=new THREE.Vector3();
+function materialFor(kind,color){return new THREE.MeshStandardMaterial({color,roughness:kind==='star'?.38:.82,metalness:kind==='asteroid'?.2:.03,emissive:kind==='star'?color:0x000000,emissiveIntensity:kind==='star'?.85:0})}
+function makeBody({kind='planet',mass=1,radius=1,velocity=2,position=null,vel=null,color=null,name=null,physicalRadius=false}={}){
+ if(bodies.length>=100){$('event').textContent='已达到 100 个天体上限，请先删除一些天体。';return null;}uiDirty=true;
+ const c=color??kinds[kind].color, r=physicalRadius?radius:radius*Math.pow(mass,.22)*(kind==='star'?1.25:1);
+ const geo=new THREE.SphereGeometry(r,40,28),mesh=new THREE.Mesh(geo,materialFor(kind,c));mesh.position.copy(position??new THREE.Vector3((Math.random()-.5)*30,(Math.random()-.5)*12,(Math.random()-.5)*30));scene.add(mesh);
+ if(kind==='star'){const glow=new THREE.Mesh(new THREE.SphereGeometry(r*1.35,24,18),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.12,side:THREE.BackSide}));mesh.add(glow)}
+ if(kind==='planet'&&Math.random()>.6){const ring=new THREE.Mesh(new THREE.RingGeometry(r*1.35,r*1.9,64),new THREE.MeshStandardMaterial({color:0x91a9c9,side:THREE.DoubleSide,transparent:true,opacity:.55,roughness:.8}));ring.rotation.x=Math.PI/2.35;mesh.add(ring)}
+ const b={id:nextId++,kind,mass,radius:r,mesh,vel:vel??new THREE.Vector3((Math.random()-.5)*velocity,(Math.random()-.5)*velocity*.4,(Math.random()-.5)*velocity),trail:[],line:null,name:name??`${kinds[kind].name} ${nextId-1}`,color:c,alive:true};bodies.push(b);return b;
+}
+function disposeObject(object){object.traverse(child=>{child.geometry?.dispose();if(Array.isArray(child.material))child.material.forEach(m=>m.dispose());else child.material?.dispose()});}
+function removeBody(b){if(!b)return;scene.remove(b.mesh);disposeObject(b.mesh);if(b.line){scene.remove(b.line);disposeObject(b.line)}bodies=bodies.filter(x=>x!==b);if(selected===b)selected=null;if(dragBody===b)stopPointer();uiDirty=true;}
+function clearWorld(){stopPointer();for(const b of [...bodies])removeBody(b);for(const effect of effects)effect.dispose();effects.length=0;selected=null;hits=0;simTime=0;nextId=1;uiDirty=true;}
+
+function preset(type){clearWorld();const origin=new THREE.Vector3(0,0,0);
+ if(type==='solar'){makeBody({kind:'star',mass:7,radius:3,position:origin,vel:new THREE.Vector3(),name:'恒星'});[9,15,23,33,45].forEach((d,i)=>{const a=i*1.7;makeBody({kind:'planet',mass:1+i*.35,radius:.8+i*.12,position:new THREE.Vector3(Math.cos(a)*d,(i%2-0.5)*1.2,Math.sin(a)*d),vel:new THREE.Vector3(-Math.sin(a)*Math.sqrt(7*1.8/d),.02,Math.cos(a)*Math.sqrt(7*1.8/d)),name:['水星','金星','地球','火星','木星'][i],color:[0xb8a18d,0xe4b77c,0x3986d4,0xc8664a,0xd5b28a][i]})})}
+ if(type==='binary'){makeBody({kind:'star',mass:5,radius:2.4,position:new THREE.Vector3(-8,0,0),vel:new THREE.Vector3(0,0,-1.4),name:'双星 A'});makeBody({kind:'star',mass:5,radius:2.4,position:new THREE.Vector3(8,0,0),vel:new THREE.Vector3(0,0,1.4),name:'双星 B'});for(let i=0;i<7;i++){let a=i*Math.PI*2/7;makeBody({kind:'planet',mass:.5,radius:.55,position:new THREE.Vector3(Math.cos(a)*25,Math.sin(a*2)*3,Math.sin(a)*25),vel:new THREE.Vector3(-Math.sin(a)*.9,0,Math.cos(a)*.9)})}}
+ if(type==='impact'){makeBody({kind:'planet',mass:4,radius:2.1,position:new THREE.Vector3(-14,0,0),vel:new THREE.Vector3(3.4,0,0),name:'碰撞体 A',color:0x3188ee});makeBody({kind:'planet',mass:3,radius:1.8,position:new THREE.Vector3(14,0,0),vel:new THREE.Vector3(-3.4,0,0),name:'碰撞体 B',color:0xf27d49});for(let i=0;i<5;i++)makeBody({kind:'asteroid',mass:.15,radius:.4,position:new THREE.Vector3((Math.random()-.5)*12,(Math.random()-.5)*6,(Math.random()-.5)*12),vel:new THREE.Vector3((Math.random()-.5)*1.5,0,(Math.random()-.5)*1.5)})}
+ if(type==='asteroids'){makeBody({kind:'star',mass:8,radius:2.8,position:origin,vel:new THREE.Vector3(),name:'中央恒星'});for(let i=0;i<32;i++){let a=Math.random()*Math.PI*2,d=15+Math.random()*25;makeBody({kind:'asteroid',mass:.08+Math.random()*.3,radius:.25+Math.random()*.3,position:new THREE.Vector3(Math.cos(a)*d,(Math.random()-.5)*3,Math.sin(a)*d),vel:new THREE.Vector3(-Math.sin(a)*.8,0,Math.cos(a)*.8)})}}
+ selected=bodies[0]??null;target.set(0,0,0);yaw=0;pitch=.28;camDist=82;updateCamera();syncUI();$('event').textContent='已加载场景：'+({solar:'太阳系',binary:'双星系统',impact:'行星对撞',asteroids:'小行星带'}[type]||type);
+}
+function syncUI(force=true){if(!force&&performance.now()-lastUI<150)return;lastUI=performance.now(); $('count').textContent=bodies.length;$('hits').textContent=hits;$('statCount').textContent=bodies.length;$('statHits').textContent=hits;$('clock').textContent=simTime.toFixed(1)+' s';$('status').textContent=running?'运行中':'已暂停';$('pause').textContent=running?'Ⅱ 暂停':'▶ 继续';$('totalMass').textContent=bodies.reduce((s,b)=>s+b.mass,0).toFixed(1);
+ if(force||uiDirty){$('objects').innerHTML='';for(const b of bodies){const btn=document.createElement('button');btn.className='obj'+(selected===b?' selected':'');btn.innerHTML=`<span class="dot" style="background:#${b.color.toString(16).padStart(6,'0')}"></span><span>${escapeHTML(b.name)}</span><span style="margin-left:auto;color:#89a5c7">${b.mass.toFixed(1)}</span>`;btn.onclick=()=>{selected=b;syncUI()};$('objects').appendChild(btn)}uiDirty=false;}
+ if(selected){$('selectedInfo').innerHTML=`<b>${escapeHTML(selected.name)}</b><br>质量 ${selected.mass.toFixed(2)} · 半径 ${selected.radius.toFixed(2)}<br>速度 ${selected.vel.length().toFixed(2)} 单位/s`;$('details').innerHTML=`名称：${escapeHTML(selected.name)}<br>类型：${kinds[selected.kind].name}<br>质量：${selected.mass.toFixed(2)}<br>半径：${selected.radius.toFixed(2)}<br>速度：${selected.vel.length().toFixed(2)}<br>位置：(${selected.mesh.position.x.toFixed(1)}, ${selected.mesh.position.y.toFixed(1)}, ${selected.mesh.position.z.toFixed(1)})`}else{$('selectedInfo').textContent='未选择天体';$('details').textContent='点击场景中的天体查看属性。'}
+}
+function updateTrails(){for(const b of bodies){
+ if($('trails').checked){
+  b.trail.push(b.mesh.position.clone());if(b.trail.length>90)b.trail.shift();
+  if(!b.line&&b.trail.length>1){const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(90*3),3).setUsage(THREE.DynamicDrawUsage));b.line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:b.color,transparent:true,opacity:.38}));scene.add(b.line)}
+  if(b.line){const attribute=b.line.geometry.getAttribute('position');for(let i=0;i<90;i++){const point=b.trail[Math.min(i,b.trail.length-1)];attribute.setXYZ(i,point.x,point.y,point.z)}attribute.needsUpdate=true;b.line.geometry.setDrawRange(0,b.trail.length);b.line.geometry.computeBoundingSphere()}
+ }else{b.trail=[];if(b.line){scene.remove(b.line);disposeObject(b.line);b.line=null}}
+}}
+function explodeAt(pos,color){const g=new THREE.BufferGeometry(),arr=[];for(let i=0;i<160;i++){arr.push(pos.x,pos.y,pos.z)}g.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));const mat=new THREE.PointsMaterial({color,size:.35,transparent:true,opacity:.95});const pts=new THREE.Points(g,mat);scene.add(pts);const velocities=Array.from({length:160},()=>new THREE.Vector3((Math.random()-.5)*2.8,(Math.random()-.5)*2.8,(Math.random()-.5)*2.8));let life=1;const effect=dt=>{life-=dt*1.2;const a=g.attributes.position;for(let i=0;i<160;i++){a.array[i*3]+=velocities[i].x*dt*12;a.array[i*3+1]+=velocities[i].y*dt*12;a.array[i*3+2]+=velocities[i].z*dt*12}a.needsUpdate=true;mat.opacity=Math.max(0,life);if(life<=0){scene.remove(pts);g.dispose();mat.dispose();return false}return true};effect.dispose=()=>{scene.remove(pts);g.dispose();mat.dispose()};effects.push(effect)}
+const effects=[];
+function collide(a,b){hits++;const mode=$('collision').value;const p=a.mesh.position.clone().add(b.mesh.position).multiplyScalar(.5);
+ if(mode==='merge'){const m=a.mass+b.mass;const pos=a.mesh.position.clone().multiplyScalar(a.mass).addScaledVector(b.mesh.position,b.mass).multiplyScalar(1/m);const vel=a.vel.clone().multiplyScalar(a.mass).addScaledVector(b.vel,b.mass).multiplyScalar(1/m);const kind=(a.kind==='star'||b.kind==='star')?'star':'planet';const radius=Math.cbrt(a.radius**3+b.radius**3);const color=a.mass>=b.mass?a.color:b.color;removeBody(b);a.mass=m;a.radius=radius;a.vel.copy(vel);a.kind=kind;a.mesh.position.copy(pos);for(const child of [...a.mesh.children]){a.mesh.remove(child);disposeObject(child)}a.mesh.geometry.dispose();a.mesh.geometry=new THREE.SphereGeometry(radius,40,28);a.mesh.material.dispose();a.mesh.material=materialFor(kind,color);a.color=color;$('event').textContent='碰撞融合：质量守恒近似';explodeAt(p,0x8bdcff)}
+ else if(mode==='bounce'){
+  const normal=b.mesh.position.clone().sub(a.mesh.position);if(normal.lengthSq()<1e-12)normal.set(1,0,0);else normal.normalize();
+  const rel=b.vel.clone().sub(a.vel).dot(normal);if(rel<0){const impulse=-(1.65*rel)/(1/a.mass+1/b.mass);a.vel.addScaledVector(normal,-impulse/a.mass);b.vel.addScaledVector(normal,impulse/b.mass)}
+  const overlap=Math.max(0,a.radius+b.radius-a.mesh.position.distanceTo(b.mesh.position))+.001,total=a.mass+b.mass;
+  a.mesh.position.addScaledVector(normal,-overlap*b.mass/total);b.mesh.position.addScaledVector(normal,overlap*a.mass/total);$('event').textContent='碰撞反弹！';
+ }else{
+  explodeAt(p,0xff884c);const small=a.mass<b.mass?a:b,big=small===a?b:a,total=a.mass+b.mass;
+  const velocity=a.vel.clone().multiplyScalar(a.mass).addScaledVector(b.vel,b.mass).multiplyScalar(1/total);
+  const fragmentCount=Math.min(4,101-bodies.length),fragmentMass=fragmentCount?total*.2/fragmentCount:0;
+  const rotation=new THREE.Quaternion().random(),speed=2+Math.random()*3;
+  const tetra=[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+  const offsets=Array.from({length:fragmentCount},(_,i)=>{
+   const v=fragmentCount===4?new THREE.Vector3(...tetra[i]).normalize():fragmentCount===1?new THREE.Vector3():new THREE.Vector3(Math.cos(i*Math.PI*2/fragmentCount),0,Math.sin(i*Math.PI*2/fragmentCount));
+   return v.applyQuaternion(rotation).multiplyScalar(speed);
+  });
+  const mean=offsets.reduce((v,x)=>v.add(x),new THREE.Vector3()).multiplyScalar(fragmentCount?1/fragmentCount:0);
+  const volume=a.radius**3+b.radius**3;removeBody(small);big.mass=total-fragmentMass*fragmentCount;big.vel.copy(velocity);big.radius=Math.cbrt(volume*big.mass/total);
+  for(const child of [...big.mesh.children]){big.mesh.remove(child);disposeObject(child)}big.mesh.geometry.dispose();big.mesh.geometry=new THREE.SphereGeometry(big.radius,40,28);
+  for(let i=0;i<fragmentCount;i++){
+   const offset=offsets[i].sub(mean),direction=offset.lengthSq()?offset.clone().normalize():new THREE.Vector3(1,0,0);
+   const radius=Math.cbrt(volume*fragmentMass/total);
+   makeBody({kind:'asteroid',mass:fragmentMass,radius,physicalRadius:true,position:big.mesh.position.clone().addScaledVector(direction,big.radius+radius+.1+i*.2),vel:velocity.clone().add(offset),color:0xffa16c});
+  }
+  $('event').textContent='猛烈撞击：碎片飞散，质量与动量守恒近似';
+ }
+
+ syncUI()}
+function physics(dt){const G=Number($('gravity').value)*.9;const n=bodies.length;for(let i=0;i<n;i++){const a=bodies[i];for(let j=i+1;j<n;j++){const b=bodies[j],d=b.mesh.position.clone().sub(a.mesh.position),r2=d.lengthSq()+20,r=Math.sqrt(r2);const f=G/(r2*r);a.vel.addScaledVector(d,f*b.mass*dt);b.vel.addScaledVector(d,-f*a.mass*dt)}}
+ // Solve the earliest contact, then recompute paths for the time that remains.
+ let remaining=dt,events=0;
+ const advanceAll=time=>{for(const body of bodies)if(body!==dragBody)body.mesh.position.addScaledVector(body.vel,time*5)};
+ while(remaining>1e-10&&events<64){
+  let contact=null;
+  for(let i=0;i<bodies.length;i++)for(let j=i+1;j<bodies.length;j++){
+   const a=bodies[i],b=bodies[j],offset=b.mesh.position.clone().sub(a.mesh.position);
+   const av=a===dragBody?new THREE.Vector3():a.vel,bv=b===dragBody?new THREE.Vector3():b.vel;
+   const motion=bv.clone().sub(av).multiplyScalar(remaining*5),radius=a.radius+b.radius;
+   const c=offset.lengthSq()-radius*radius,aa=motion.lengthSq(),bb=2*offset.dot(motion);
+   let time=null;
+   if(c< -1e-10||(c<=1e-10&&bb<0))time=0;
+   else if(aa>1e-16){const discriminant=bb*bb-4*aa*c;if(discriminant>=0){const root=(-bb-Math.sqrt(discriminant))/(2*aa);if(root>=0&&root<=1)time=root;}}
+   if(time!==null&&(!contact||time<contact.time))contact={a,b,time};
+  }
+  if(!contact){advanceAll(remaining);remaining=0;break;}
+  advanceAll(remaining*contact.time);remaining*=1-contact.time;collide(contact.a,contact.b);events++;
+ }
+ // At the work limit, retain positions for the next step rather than tunnel through contacts.
+ for(const body of bodies){body.mesh.rotation.y+=dt*.18;body.mesh.rotation.x+=dt*.035}
+ simTime+=dt-remaining;updateTrails();for(let i=effects.length-1;i>=0;i--)if(!effects[i](dt))effects.splice(i,1);syncUI(false)}
+
+function updateCamera(){const cp=Math.cos(pitch);camera.position.set(target.x+camDist*Math.sin(yaw)*cp,target.y+camDist*Math.sin(pitch),target.z+camDist*Math.cos(yaw)*cp);camera.lookAt(target)}
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+function pick(e){const r=canvas.getBoundingClientRect();ndc.x=(e.clientX-r.left)/r.width*2-1;ndc.y=-(e.clientY-r.top)/r.height*2+1;raycaster.setFromCamera(ndc,camera);const hitsMeshes=raycaster.intersectObjects(bodies.map(b=>b.mesh),true);if(!hitsMeshes.length)return null;let obj=hitsMeshes[0].object;while(obj.parent&&!bodies.some(b=>b.mesh===obj))obj=obj.parent;return bodies.find(b=>b.mesh===obj)||null}
+function worldOnDrag(e){const r=canvas.getBoundingClientRect();ndc.x=(e.clientX-r.left)/r.width*2-1;ndc.y=-(e.clientY-r.top)/r.height*2+1;raycaster.setFromCamera(ndc,camera);const p=new THREE.Vector3();return raycaster.ray.intersectPlane(dragPlane,p)?p.sub(dragOffset):null}
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('pointerdown',e=>{
+ if(pointerDown||![0,2].includes(e.button))return;canvas.setPointerCapture(e.pointerId);prev={x:e.clientX,y:e.clientY};pointerDown={id:e.pointerId,button:e.button};
+ if(e.button===2){panning=true;return}const b=pick(e);
+ if(b){selected=b;dragBody=b;dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()),b.mesh.position);dragOffset.set(0,0,0);const point=worldOnDrag(e);if(point)dragOffset.subVectors(point,b.mesh.position);syncUI()}else rotating=true;
+});
+canvas.addEventListener('pointermove',e=>{
+ if(!pointerDown||e.pointerId!==pointerDown.id)return;const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
+ if(dragBody&&pointerDown.button===0){const point=worldOnDrag(e);if(point)dragBody.mesh.position.copy(point);dragBody.vel.set(0,0,0)}
+ else if(rotating){yaw-=dx*.006;pitch=Math.max(-1.35,Math.min(1.35,pitch-dy*.005));updateCamera()}
+ else if(panning){const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0),up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);target.addScaledVector(right,-dx*camDist*.0018);target.addScaledVector(up,dy*camDist*.0018);updateCamera()}
+ prev={x:e.clientX,y:e.clientY};
+});
+function stopPointer(e){if(e&&pointerDown&&e.pointerId!==pointerDown.id)return;const id=pointerDown?.id;dragBody=null;rotating=false;panning=false;pointerDown=null;dragOffset.set(0,0,0);if(id!==undefined&&canvas.hasPointerCapture(id))canvas.releasePointerCapture(id)}
+canvas.addEventListener('pointerup',stopPointer);canvas.addEventListener('pointercancel',stopPointer);canvas.addEventListener('lostpointercapture',stopPointer);window.addEventListener('blur',()=>stopPointer());
+
+canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=Math.max(8,Math.min(400,camDist*Math.exp(e.deltaY*.001)));updateCamera()},{passive:false});
+canvas.addEventListener('dblclick',()=>{if(selected){target.copy(selected.mesh.position);updateCamera()}});
+$('add').onclick=()=>{const kind=document.querySelector('[data-kind].primary')?.dataset.kind||'planet';const mass=+$('mass').value,radius=+$('radius').value,velocity=+$('velocity').value;const dir=new THREE.Vector3();camera.getWorldDirection(dir);const pos=camera.position.clone().addScaledVector(dir,Math.min(camDist*.55,36));const b=makeBody({kind,mass,radius,velocity,position:pos,vel:new THREE.Vector3((Math.random()-.5)*velocity,velocity*.15,(Math.random()-.5)*velocity)});if(!b)return;selected=b;$('event').textContent='已创建 '+b.name;syncUI()};
+document.querySelectorAll('[data-kind]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('[data-kind]').forEach(x=>x.classList.remove('primary'));btn.classList.add('primary')});
+document.querySelectorAll('[data-scene]').forEach(btn=>btn.onclick=()=>preset(btn.dataset.scene));
+$('pause').onclick=()=>{running=!running;syncUI()};$('step').onclick=()=>{if(!running)physics(.016)};$('focus').onclick=()=>{if(selected)target.copy(selected.mesh.position);else target.set(0,0,0);updateCamera()};
+$('delete').onclick=()=>{if(selected){removeBody(selected);$('event').textContent='已删除天体';syncUI()}};
+$('launch').onclick=()=>{if(selected){selected.vel.add(new THREE.Vector3((Math.random()-.5)*8,(Math.random()-.5)*5,(Math.random()-.5)*8));$('event').textContent='已施加随机推力';syncUI()}};
+$('resetTop').onclick=()=>preset('solar');
+for(const [id,out,suffix] of [['mass','massOut',''],['radius','radiusOut',''],['velocity','velocityOut',''],['gravity','gravityOut','×'],['timescale','timescaleOut','×']])$(id).oninput=()=>$(out).textContent=Number($(id).value).toFixed(1)+suffix;
+$('save').onclick=()=>{const data={version:1,gravity:$('gravity').value,timescale:$('timescale').value,collision:$('collision').value,bodies:bodies.map(b=>({kind:b.kind,mass:b.mass,radius:b.radius,position:b.mesh.position.toArray(),vel:b.vel.toArray(),color:b.color,name:b.name}))};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='cosmic-lab-scene.json';a.click();URL.revokeObjectURL(a.href)};
+function validateScene(data){
+ const finite=(n,min,max)=>typeof n==='number'&&Number.isFinite(n)&&n>=min&&n<=max;
+ if(!data||data.version!==1||!Array.isArray(data.bodies)||data.bodies.length>100)throw Error('场景需要 version:1，且最多 100 个天体');
+ const vector=v=>Array.isArray(v)&&v.length===3&&v.every(n=>finite(n,-1e7,1e7));
+ for(const b of data.bodies)if(!b||!Object.hasOwn(kinds,b.kind)||!finite(b.mass,.000001,1e9)||!finite(b.radius,.000001,1e5)||!vector(b.position)||!vector(b.vel)||!Number.isInteger(b.color)||b.color<0||b.color>0xffffff||typeof b.name!=='string'||b.name.length>80)throw Error('天体类型、数值或名称不合法');
+ const gravity=Number(data.gravity??1),timescale=Number(data.timescale??1),collision=data.collision??'merge';
+ if(!finite(gravity,0,3)||!finite(timescale,.1,3)||!['merge','bounce','fragment'].includes(collision))throw Error('物理设置不合法');
+ return {bodies:data.bodies,gravity,timescale,collision};
+}
+$('load').onclick=()=>$('file').click();$('file').onchange=async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  if(file.size>1024*1024)throw Error('文件不能超过 1 MB');
+  const data=validateScene(JSON.parse(await file.text()));
+  clearWorld();for(const b of data.bodies)makeBody({...b,physicalRadius:true,position:new THREE.Vector3(...b.position),vel:new THREE.Vector3(...b.vel)});
+  for(const id of ['gravity','timescale','collision'])$(id).value=data[id];
+  for(const id of ['gravity','timescale'])$(id).dispatchEvent(new Event('input'));
+  running=false;selected=bodies[0]||null;syncUI();$('event').textContent='场景导入成功，已暂停，可继续运行';
+ }catch(error){$('event').textContent='导入失败：'+error.message+'。原场景已保留。'}finally{e.target.value=''}
+};
+function updateDisplay(){
+ orbitGroup.visible=$('orbits').checked;
+ const layer=$('labelsLayer');layer.hidden=!$('labels').checked;
+ if(layer.hidden)return;
+ while(layer.children.length>bodies.length)layer.lastChild.remove();
+ const width=canvas.clientWidth,height=canvas.clientHeight;
+ bodies.forEach((b,i)=>{let label=layer.children[i];if(!label){label=document.createElement('span');layer.appendChild(label)}const point=b.mesh.position.clone().project(camera),inFront=b.mesh.position.clone().sub(camera.position).dot(camera.getWorldDirection(new THREE.Vector3()))>0;
+  label.hidden=!inFront||Math.abs(point.x)>1||Math.abs(point.y)>1||point.z>1;label.textContent=b.name;label.style.left=(point.x*.5+.5)*width+'px';label.style.top=(-point.y*.5+.5)*height-12+'px';
+ });
+}
+for(const radius of [10,20,35,50]){const points=[];for(let i=0;i<=128;i++){const a=i*Math.PI*2/128;points.push(new THREE.Vector3(Math.cos(a)*radius,0,Math.sin(a)*radius))}orbitGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0x385779,transparent:true,opacity:.35})));}
+
+preset('impact');updateCamera();new ResizeObserver(resize).observe(canvas);
+let last=performance.now();function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,.04);last=now;if(running&&!document.hidden){const total=dt*Number($('timescale').value),steps=Math.max(1,Math.ceil(total/.012));for(let i=0;i<steps;i++)physics(total/steps);}starField.rotation.y+=dt*.002;updateDisplay();renderer.render(scene,camera)}requestAnimationFrame(animate);
+</script>
+</body></html>

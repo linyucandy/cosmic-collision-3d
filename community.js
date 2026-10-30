@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   if(location.hostname.endsWith('.github.io')||new URLSearchParams(location.search).get('source')==='github') {
-    import('./community-github.js?v=community5').catch(() => {
+    import('./community-github.js?v=community6').catch(() => {
       const target=document.getElementById('catalogueContent')||document.getElementById('detailContent')||document.getElementById('publishError');
       if(target) target.textContent='社区加载失败，请刷新页面重试。';
     });
@@ -157,7 +157,7 @@
   }
 
   function safePlayUrl(value) {
-    if (['/cosmic-collision-3d.html','/cosmic-collision-simulator.html','/pixel-city.html'].includes(value)) return value;
+    if (['/cosmic-collision-3d.html','/cosmic-collision-simulator.html','/pixel-city.html','/宇宙实验室_3D碰撞模拟器.html'].includes(value)) return value;
     try {
       const parsed = new URL(value);
       if (['https:','http:'].includes(parsed.protocol) && !parsed.username && !parsed.password) return parsed.href;
