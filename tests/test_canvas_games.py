@@ -30,7 +30,7 @@ class CanvasGameTests(unittest.TestCase):
         self.page.goto(self.base+'cosmos_collision_lab.html');self.page.wait_for_function('window.cosmos')
     def fish(self):
         source=(ROOT/'pickFish.html').read_text(encoding='utf-8');end=source.rfind('requestAnimationFrame(loop);')
-        source=source[:end]+'''window.fish={game,boat,cam,keys,update,updateFishing,updateCamera,castLine,startReel,draw,FISH_TYPES,get holding(){return isRightMouseDown}};updateCamera();'''+source[end+len('requestAnimationFrame(loop);'):]
+        source=source[:end]+'''window.fish={game,boat,cam,keys,update,updateFishing,updateCamera,castLine,startReel,draw,FISH_TYPES,FP,get progress(){return progress},get paused(){return paused},get holding(){return isRightMouseDown}};updateCamera();'''+source[end+len('requestAnimationFrame(loop);'):]
         self.page.route('**/pickFish.html',lambda route:route.fulfill(body=source,content_type='text/html'))
         self.page.goto(self.base+'pickFish.html');self.page.wait_for_function('window.fish')
     def test_cosmos_galaxy_omits_inert_tracer_pair_work(self):
