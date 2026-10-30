@@ -121,5 +121,53 @@ class CosmicLabTests(unittest.TestCase):
           for(const [x,v] of [[-2,100],[0,0],[2,0]])lab.makeBody({mass:1,radius:.2,physicalRadius:true,position:new lab.THREE.Vector3(x,0,0),vel:new lab.THREE.Vector3(v,0,0)});
           lab.physics(.016);return {count:lab.bodies.length,mass:lab.bodies.reduce((s,b)=>s+b.mass,0),hits:Number(document.querySelector('#hits').textContent)};}''')
         self.assertEqual(result,{'count':1,'mass':3,'hits':2})
+    def test_create_each_kind_stays_separate_and_visible(self):
+        self.page.evaluate('lab.clearWorld()')
+        for kind in ['planet','star','moon','asteroid']:
+            self.page.locator('[data-kind="'+kind+'"]').click();self.page.locator('#add').click()
+        result=self.page.evaluate('''() => {const overlap=lab.bodies.some((a,i)=>lab.bodies.some((b,j)=>i<j&&a.mesh.position.distanceTo(b.mesh.position)<=a.radius+b.radius));
+          const kinds=lab.bodies.map(b=>b.kind),visible=lab.bodies.every(b=>{const p=b.mesh.position.clone().project(lab.camera);return Math.abs(p.x)<.9&&Math.abs(p.y)<.9&&p.z<1});
+          for(let i=0;i<30;i++)lab.physics(.01);return {overlap,visible,kinds,remaining:lab.bodies.length};}''')
+        self.assertFalse(result['overlap']);self.assertTrue(result['visible']);self.assertEqual(result['remaining'],4)
+        self.assertEqual(result['kinds'],['planet','star','moon','asteroid'])
+        self.assertEqual(self.errors,[])
+    def test_standalone_copy_loads_without_relative_assets(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            copy=Path(folder)/'lab.html';copy.write_bytes((ROOT/FILE).read_bytes())
+            page=self.browser.new_page();errors=[]
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            try:
+                page.goto(copy.as_uri())
+                page.wait_for_function("Number(document.querySelector('#count').textContent)>0",timeout=5000)
+                page.locator('#pause').click();before=int(page.locator('#count').inner_text())
+                page.locator('#add').click();self.assertEqual(int(page.locator('#count').inner_text()),before+1)
+                self.assertEqual(errors,[])
+            finally:page.close()
+    def test_render_failure_shows_recovery_instead_of_dead_create_button(self):
+        self.page.evaluate("() => {lab.renderer.render=()=>{throw Error('render diagnostic')};}")
+        self.page.locator('#startupStatus').wait_for(state='visible')
+        self.assertIn('render diagnostic',self.page.locator('#startupMessage').inner_text())
+        self.assertTrue(self.page.locator('#add').is_disabled())
+        self.assertEqual(self.page.locator('#startupStatus a').count(),2)
+        self.assertEqual(self.errors,[])
+    def test_graphics_context_loss_keeps_recovery_message_visible(self):
+        self.page.evaluate("lab.renderer.getContext().getExtension('WEBGL_lose_context').loseContext()")
+        self.page.locator('#startupStatus').wait_for(state='visible');self.page.wait_for_timeout(200)
+        self.assertTrue(self.page.locator('#startupStatus').is_visible())
+        self.assertTrue(self.page.locator('#add').is_disabled())
+    def test_renamed_file_retry_reloads_the_same_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            copy=Path(folder)/'renamed-lab.html';copy.write_bytes((ROOT/FILE).read_bytes())
+            page=self.browser.new_page()
+            page.add_init_script('HTMLCanvasElement.prototype.getContext=()=>null')
+            try:
+                page.goto(copy.as_uri());self.assertTrue(page.locator('#startupStatus').is_visible())
+                target=page.locator('#startupStatus a').first.evaluate('(a)=>a.href')
+                self.assertTrue(target.startswith(copy.as_uri()+'?'),target)
+                page.locator('#startupStatus a').first.click();page.wait_for_url(copy.as_uri()+'?*')
+                self.assertTrue(page.locator('#startupStatus').is_visible())
+            finally:page.close()
 
 if __name__=='__main__':unittest.main()
