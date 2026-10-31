@@ -32,7 +32,7 @@ class PixelCityBrowserTests(unittest.TestCase):
         try:
             page.goto(self.url)
             page.wait_for_selector('#tool-house')
-            self.assertEqual(page.locator('#toolGrid button').count(), 22)
+            self.assertEqual(page.locator('#toolGrid button').count(), 32)
             page.locator('#cityMap').focus(); page.keyboard.press('Enter')
             self.assertEqual(page.locator('#moneyValue').inner_text(), '840')
             page.locator('#nextMonthButton').click()
@@ -132,7 +132,7 @@ class PixelCityBrowserTests(unittest.TestCase):
             page.reload();page.wait_for_selector('#tool-house');self.assertEqual(page.locator('#moneyValue').inner_text(),'1,234')
             self.assertIn('6 月',page.locator('#monthValue').inner_text());page.locator('#cityInfoToggle').click()
             self.assertTrue(page.locator('#cityReport').is_visible());self.assertIn('第 1 阶段',page.locator('#goalTitle').inner_text())
-            self.assertEqual(page.locator('#toolGrid button').count(),22);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
+            self.assertEqual(page.locator('#toolGrid button').count(),32);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
             self.assertEqual(errors,[])
         finally:context.close()
 
@@ -166,6 +166,44 @@ class PixelCityBrowserTests(unittest.TestCase):
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
             page.wait_for_timeout(400);page.reload();page.locator('#cityInfoToggle').click()
             self.assertTrue(page.locator('[data-contract-action="cancel"]').is_visible());self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_regional_commerce_route_sales_pause_and_reload(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#tool-house')
+            page.evaluate("""() => {const C=PixelCity,s=C.createCity();s.stage=7;s.areas=C.AREAS.map(a=>a.id);s.money=10000;
+              for(let x=3;x<=30;x++)if(s.tiles[C.index(x,13)].type==='empty')C.build(s,x,13,'road');C.build(s,14,12,'road');
+              for(const [x,y,type] of [[3,12,'vegetable'],[4,12,'warehouse'],[21,12,'warehouse'],[22,12,'mall'],[6,12,'wind'],[7,12,'pump']]){const r=C.build(s,x,y,type);if(!r.ok)throw Error(r.message);}
+              localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.locator('#businessButton').click();self.assertTrue(page.locator('#businessDialog').is_visible())
+            page.locator('#routeFrom').select_option('center');page.locator('#routeTo').select_option('east');page.locator('#routeGood').select_option('vegetables');page.locator('#routeQuota').fill('4');page.locator('#createRoute').click()
+            self.assertEqual(page.locator('.business-route').count(),1);page.locator('#businessNextMonth').click();page.wait_for_timeout(400)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertGreater(saved['economy']['last']['transported'],0);self.assertLessEqual(saved['economy']['last']['transported'],4);self.assertEqual(saved['economy']['routes'][0]['quota'],4);self.assertGreater(saved['economy']['last']['revenue'],0)
+            page.locator('#routeOverlay').check();page.locator('[data-action="toggle"]').click();page.locator('#businessNextMonth').click();page.wait_for_timeout(400)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertEqual(saved['economy']['last']['transported'],0)
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-commerce-desktop.png'))
+            page.reload();page.locator('#businessButton').click();self.assertEqual(page.locator('.business-route').count(),1)
+            self.assertIn('手动暂停',page.locator('.business-route').inner_text());self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_farm_building_filter_and_industry_panel_on_mobile(self):
+        context=self.browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True);page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#tool-house')
+            page.evaluate("""() => {const s=PixelCity.createCity();s.stage=7;s.areas=PixelCity.AREAS.map(a=>a.id);s.money=10000;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.locator('#toolCategory').select_option('farm');self.assertEqual(page.locator('#toolGrid button:visible').count(),2)
+            page.locator('#tool-field').tap()
+            point=page.evaluate("""() => {const c=document.querySelector('#cityMap'),r=c.getBoundingClientRect(),w=c.width,h=c.height,z=Math.max(.2,Math.min((w-30)/640,(h-40)/360,1.25));return {x:r.left+(w/2+(6-10)*16*z)*r.width/w,y:r.top+(h/2+(6+10-20)*8*z)*r.height/h};}""")
+            page.touchscreen.tap(point['x'],point['y']);page.locator('#businessButton').tap();page.locator('#businessNextMonth').tap();page.wait_for_timeout(400)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertEqual(saved['tiles'][10*32+6]['type'],'field');self.assertGreater(saved['economy']['stock']['center']['grain'],0)
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+            self.assertLessEqual(page.locator('#businessDialog').evaluate('(e)=>e.scrollWidth-e.clientWidth'),1)
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-commerce-mobile.png'))
+            page.locator('#businessClose').tap();self.assertEqual(errors,[])
         finally:context.close()
 
 if __name__ == '__main__': unittest.main()

@@ -26,4 +26,17 @@ for(const project of C.PROJECTS){const missing=C.projectGoals(s,project.id).filt
 assert.equal(s.projectDone.length,4);assert.equal(C.acceptContract(s,'budget').ok,true);
 for(let i=0;i<3;i++)C.advance(s);
 assert.equal(C.claimContract(s).ok,true);assert.equal(C.restore(JSON.stringify(s)).contractsCompleted,1);
+// Use the same earned city to combine separate farming, ranching and retail districts.
+for(let y=8;y>=3;y--){const tile=s.tiles[C.index(25,y)];if(tile.type!=='empty'&&tile.type!=='road')assert.equal(C.build(s,25,y,'bulldoze').ok,true);road(25,y);}
+plot('field','north',2);plot('vegetable','north');plot('warehouse','north');plot('depot','north');
+plot('barn','south');plot('coop','south');plot('dairy','south');plot('warehouse','south');
+plot('mill','east');plot('bakery','east');plot('mall','east');plot('warehouse','east');
+plot('wind','valley',2);plot('pump','valley',2);
+for(const [from,to,good,quota] of [['north','south','grain',4],['north','east','grain',4],['north','east','vegetables',6],['south','east','eggs',3],['south','east','cheese',3]]){
+  ensure(120);assert.equal(C.addRoute(s,from,to,good,quota).ok,true);
+}
+for(let i=0;i<24;i++)C.advance(s);
+assert.ok(s.economy.last.produced.milk>0);assert.ok(s.economy.last.produced.bread>0);assert.ok(s.economy.last.produced.cheese>0);
+assert.ok(s.economy.soldTotal>100);assert.ok(s.economy.transportedTotal>200);assert.ok(s.economy.revenueTotal>1000);
+assert.ok(s.lastFinance.tradeRevenue>0);assert.deepEqual(C.restore(JSON.stringify(s)).economy,s.economy);
 });
