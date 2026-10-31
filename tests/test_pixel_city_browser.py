@@ -264,11 +264,66 @@ class PixelCityBrowserTests(unittest.TestCase):
             page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').tap();page.locator('#councilEnable').tap();page.locator('#councilRun').tap()
             page.locator('#councilFocus').select_option('food');page.locator('#councilReserve').fill('350');page.locator('#councilBudget').fill('25');page.locator('#councilSettings button').tap()
             page.screenshot(path=str(ROOT/'.screenshots/pixel-city-council-mobile.png'))
-            for _ in range(3):page.locator('#councilNextMonth').tap()
+            for _ in range(2):page.locator('#councilNextMonth').tap()
             page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
             self.assertEqual(saved['autonomy']['focus'],'food');self.assertEqual(saved['autonomy']['reserve'],350);self.assertEqual(saved['autonomy']['budgetPercent'],25);self.assertEqual(saved['autonomy']['reports'][0]['kind'],'quarter')
             self.assertLessEqual(page.locator('#councilDialog').evaluate('(e)=>e.scrollWidth-e.clientWidth'),1);self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
             page.reload();page.locator('#councilButton').tap();self.assertEqual(page.locator('#councilFocus').input_value(),'food');self.assertEqual(page.locator('#councilReserve').input_value(),'350');self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_enabling_autonomy_immediately_shows_and_locates_new_construction(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').click()
+            page.locator('#councilEnable').click();page.wait_for_function("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))?.autonomy?.reports.length >= 1",timeout=2500)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            action=next(a for a in reversed(saved['autonomy']['lastActions']) if a['kind']=='build')
+            self.assertIn('已建成',page.locator('#councilLatest').inner_text())
+            page.locator('#councilFocusLatest').click();self.assertFalse(page.locator('#councilDialog').is_visible())
+            self.assertTrue(page.locator('#civicWorkNotice').is_visible())
+            box=page.locator('#cityMap').bounding_box();page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
+            self.assertIn(f"{action['x']+1}, {action['y']+1}",page.locator('#plotTitle').inner_text())
+            page.mouse.move(0,0);page.screenshot(path=str(ROOT/'.screenshots/pixel-city-civic-construction.png'))
+            self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_autonomy_continues_while_the_open_page_is_in_the_background(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page()
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').click();page.locator('#councilEnable').click()
+            page.wait_for_function("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))?.autonomy?.reports.length >= 1")
+            first=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1')).month")
+            page.evaluate("() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));}")
+            page.wait_for_function("month => JSON.parse(localStorage.getItem('chenchen-pixel-city-v1')).month > month",arg=first,timeout=9000)
+            page.evaluate("() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));}")
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertGreater(saved['month'],first);self.assertGreaterEqual(len(saved['autonomy']['reports']),2)
+        finally:context.close()
+
+    def test_enabling_autonomy_respects_the_configured_reserve(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page()
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').click()
+            page.locator('#councilReserve').fill('1000');page.locator('#councilSettings button').click();page.wait_for_timeout(400)
+            before=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1')).tiles.map(t=>t.type)")
+            page.locator('#councilEnable').click();page.wait_for_timeout(400)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertEqual(saved['autonomy']['reports'][0]['spent'],0);self.assertEqual([t['type'] for t in saved['tiles']],before)
+            self.assertIn('预算',page.locator('#councilLatestText').inner_text())
+        finally:context.close()
+
+    def test_council_shows_and_locates_a_real_future_building_plan(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton')
+            page.evaluate("""() => {const s=PixelCity.createCity();s.stage=7;s.metroStage=5;s.money=10000;s.areas=PixelCity.AREAS.map(a=>a.id);localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.locator('#councilButton').click();page.locator('#councilEnable').click();page.locator('#councilRun').click();page.wait_for_timeout(400)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");proposal=saved['autonomy']['proposal']
+            self.assertEqual(proposal['kind'],'build');self.assertEqual(saved['tiles'][proposal['y']*96+proposal['x']]['type'],'empty')
+            name=page.evaluate('(type)=>PixelCity.BUILDINGS[type].name',proposal['type']);self.assertIn(name,page.locator('#councilProposalText').inner_text())
+            page.locator('#councilFocusProposal').click();box=page.locator('#cityMap').bounding_box();page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
+            self.assertIn(f"{proposal['x']+1}, {proposal['y']+1}",page.locator('#plotTitle').inner_text());self.assertEqual(errors,[])
         finally:context.close()
 
 if __name__ == '__main__': unittest.main()

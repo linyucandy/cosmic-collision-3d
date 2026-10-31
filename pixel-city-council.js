@@ -10,7 +10,7 @@
     {id:'finance',name:'周衡',role:'财政官',motto:'保留应急资金，如实报告花费和成果。',color:'#9a91ad'}
   ];
   const FOCUSES={balanced:'均衡发展',growth:'人口与城区',food:'农牧与商业',green:'宜居与交通'};
-  const create=()=>({version:1,enabled:false,focus:'balanced',reserve:200,budgetPercent:35,startedMonth:0,sequence:0,plan:null,reports:[],lastActions:[],lastBlock:'',decisions:{},totalSpent:0});
+  const create=()=>({version:1,enabled:false,focus:'balanced',reserve:200,budgetPercent:35,startedMonth:0,sequence:0,plan:null,proposal:null,reports:[],lastActions:[],lastBlock:'',decisions:{},totalSpent:0});
   const number=(n,min=0,max=1000000000)=>Number.isFinite(n)&&n>=min&&n<=max;
   const integer=(n,min=0,max=1000000000)=>number(n,min,max)&&Number.isInteger(n);
   const text=(s,max=400)=>typeof s==='string'&&s.length<=max;
@@ -30,7 +30,7 @@
     if(!patch||typeof patch!=='object'||Object.keys(patch).some(k=>!['enabled','focus','reserve','budgetPercent'].includes(k)))return {ok:false,message:'自治设置无效。'};
     if(patch.enabled!==undefined&&typeof patch.enabled!=='boolean'||patch.focus!==undefined&&!Object.hasOwn(FOCUSES,patch.focus)||patch.reserve!==undefined&&!integer(patch.reserve,0,1000000)||patch.budgetPercent!==undefined&&!integer(patch.budgetPercent,10,70))return {ok:false,message:'储备须为非负整数，月度建设预算为资金的 10%–70%。'};
     const a=s.autonomy,changed=patch.focus!==undefined&&patch.focus!==a.focus,starting=patch.enabled===true&&!a.enabled;
-    Object.assign(a,patch);if(starting&&a.startedMonth===0)a.startedMonth=s.month;
+    Object.assign(a,patch);if(changed)a.proposal=null;if(starting&&a.startedMonth===0)a.startedMonth=s.month;
     if(a.enabled&&(!a.plan||changed||a.plan.focus!==a.focus))a.plan=plan(s,C,C.stats(s));
     return {ok:true,message:a.enabled?'自治团队已就位，将按月执行计划并按季汇报。':'自治建设已暂停，现有城市继续由你管理。'};
   }
@@ -40,11 +40,12 @@
     const validMetrics=m=>m&&metricKeys.every(k=>integer(m[k],-1000000000,1000000000));
     const validTarget=t=>t&&metricKeys.includes(t.metric)&&text(t.label,100)&&text(t.unit,12)&&integer(t.target)&&integer(t.start,-1000000000);
     if(raw.enabled&&(!raw.plan||raw.startedMonth<1))return null;
+    if(raw.proposal!=null&&(!['build','area','route','connect','wait'].includes(raw.proposal.kind)||!MEMBERS.some(m=>m.id===raw.proposal.actor)||!text(raw.proposal.reason)||!text(raw.proposal.status)||raw.proposal.type!==undefined&&!text(raw.proposal.type,80)||raw.proposal.area!==undefined&&!text(raw.proposal.area,80)||raw.proposal.x!==undefined&&(!integer(raw.proposal.x,0,95)||!integer(raw.proposal.y,0,95))))return null;
     if(raw.plan!=null&&(!integer(raw.plan.id,1)||!Object.hasOwn(FOCUSES,raw.plan.focus)||!text(raw.plan.phase,40)||!text(raw.plan.title,150)||!integer(raw.plan.startMonth,1,1000000)||!integer(raw.plan.dueMonth,1,1000012)||raw.plan.dueMonth<=raw.plan.startMonth||!validMetrics(raw.plan.baseline)||!Array.isArray(raw.plan.targets)||raw.plan.targets.length<1||raw.plan.targets.length>8||!raw.plan.targets.every(validTarget)))return null;
     const validAction=a=>a&&MEMBERS.some(m=>m.id===a.actor)&&['build','road','area','route','reward'].includes(a.kind)&&text(a.message)&&integer(a.cost)&&(!Object.hasOwn(a,'x')||integer(a.x,0,95)&&integer(a.y,0,95));
     if(!Array.isArray(raw.lastActions)||raw.lastActions.length>30||!raw.lastActions.every(validAction)||!Array.isArray(raw.reports)||raw.reports.length>24)return null;
     for(const r of raw.reports)if(!r||!integer(r.month,1,1000000)||!['month','quarter','annual'].includes(r.kind)||!text(r.title,150)||!text(r.summary,600)||!text(r.blocked)||!integer(r.spent)||!integer(r.rewards)||!integer(r.budget)||!integer(r.periodSpent)||!integer(r.periodRewards)||!integer(r.progress,0,100)||!validMetrics(r.metrics)||!validMetrics(r.before)||!Array.isArray(r.actions)||r.actions.length>30||!r.actions.every(validAction)||!Array.isArray(r.targets)||r.targets.length>8||!r.targets.every(t=>validTarget(t)&&integer(t.value,-1000000000)&&typeof t.done==='boolean'))return null;
-    return JSON.parse(JSON.stringify(raw));
+    const result=JSON.parse(JSON.stringify(raw));if(result.proposal===undefined)result.proposal=null;return result;
   }
   function role(type,C){const d=C.BUILDINGS[type];return d?.category==='farm'||d?.category==='ranch'||d?.category==='industry'||d?.category==='retail'||['shop','office','hub','tech'].includes(type)?'industry':['solar','water','wind','pump','solarfield','reservoir','bus','metro','depot','warehouse','bridge','road'].includes(type)?'engineer':d?.capacity?'planner':'welfare';}
   function tick(s,C){
@@ -58,8 +59,8 @@
     for(const p of C.PROJECTS)if(!s.projectDone.includes(p.id))reward(C.claimProject(s,p.id),p.reward);
     if(s.contract){const amount=C.CONTRACTS.find(c=>c.id===s.contract.id).reward;reward(C.claimContract(s),amount);}
     const budget=Math.max(0,Math.min(s.money-a.reserve,Math.floor(s.money*a.budgetPercent/100)));
-    let roadsMade=0;
-    const canSpend=cost=>result.spent+cost<=budget&&s.money-cost>=a.reserve;
+    let roadsMade=0,isolatedNote='',preview=false;
+    const canSpend=cost=>preview?cost<=Math.max(0,Math.min(s.money-a.reserve,Math.floor(s.money*a.budgetPercent/100))):result.spent+cost<=budget&&s.money-cost>=a.reserve;
     const adjacent=id=>{const x=id%C.SIZE,y=Math.floor(id/C.SIZE);return [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([x,y])=>C.inBounds(x,y)).map(([x,y])=>C.index(x,y));};
     const chooseType=types=>types.find(t=>(C.BUILDINGS[t].unlock||0)<=s.stage&&canSpend(C.BUILDINGS[t].cost))||types.find(t=>(C.BUILDINGS[t].unlock||0)<=s.stage);
     const housing=()=>chooseType(['block','tower','apartment','house']);
@@ -102,8 +103,13 @@
     function decide(){
       if(r.powerCapacity<r.powerDemand+2)return task(chooseType(['solarfield','wind','solar']),undefined,'电力余量不足，先补充供电。');
       if(r.waterCapacity<r.waterDemand+2)return task(chooseType(['reservoir','pump','water']),undefined,'供水余量不足，先补充供水。');
-      const isolated=s.tiles.findIndex((tile,id)=>!['empty','road','bridge','townhall'].includes(tile.type)&&!r.connected.has(id));
-      if(isolated>=0)return {kind:'connect',target:isolated,actor:'engineer',reason:'将已有建筑接入市政道路。'};
+      const isolated=s.tiles.flatMap((tile,id)=>!['empty','road','bridge','townhall'].includes(tile.type)&&!r.connected.has(id)?[id]:[]);
+      if(isolated.length){
+        const spots=isolated.flatMap(id=>adjacent(id)).filter(id=>s.tiles[id].type==='empty'&&s.areas.includes(C.areaAt(id%C.SIZE,Math.floor(id/C.SIZE))));
+        const path=findRoadPath(spots);
+        if(path)return {kind:'connect',path,actor:'engineer',reason:'将已有建筑接入市政道路。'};
+        isolatedNote='部分旧建筑被包围或没有可用道路走廊，请调整附近布局；团队继续处理其他规划。';
+      }
       if(r.happiness<(a.focus==='green'?90:65)){const t=services();if(t)return t;}
       const goals=phaseGoals(s,C,r).filter(g=>g.value<g.target),area=goals.find(g=>g.kind==='area');
       if(area)return {kind:'area',area:area.area,actor:'planner',reason:'阶段规划需要拓展新城区。'};
@@ -123,7 +129,9 @@
       if(goals.some(g=>g.kind==='stability'))return {kind:'wait',reason:'维持现有供给和收支，完成连续稳定经营目标。',actor:'finance'};
       if(a.focus==='green'){const t=services();if(t)return t;if(s.stage>=5&&r.transitCoverage<.8)return task(chooseType(['metro','bus']),undefined,'改善自治城市的出行条件。');}
       const industry=foodTask()||logisticsTask();if(s.stage>=3&&industry)return industry;
-      if(r.activeCapacity<s.population+Math.max(8,s.population*.1))return task(housing(),undefined,'为下一年度预留住宅。');
+      const futurePopulation=a.plan.targets.find(t=>t.metric==='population')?.target||s.population+8;
+      if(r.jobs<futurePopulation*.65)return task(jobs(),undefined,'为下一年度发展预留就业岗位。');
+      if(r.activeCapacity<futurePopulation)return task(housing(),undefined,'为下一年度发展预留住宅。');
       return {kind:'wait',reason:'当前目标暂时具备条件，维持经营并观察下月变化。',actor:'mayor'};
     }
     function plots(type,area){
@@ -140,14 +148,20 @@
       const score=id=>{let value=dist(id,C.index(...C.AREAS.find(a=>a.id===(area||'center')).center));if(serviceRadius)value-=uncovered.filter(h=>dist(h,id)<=serviceRadius).length*100;if(def.capacity)value+=s.tiles.some((t,i)=>t.type==='factory'&&dist(id,i)<5)?1000:0;return value;};
       return [...candidates].map(id=>({id,score:score(id)})).sort((a,b)=>a.score-b.score).map(p=>p.id);
     }
-    function roadTo(target,reason){
-      const parents=new Int32Array(C.SIZE*C.SIZE);parents.fill(-2);const queue=[...r.roads];for(const id of queue)parents[id]=-1;
-      for(let head=0;head<queue.length&&parents[target]===-2;head++)for(const id of adjacent(queue[head])){
+    function findRoadPath(targets){
+      const wanted=new Set(targets);if(!wanted.size)return null;
+      const parents=new Int32Array(C.SIZE*C.SIZE);parents.fill(-2);const queue=[...r.roads],hall=s.tiles.findIndex(tile=>tile.type==='townhall');if(hall>=0)queue.push(hall);for(const id of queue)parents[id]=-1;
+      let target=-1;
+      for(let head=0;head<queue.length&&target<0;head++)for(const id of adjacent(queue[head])){
         const tile=s.tiles[id];if(parents[id]!==-2||!s.areas.includes(C.areaAt(id%C.SIZE,Math.floor(id/C.SIZE)))||!['empty','road','bridge'].includes(tile.type)||tile.terrain==='water'&&s.stage<2)continue;parents[id]=queue[head];queue.push(id);
+        if(wanted.has(id)){target=id;break;}
       }
-      if(parents[target]===-2){result.blocked='没有可用的空地道路走廊，需要玩家调整布局。';return false;}
-      const path=[];for(let id=target;parents[id]!==-1;id=parents[id])path.push(id);let changed=false;
-      for(const id of path.reverse()){
+      if(target<0)return null;
+      const path=[];for(let id=target;parents[id]!==-1;id=parents[id])path.push(id);return path.reverse();
+    }
+    function roadTo(path,reason){
+      let changed=false;
+      for(const id of path){
         const tile=s.tiles[id];if(['road','bridge'].includes(tile.type))continue;const type=tile.terrain==='water'?'bridge':'road',cost=C.BUILDINGS[type].cost;
         if(roadsMade>=18||!canSpend(cost)){result.blocked='道路按预算分期铺设，下月继续。';break;}
         const x=id%C.SIZE,y=Math.floor(id/C.SIZE),res=C.build(s,x,y,type);if(!res.ok){result.blocked=res.message;break;}roadsMade++;changed=true;record('engineer','road',reason+' '+C.BUILDINGS[type].name+'（'+(x+1)+','+(y+1)+'）',cost,{x,y,type,area:C.areaAt(x,y)});
@@ -156,7 +170,8 @@
     function prepareLand(area){
       const ar=C.AREAS.find(a=>a.id===area),center=C.index(...ar.center),distance=id=>Math.abs(id%C.SIZE-ar.center[0])+Math.abs(Math.floor(id/C.SIZE)-ar.center[1]);
       const candidates=[];for(let id=0;id<s.tiles.length;id++)if(C.areaAt(id%C.SIZE,Math.floor(id/C.SIZE))===area&&s.tiles[id].type==='empty'&&s.tiles[id].terrain==='grass'&&!adjacent(id).some(n=>r.roads.has(n))&&adjacent(id).filter(n=>s.tiles[n].type==='empty').length>=2)candidates.push(id);
-      candidates.sort((a,b)=>distance(a)-distance(b));if(!candidates.length){result.blocked='本区缺少可扩展的空地，保留现有建筑并等待调整。';return false;}return roadTo(candidates[0],'按规划扩展街区道路。');
+      candidates.sort((a,b)=>distance(a)-distance(b));if(!candidates.length){result.blocked='本区缺少可扩展的空地，保留现有建筑并等待调整。';return false;}
+      const path=findRoadPath(candidates);if(!path){result.blocked='没有可用的空地道路走廊，需要玩家调整布局。';return false;}return roadTo(path,'按规划扩展街区道路。');
     }
     for(let pass=0;pass<2;pass++){
       r=C.stats(s);let t=decide();a.decisions[t.actor]=t.reason;
@@ -169,7 +184,7 @@
         if(!canSpend(120)){result.blocked='商业连接等待下月建设预算。';break;}const res=C.addRoute(s,t.from,t.to,t.good,6);if(res.ok)record(t.actor,'route',res.message+' '+C.GOODS[t.good].name+'跨区供货。',120,{area:t.from});else result.blocked=res.message;continue;
       }
       if(t.kind==='connect'){
-        const spots=adjacent(t.target).filter(id=>s.tiles[id].type==='empty'&&s.areas.includes(C.areaAt(id%C.SIZE,Math.floor(id/C.SIZE))));if(spots.length)roadTo(spots[0],t.reason);else result.blocked='已有建筑周边没有道路空位，请玩家调整布局。';break;
+        roadTo(t.path,t.reason);break;
       }
       const def=C.BUILDINGS[t.type];if(!def){result.blocked='尚未解锁所需建筑。';break;}
       if(def.power&&r.powerCapacity<r.powerDemand+def.power){t=task(chooseType(['solarfield','wind','solar']),t.area,'先为计划建筑准备电力。');}
@@ -181,12 +196,28 @@
       const id=choices[0],x=id%C.SIZE,y=Math.floor(id/C.SIZE),res=C.build(s,x,y,t.type);
       if(!res.ok){result.blocked=res.message;break;}record(t.actor,'build',t.reason+' 已建成'+C.BUILDINGS[t.type].name+'（'+(x+1)+','+(y+1)+'）。',cost,{x,y,type:t.type,area:C.areaAt(x,y)});
     }
+    if(isolatedNote)result.blocked=(result.blocked?result.blocked+' ':'')+isolatedNote;
     r=C.stats(s);const after=metrics(s,r),targets=activePlan.targets.map(t=>({...t,value:after[t.metric],done:after[t.metric]>=t.target})),progress=Math.round(targets.filter(t=>t.done).length/targets.length*100),elapsed=s.month-a.startedMonth,kind=elapsed>0&&elapsed%12===0?'annual':elapsed>0&&elapsed%3===0?'quarter':'month';
     const months=kind==='annual'?12:kind==='quarter'?3:1,rows=a.reports.filter(r=>r.month>s.month-months),periodBefore=a.reports.find(r=>r.month<=s.month-months)?.metrics||a.reports[a.reports.length-1]?.before||before,periodSpent=result.spent+rows.reduce((sum,r)=>sum+r.spent,0),periodRewards=result.rewards+rows.reduce((sum,r)=>sum+r.rewards,0);
     const summary=(months===1?'本月':'本期 '+months+' 个月')+'居民 '+periodBefore.population+' → '+after.population+'，岗位 '+periodBefore.jobs+' → '+after.jobs+'，建设投入 '+periodSpent+'，阶段奖励 '+periodRewards+'，期末资金 '+s.money+'。'+(result.blocked?'当前说明：'+result.blocked:'计划已按预算执行。');
     a.lastActions=result.actions;a.lastBlock=result.blocked;a.totalSpent=Math.min(1000000000,a.totalSpent+result.spent);a.decisions.finance='本月预算 '+budget+'，实际投入 '+result.spent+'，保留应急储备 '+a.reserve+'。';
     a.reports.unshift({month:s.month,kind,title:activePlan.title,summary,blocked:result.blocked,spent:result.spent,rewards:result.rewards,periodSpent,periodRewards,budget,before,metrics:after,progress,targets,actions:result.actions});a.reports.length=Math.min(a.reports.length,24);
     if(s.month>=activePlan.dueMonth||progress===100||phase(s,C)!==activePlan.phase)a.plan=plan(s,C,r);
+    preview=true;let next=decide();
+    if(next.kind==='build'){
+      const def=C.BUILDINGS[next.type];
+      if(def.power&&r.powerCapacity<r.powerDemand+def.power)next=task(chooseType(['solarfield','wind','solar']),next.area,'为规划建筑准备电力。');
+      else if(def.water&&r.waterCapacity<r.waterDemand+def.water)next=task(chooseType(['reservoir','pump','water']),next.area,'为规划建筑准备供水。');
+      const preferred=next.area||district(),service=['park','clinic','hospital','school','university','police','library','bus','metro','recycling'].includes(next.type);
+      let choices=plots(next.type,next.area||(!service?preferred:undefined));if(!choices.length&&!next.area)choices=plots(next.type,undefined);
+      const id=choices[0],area=id===undefined?preferred:C.areaAt(id%C.SIZE,Math.floor(id/C.SIZE)),cost=C.BUILDINGS[next.type].cost;
+      a.proposal={kind:'build',actor:next.actor,type:next.type,area,reason:next.reason,status:!canSpend(cost)?'等待预算或应急储备。':id===undefined?'需要先铺路连接可用地块。':'已选可用地块，下月将重新核验条件。',...(id===undefined?{}:{x:id%C.SIZE,y:Math.floor(id/C.SIZE)})};
+    }else{
+      const first=next.kind==='connect'?next.path.find(id=>s.tiles[id].type==='empty'):undefined;
+      const nextArea=next.area&&C.AREAS.find(item=>item.id===next.area),from=next.from&&C.AREAS.find(item=>item.id===next.from),to=next.to&&C.AREAS.find(item=>item.id===next.to);
+      const status=next.kind==='area'?'准备开放'+nextArea.name+'，费用 '+nextArea.cost+' 城币。':next.kind==='route'?'拟从'+from.name+'向'+to.name+'运送'+C.GOODS[next.good].name+'，线路费用 120 城币。':next.kind==='connect'?'准备铺设连接道路。':'等待下月重新评估。';
+      a.proposal={kind:next.kind,actor:next.actor,reason:next.reason,status,...(next.area?{area:next.area}:{}),...(first===undefined?{}:{x:first%C.SIZE,y:Math.floor(first/C.SIZE)})};
+    }
     return result;
   }
   const api={MEMBERS,FOCUSES,create,configure,restore,tick,metrics};if(typeof module!=='undefined'&&module.exports)module.exports=api;else globalThis.CityCouncilRules=api;

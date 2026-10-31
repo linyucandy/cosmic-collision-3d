@@ -5,7 +5,7 @@
   const SAVE_KEY='chenchen-pixel-city-v1';
   let state=C.createCity(),tool='house',running=false,speed=1,elapsed=0,lastTime=0,lastDraw=0,space=false;
   let cursor={x:6,y:10},pointer=null,saveTimer=null,storageAvailable=true;
-  let business=null,regions=null,council=null,reportCache=null,lastMinimap=0;
+  let business=null,regions=null,council=null,reportCache=null,lastMinimap=0,backgroundTimer=null,lastBackground=0;
   const signed=value=>(value>=0?'+':'')+value;
   const message=text=>{$('cityMessage').textContent=text;};
   try {
@@ -73,7 +73,10 @@
     updatePlot();business?.update(report);regions?.update(report);council?.update(report);
   }
   function buildAt(pos,quiet=false){if(!pos||tool==='hand')return;const result=C.build(state,pos.x,pos.y,tool);if(!quiet||result.ok)message(result.message);if(result.ok){update();scheduleSave();}}
-  function month(){const result=C.advance(state),notice=state.autonomy.enabled?' 自治建设投入 '+result.civic.spent+'，自治领取奖励 '+result.civic.rewards+'。'+(state.autonomy.reports[0]?.kind!=='month'?'新的规划进展报告已上报。':''):'';message('月度结算：城市收入 +'+result.income+'（含货物销售 '+result.economy.revenue+'），维护 −'+result.expense+'，结余 '+signed(result.net)+'。居民 '+signed(result.growth)+' 人。'+result.rewards.map(goal=>'达成「'+goal.name+'」奖励 +'+goal.reward+'！').join('')+notice);update();scheduleSave();}
+  function focusCivic(x,y){if(renderer.zoom<.75)renderer.zoom=.75;renderer.focus(x,y);}
+  function month(){const result=C.advance(state),notice=state.autonomy.enabled?' 自治建设投入 '+result.civic.spent+'，自治领取奖励 '+result.civic.rewards+'。'+(state.autonomy.reports[0]?.kind!=='month'?'新的规划进展报告已上报。':''):'';
+    const actions=[...result.civic.actions].reverse(),latest=actions.find(a=>a.kind==='build'&&a.x!==undefined)||actions.find(a=>a.kind==='road'&&a.x!==undefined);if(latest&&council?.isFollowing())focusCivic(latest.x,latest.y);
+    message('月度结算：城市收入 +'+result.income+'（含货物销售 '+result.economy.revenue+'），维护 −'+result.expense+'，结余 '+signed(result.net)+'。居民 '+signed(result.growth)+' 人。'+result.rewards.map(goal=>'达成「'+goal.name+'」奖励 +'+goal.reward+'！').join('')+notice);update();scheduleSave();}
   $('pauseButton').onclick=()=>{running=!running;elapsed=0;update();};$('speedButton').onclick=()=>{speed=speed===4?1:speed*2;update();};$('nextMonthButton').onclick=()=>{elapsed=0;month();};
   $('completeStage').onclick=()=>{const result=C.STAGES[state.stage]?C.claimStage(state):C.claimMetroPlan(state);message(result.message);if(result.ok){update();scheduleSave();}};
   $('aftergameSection').addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;let result;if(button.dataset.project)result=C.claimProject(state,button.dataset.project);else if(button.dataset.contract)result=C.acceptContract(state,button.dataset.contract);else if(button.dataset.contractAction==='claim')result=C.claimContract(state);else if(button.dataset.contractAction==='cancel')result=C.cancelContract(state);if(result){message(result.message);if(result.ok){update();scheduleSave();}}});
@@ -129,12 +132,24 @@
     if(event.key==='Enter'){event.preventDefault();buildAt(renderer.hover||cursor);}
   });
   document.addEventListener('keyup',event=>{if(event.code==='Space')space=false;});window.addEventListener('blur',()=>{space=false;});
-  window.addEventListener('beforeunload',()=>{if(saveTimer)save();});document.addEventListener('visibilitychange',()=>{elapsed=0;lastTime=0;if(document.hidden&&saveTimer)save();});
+  function visibilityChanged(){
+    if(backgroundTimer!==null){clearInterval(backgroundTimer);backgroundTimer=null;}
+    elapsed=0;lastTime=0;
+    if(document.hidden){
+      if(saveTimer)save();lastBackground=Date.now();
+      backgroundTimer=setInterval(()=>{
+        const now=Date.now(),delta=Math.max(0,now-lastBackground);lastBackground=now;
+        if(!document.hidden||!running||!state.autonomy.enabled||document.querySelector('dialog[open]:not(#councilDialog)')){elapsed=0;return;}
+        elapsed+=delta*speed;let steps=0;while(elapsed>=5000&&steps<12){elapsed-=5000;month();steps++;}if(steps)save();
+      },1000);
+    }
+  }
+  window.addEventListener('beforeunload',()=>{if(saveTimer)save();});document.addEventListener('visibilitychange',visibilityChanged);
   new ResizeObserver(()=>renderer.resize()).observe(canvas);
   function frame(time){const delta=lastTime?Math.min(time-lastTime,100):0;lastTime=time;if(running&&!document.hidden&&!document.querySelector('dialog[open]:not(#councilDialog)')){elapsed+=delta*speed;if(elapsed>=5000){elapsed-=5000;month();}}if(time-lastDraw>32){renderer.draw(state,reportCache,tool,time);lastDraw=time;}if(time-lastMinimap>250){regions.drawCamera();lastMinimap=time;}requestAnimationFrame(frame);}
   business=new CityBusinessPanel({getState:()=>state,onMonth:month,onChange:result=>{message(result.message);if(result.ok){update();scheduleSave();}},onFocus:area=>{renderer.focus(...area.center);$('cityReport').classList.remove('open');$('cityInfoToggle').setAttribute('aria-expanded','false');},onOverlay:visible=>{renderer.showTradeRoutes=visible;}});
   $('businessButton').onclick=()=>business.open();
   regions=new CityRegionPanel({getState:()=>state,getReport:()=>reportCache,renderer,onUnlock:id=>{const result=C.unlockArea(state,id);message(result.message);if(result.ok){update();scheduleSave();}},onClaim:()=>{const result=C.claimMetroPlan(state);message(result.message);if(result.ok){update();scheduleSave();}},onFocus:area=>{renderer.focusRegion(area);$('cityReport').classList.remove('open');$('cityInfoToggle').setAttribute('aria-expanded','false');}});
-  council=new CityCouncilPanel({getState:()=>state,getReport:()=>reportCache,isRunning:()=>running,onSettings:settings=>{const result=C.setAutonomy(state,settings);message(result.message);council.notify(result);if(result.ok){if(settings.enabled===true)running=true;elapsed=0;update();scheduleSave();}},onMonth:()=>{elapsed=0;month();},onRun:()=>{running=!running;elapsed=0;update();},onFocus:(x,y)=>{if(renderer.zoom<.35)renderer.zoom=.5;renderer.focus(x,y);}});
-  renderer.resize();select(tool);update();if(!storageAvailable)$('saveStatus').textContent='本地存储不可用，请允许存储以保留进度';requestAnimationFrame(frame);
+  council=new CityCouncilPanel({getState:()=>state,getReport:()=>reportCache,isRunning:()=>running,onSettings:settings=>{const starting=settings.enabled===true&&!state.autonomy.enabled,result=C.setAutonomy(state,settings);message(result.message);council.notify(result);if(result.ok){if(starting){running=true;elapsed=0;month();}else{elapsed=0;update();scheduleSave();}}},onMonth:()=>{elapsed=0;month();},onRun:()=>{running=!running;elapsed=0;update();},onFocus:focusCivic});
+  renderer.resize();select(tool);update();if(document.hidden)visibilityChanged();if(!storageAvailable)$('saveStatus').textContent='本地存储不可用，请允许存储以保留进度';requestAnimationFrame(frame);
 })();

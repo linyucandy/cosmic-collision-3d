@@ -7,15 +7,21 @@
     constructor({getState,getReport,isRunning,onSettings,onMonth,onRun,onFocus}){
       this.getState=getState;this.getReport=getReport;this.isRunning=isRunning;this.dirty=false;this.seenMonth=0;
       this.button=make('button','市民自治 ↗','council-button');this.button.id='councilButton';this.button.type='button';document.querySelector('.map-stage').append(this.button);
+      this.work=make('button','','civic-work-notice');this.work.id='civicWorkNotice';this.work.type='button';this.work.hidden=true;document.querySelector('.map-stage').append(this.work);
       const dialog=make('dialog');dialog.id='councilDialog';dialog.className='council-dialog';
       dialog.innerHTML=`<button type="button" class="close-dialog" id="councilClose" aria-label="关闭市民议事厅">×</button><span class="eyebrow">A CITY THAT THINKS AHEAD</span><h2>市民议事厅</h2><p>市政团队根据人口、收支、供给和阶段目标制定年度规划，按月建设经营，并定期如实上报。自治观察窗口保持城市时间运行。</p>
-      <div class="council-controls"><button type="button" id="councilEnable">开启自治</button><button type="button" id="councilRun">开始城市时间</button><button type="button" id="councilNextMonth">推进一个月 ▸</button><strong id="councilStatus"></strong></div>
+      <div class="council-controls"><button type="button" id="councilEnable">开启自治并推进 1 个月</button><button type="button" id="councilRun">开始城市时间</button><button type="button" id="councilNextMonth">推进一个月 ▸</button><strong id="councilStatus"></strong></div><div class="civic-latest" id="councilLatest"><strong>最新建设</strong><span id="councilLatestText">开启自治后，团队会先执行一个月的规划。</span><button type="button" id="councilFocusLatest" hidden>前往建设地点</button></div><div class="civic-proposal"><strong>下一步自主规划</strong><span id="councilProposalText">团队将在执行规划后提出下一步建设。</span><button type="button" id="councilFocusProposal" hidden>查看规划地块</button></div><label class="civic-follow"><input type="checkbox" id="councilFollow" checked> 自动跟随最新建设（可随时关闭）</label>
       <form id="councilSettings" class="council-settings"><label>发展重点<select id="councilFocus"></select></label><label>应急储备<input id="councilReserve" type="number" min="0" max="1000000" step="1" value="200" required></label><label>月度建设预算（现有资金 %）<input id="councilBudget" type="number" min="10" max="70" step="1" value="35" required></label><button type="submit">应用设置</button></form><p id="councilMessage" class="council-message" role="status">开启后可直接观察团队自主发展，也可随时暂停并亲自建设。</p>
       <div class="council-columns"><section><h3>城市里的六位负责人</h3><div id="councilMembers" class="council-members"></div></section><section class="council-plan"><h3 id="councilPlanTitle">等待市民提出规划</h3><p id="councilPlanDates"></p><ul id="councilTargets" class="stage-objectives"></ul><p id="councilBlock"></p><p class="small-note">规划目标在制定时固定，阶段变化、目标达成或到期后再修订。每月最多执行两项主要任务，道路按预算分期铺设。</p></section></div>
       <section><div class="council-report-heading"><h3>规划与目标实现情况</h3><label>查看<select id="councilReportFilter"><option value="all">全部汇报</option><option value="quarter">季度报告</option><option value="annual">年度报告</option><option value="month">月度执行</option></select></label></div><div id="councilReports"></div></section><p class="small-note">本地规则驱动人物决策；所有建设、供货和奖励均通过真实游戏规则执行。只在页面打开且城市时间运行时经营，进度保存在本机。</p><button type="button" id="councilReturn">返回城市</button>`;
       document.body.append(dialog);this.dialog=dialog;this.$=id=>dialog.querySelector('#'+id);
       for(const [id,label] of Object.entries(C.CIVIC_FOCUSES)){const option=make('option',label);option.value=id;this.$('councilFocus').append(option);}
       this.$('councilClose').onclick=this.$('councilReturn').onclick=()=>dialog.close();
+      try{this.$('councilFollow').checked=localStorage.getItem('chenchen-civic-follow')!=='off';}catch(_){}
+      this.$('councilFollow').onchange=()=>{try{localStorage.setItem('chenchen-civic-follow',this.$('councilFollow').checked?'on':'off');}catch(_){}};
+      const focusLatest=()=>{if(!this.latest)return;if(dialog.open)dialog.close();onFocus(this.latest.x,this.latest.y);};
+      this.$('councilFocusLatest').onclick=focusLatest;this.work.onclick=focusLatest;
+      this.$('councilFocusProposal').onclick=()=>{if(!this.proposal)return;dialog.close();onFocus(this.proposal.x,this.proposal.y);};
       this.button.onclick=()=>{this.seenMonth=getState().month;dialog.showModal();this.update(getReport());};
       this.$('councilEnable').onclick=()=>onSettings({enabled:!getState().autonomy.enabled});
       this.$('councilRun').onclick=onRun;this.$('councilNextMonth').onclick=onMonth;
@@ -25,11 +31,20 @@
       this.$('councilMembers').onclick=event=>{const button=event.target.closest('[data-member]');if(!button)return;const action=[...getState().autonomy.lastActions].reverse().find(a=>a.actor===button.dataset.member&&a.x!==undefined);if(action){dialog.close();onFocus(action.x,action.y);}};
     }
     notify(result){this.$('councilMessage').textContent=result.message;}
+    isFollowing(){return this.$('councilFollow').checked;}
     update(report){
       const s=this.getState(),a=s.autonomy,unread=a.reports.some(r=>r.kind!=='month'&&r.month>this.seenMonth);
+      const actions=[...a.lastActions].reverse();this.latest=actions.find(action=>action.kind==='build'&&action.x!==undefined)||actions.find(action=>action.kind==='road'&&action.x!==undefined)||null;
+      const latestText=this.latest?this.latest.message:a.reports.length?(a.lastBlock||'本月未建设，团队正在观察城市需求。'):'开启自治后，团队会先执行一个月的规划。';
+      this.work.hidden=!a.enabled||!a.reports.length;this.work.disabled=!this.latest;this.work.textContent=this.latest?'最新建设 · '+(C.BUILDINGS[this.latest.type]?.name||'道路工程')+' · 点击查看':'自治进展 · '+latestText;
+      this.$('councilLatestText').textContent=latestText;this.$('councilFocusLatest').hidden=!this.latest;
+      const proposal=a.proposal,validPlot=proposal?.x!==undefined&&s.tiles[C.index(proposal.x,proposal.y)].type==='empty';this.proposal=validPlot?proposal:null;
+      const member=proposal&&C.COUNCILLORS.find(m=>m.id===proposal.actor),area=proposal?.area&&C.AREAS.find(item=>item.id===proposal.area),building=proposal?.type&&C.BUILDINGS[proposal.type];
+      this.$('councilProposalText').textContent=proposal?(member?.name||'团队')+'：'+(building?'拟建设'+building.name+(area?'（'+area.name+'）':'')+'。':'')+proposal.reason+' '+proposal.status+(proposal.x!==undefined&&!validPlot?' 原地块已变化，将重新选址。':''):'团队将在执行规划后提出下一步建设。';
+      this.$('councilFocusProposal').hidden=!this.proposal;
       this.button.textContent=a.enabled?(unread?'自治中 · 有新季报 ↗':'市民自治中 ↗'):'市民自治 ↗';
       this.button.classList.toggle('active',a.enabled);if(!this.dialog.open)return;
-      this.seenMonth=s.month;this.$('councilEnable').textContent=a.enabled?'暂停自治建设':'开启自治经营';this.$('councilRun').textContent=this.isRunning()?'暂停城市时间':'开始城市时间';
+      this.seenMonth=s.month;this.$('councilEnable').textContent=a.enabled?'暂停自治建设':'开启自治并推进 1 个月';this.$('councilRun').textContent=this.isRunning()?'暂停城市时间':'开始城市时间';
       this.$('councilStatus').textContent=date(s.month)+' · '+(a.enabled?'自治已启用':'手动管理')+' · '+(this.isRunning()?'时间运行中':'时间已暂停');
       if(!this.dirty){this.$('councilFocus').value=a.focus;this.$('councilReserve').value=a.reserve;this.$('councilBudget').value=a.budgetPercent;}
       this.$('councilMembers').replaceChildren(...C.COUNCILLORS.map((m,i)=>{

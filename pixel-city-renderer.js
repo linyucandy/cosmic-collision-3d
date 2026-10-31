@@ -167,6 +167,17 @@
         polygon(ctx,[[0,-8],[16,0],[0,8],[-16,0]],valid?'#d6e6ab77':'#d77c6b55',valid?'#f8f2cd':'#c16858');
         if(valid&&tool!=='bulldoze'){ctx.globalAlpha=.55;sprite(ctx,tool,0,0,1,0,time);}ctx.restore();
       }
+      if(state.autonomy.enabled){
+        const proposal=state.autonomy.proposal;
+        if(proposal?.x!==undefined&&state.tiles[E.index(proposal.x,proposal.y)].type==='empty'){
+          const p=this.project(proposal.x,proposal.y);if(p.x>= -30&&p.x<=this.width+30&&p.y>= -50&&p.y<=this.height+30){ctx.save();ctx.translate(p.x,p.y);ctx.scale(this.zoom,this.zoom);polygon(ctx,[[0,-8],[16,0],[0,8],[-16,0]],'#83c7ba66','#d8fff3');ctx.restore();ctx.save();ctx.font='bold 9px "Microsoft YaHei", sans-serif';ctx.textAlign='center';ctx.fillStyle='#4f8379';ctx.fillRect(p.x-14,p.y-24,28,12);ctx.fillStyle='#f1fff7';ctx.fillText('规划',p.x,p.y-15);ctx.restore();}
+        }
+        const marks=state.autonomy.lastActions.filter(a=>['build','road'].includes(a.kind)&&a.x!==undefined).slice(-4);
+        for(const action of marks){const p=this.project(action.x,action.y);if(p.x< -30||p.x>this.width+30||p.y< -80||p.y>this.height+30)continue;const label=action.kind==='build'?'新建':'铺路',top=p.y-Math.max(20,38*this.zoom);
+          ctx.save();ctx.translate(p.x,p.y);ctx.scale(this.zoom,this.zoom);polygon(ctx,[[0,-8],[16,0],[0,8],[-16,0]],'#f3d06b77','#fff2a6');ctx.restore();
+          ctx.save();ctx.font='bold 9px "Microsoft YaHei", sans-serif';ctx.textAlign='center';ctx.fillStyle='#5a7046';ctx.fillRect(p.x-14,top-11,28,12);ctx.fillStyle='#fff9dd';ctx.fillText(label,p.x,top-2);ctx.restore();
+        }
+      }
       if(this.showTradeRoutes&&report.economy){
         ctx.save();ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
         for(const flow of report.economy.flows){const from=E.AREAS.find(a=>a.id===flow.from),to=E.AREAS.find(a=>a.id===flow.to),a=this.project(...from.center),b=this.project(...to.center);ctx.strokeStyle=flow.amount?'#427c70':'#aa9371';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();if(flow.amount){const t=(time/2400+flow.id*.17)%1;ctx.fillStyle='#f7e6a2';ctx.fillRect(a.x+(b.x-a.x)*t-2,a.y+(b.y-a.y)*t-2,4,4);}}
