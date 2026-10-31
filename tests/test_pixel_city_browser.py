@@ -32,7 +32,7 @@ class PixelCityBrowserTests(unittest.TestCase):
         try:
             page.goto(self.url)
             page.wait_for_selector('#tool-house')
-            self.assertEqual(page.locator('#toolGrid button').count(), 18)
+            self.assertEqual(page.locator('#toolGrid button').count(), 22)
             page.locator('#cityMap').focus(); page.keyboard.press('Enter')
             self.assertEqual(page.locator('#moneyValue').inner_text(), '840')
             page.locator('#nextMonthButton').click()
@@ -132,8 +132,40 @@ class PixelCityBrowserTests(unittest.TestCase):
             page.reload();page.wait_for_selector('#tool-house');self.assertEqual(page.locator('#moneyValue').inner_text(),'1,234')
             self.assertIn('6 月',page.locator('#monthValue').inner_text());page.locator('#cityInfoToggle').click()
             self.assertTrue(page.locator('#cityReport').is_visible());self.assertIn('第 1 阶段',page.locator('#goalTitle').inner_text())
-            self.assertEqual(page.locator('#toolGrid button').count(),18);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
+            self.assertEqual(page.locator('#toolGrid button').count(),22);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
             self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_completed_city_projects_and_contracts_persist(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#tool-house')
+            page.evaluate("""() => {const s=PixelCity.createCity();s.stage=PixelCity.STAGES.length;s.areas=PixelCity.AREAS.map(a=>a.id);s.money=10000;s.population=500;PixelCity.build(s,6,10,'hospital');delete s.projectDone;delete s.contract;delete s.contractsCompleted;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.wait_for_selector('#aftergameSection')
+            self.assertTrue(page.locator('#aftergameSection').is_visible());self.assertTrue(page.locator('#tool-tower').is_enabled())
+            page.locator('[data-project="health"]').click();self.assertIn('已完成',page.locator('[data-project="health"]').inner_text())
+            page.locator('[data-contract="budget"]').click();self.assertTrue(page.locator('[data-contract-action="claim"]').is_disabled())
+            page.wait_for_timeout(400);page.reload();self.assertIn('已完成',page.locator('[data-project="health"]').inner_text())
+            self.assertTrue(page.locator('[data-contract-action="cancel"]').is_visible())
+            page.locator('[data-contract-action="cancel"]').click();page.locator('[data-contract="growth"]').click()
+            page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertEqual(saved['projectDone'],['health']);self.assertEqual(saved['contract']['id'],'growth');self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_completed_city_contract_on_mobile(self):
+        context=self.browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True);page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#tool-house')
+            page.evaluate("""() => {const s=PixelCity.createCity();s.stage=PixelCity.STAGES.length;s.areas=PixelCity.AREAS.map(a=>a.id);localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.locator('#cityInfoToggle').click()
+            self.assertTrue(page.locator('#aftergameSection').is_visible())
+            page.locator('[data-contract="services"]').click()
+            self.assertTrue(page.locator('[data-contract-action="claim"]').is_disabled())
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+            page.wait_for_timeout(400);page.reload();page.locator('#cityInfoToggle').click()
+            self.assertTrue(page.locator('[data-contract-action="cancel"]').is_visible());self.assertEqual(errors,[])
         finally:context.close()
 
 if __name__ == '__main__': unittest.main()

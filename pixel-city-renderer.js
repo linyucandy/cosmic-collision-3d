@@ -50,14 +50,15 @@
       ctx.fillStyle='#bd6a59';ctx.fillRect(-7,-12,3,8);ctx.fillRect(-10,-10,9,3);
       ctx.fillStyle='#56888b';ctx.fillRect(3,-8,4,6);ctx.fillStyle='#b7d6c3';ctx.fillRect(3,-8,4,2);
       ctx.fillStyle='#d9d7b7';ctx.fillRect(-3,2,6,3);
-    } else if(type==='apartment'||type==='office') {
-      const office=type==='office';block(ctx,11,5,25,office?'#9ab7b1':'#e1c8a2',office?'#729995':'#c7a989',office?'#8baca1':'#bd8671');
-      for(let row=0;row<3;row++)for(const a of [-8,-3,3,8]){ctx.fillStyle=office?'#547c80':'#f4dfab';ctx.fillRect(a,-20+row*6,3,3);}
+    } else if(['apartment','office','tower','tech'].includes(type)) {
+      const office=type==='office'||type==='tech',tall=type==='tower'||type==='tech',height=tall?34:25;block(ctx,11,5,height,office?'#9ab7b1':'#e1c8a2',office?'#729995':'#c7a989',office?'#8baca1':'#bd8671');
+      for(let row=0;row<(tall?5:3);row++)for(const a of [-8,-3,3,8]){ctx.fillStyle=office?'#547c80':'#f4dfab';ctx.fillRect(a,-height+5+row*6,3,3);}
       ctx.fillStyle='#806f5a';ctx.fillRect(-1,-3,3,7);
-    } else if(['school','police','library','recycling'].includes(type)) {
-      const colors={school:['#e7c6a2','#d2a987','#b67563'],police:['#cad9ce','#a8c0b9','#678b98'],library:['#e7dcb6','#c5bd9c','#789681'],recycling:['#b9c8a1','#9eb38f','#6b9379']}[type];
+    } else if(['school','police','library','recycling','hospital','university'].includes(type)) {
+      const colors={school:['#e7c6a2','#d2a987','#b67563'],police:['#cad9ce','#a8c0b9','#678b98'],library:['#e7dcb6','#c5bd9c','#789681'],recycling:['#b9c8a1','#9eb38f','#6b9379'],hospital:['#f2e8cc','#cfdbbe','#89b4a1'],university:['#d9c9a4','#b3a58a','#7d9d9b']}[type];
       block(ctx,12,6,16,...colors);ctx.fillStyle='#5e8580';for(const a of [-8,-3,3,8])ctx.fillRect(a,-10,3,4);
       ctx.fillStyle='#f0d49b';ctx.fillRect(-3,-21,7,4);ctx.fillStyle=type==='police'?'#7298a6':type==='recycling'?'#74a079':'#d2936c';ctx.fillRect(-1,-20,3,2);
+      if(type==='hospital'){ctx.fillStyle='#bd6a59';ctx.fillRect(-8,-12,2,7);ctx.fillRect(-10,-10,6,2);}
     } else if(type==='wind') {
       diamond(ctx,'#93b782');ctx.fillStyle='#e6e5ce';ctx.fillRect(-1,-26,3,28);ctx.fillStyle='#b9c5b4';ctx.fillRect(-2,-27,5,4);
       ctx.save();ctx.translate(0,-25);ctx.rotate(time*.001);ctx.fillStyle='#f1eee0';for(let n=0;n<3;n++){ctx.rotate(Math.PI*2/3);ctx.fillRect(-1,-14,3,13);}ctx.restore();

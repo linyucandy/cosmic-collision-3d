@@ -19,4 +19,11 @@ plot('office','east');plot('school','center');plot('clinic','center');plot('park
 for(const area of ['north','east','south','valley'])while(C.stats(s).areaBuildings[area]<8)plot('park',area);
 plot('apartment','center',4);plot('office','center',5);plot('wind','center');plot('pump','center');grow(400);claim();
 assert.equal(s.stage,C.STAGES.length);assert.ok(s.population>=400);assert.ok(s.stableMonths>=12);assert.ok(C.restore(JSON.stringify(s)));
+// Continue the same earned city through every new long-term project.
+plot('hospital');plot('university');plot('tech','center',3);plot('tower','center',5);plot('wind','center',3);plot('pump','center',3);plot('recycling','center',2);
+grow(600);
+for(const project of C.PROJECTS){const missing=C.projectGoals(s,project.id).filter(g=>g.value<g.target);assert.deepEqual(missing,[],project.name);assert.equal(C.claimProject(s,project.id).ok,true);}
+assert.equal(s.projectDone.length,4);assert.equal(C.acceptContract(s,'budget').ok,true);
+for(let i=0;i<3;i++)C.advance(s);
+assert.equal(C.claimContract(s).ok,true);assert.equal(C.restore(JSON.stringify(s)).contractsCompleted,1);
 });

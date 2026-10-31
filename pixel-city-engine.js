@@ -20,6 +20,10 @@
     library:{name:'图书馆',cost:180,upkeep:4,power:2,water:1,unlock:3,description:'改善 4 格内住宅的文化服务与幸福度。'},
     wind:{name:'风力电站',cost:240,upkeep:4,unlock:4,description:'为接通道路的城市提供 64 单位电力。'},
     pump:{name:'供水站',cost:220,upkeep:4,unlock:4,description:'为接通道路的城市提供 64 单位供水。'},
+    tower:{name:'摩天住宅',cost:420,upkeep:8,capacity:48,power:10,water:10,unlock:7,description:'高密度住宅，可容纳 48 位居民。'},
+    tech:{name:'科技园',cost:440,upkeep:12,jobs:36,power:8,water:5,unlock:7,description:'提供 36 个岗位和科技产业收入。'},
+    hospital:{name:'综合医院',cost:500,upkeep:12,power:8,water:6,unlock:7,description:'为 8 格范围的住宅提供医疗服务。'},
+    university:{name:'大学',cost:480,upkeep:10,power:7,water:5,unlock:7,description:'为 8 格范围的住宅提供教育服务。'},
     townhall:{name:'市政厅',cost:0,upkeep:2,description:'城市的道路网络从这里出发。不能拆除。'}
   };
   const GOALS=[
@@ -44,6 +48,17 @@
     {id:'metropolis',name:'多中心城市',reward:1200,description:'让四个新区共同成长。'},
     {id:'capital',name:'繁荣宜居之城',reward:1800,description:'维持长期收支，打造更大的宜居城市。'}
   ];
+  const PROJECTS=[
+    {id:'health',name:'健康都市',description:'建设综合医院，为更大的城市提供医疗服务。',reward:1800},
+    {id:'knowledge',name:'知识与创新',description:'建设大学与科技园，培育新的就业中心。',reward:2200},
+    {id:'vertical',name:'摩天生活',description:'建设高密度住宅，迎接更多居民。',reward:2500},
+    {id:'sustainable',name:'循环能源城',description:'扩大风电、供水和回收设施，并保持经营盈余。',reward:2600}
+  ];
+  const CONTRACTS=[
+    {id:'budget',name:'城市经营',description:'运营至少 3 个月，达到月结余 100、幸福度 75% 和充足水电。',reward:600},
+    {id:'growth',name:'欢迎新居民',description:'运营至少 3 个月，人口比接取时增加 12 人，并保证充足水电。',reward:650},
+    {id:'services',name:'宜居服务',description:'运营至少 3 个月，幸福度达到 85%，医疗和教育覆盖各达到 60%，水电充足。',reward:800}
+  ];
   const areaAt=(x,y)=>x<20&&y<20?'center':x>=20&&y<10?'north':x>=20&&y<20?'east':x<20?'south':'valley';
   const index=(x,y)=>y*SIZE+x;
   const inBounds=(x,y)=>Number.isInteger(x)&&Number.isInteger(y)&&x>=0&&y>=0&&x<SIZE&&y<SIZE;
@@ -61,7 +76,7 @@
     for(let y=8;y<=14;y++)if(y!==10)put(10,y,'road');
     put(10,10,'townhall');put(8,10,'house');put(9,10,'house');put(11,10,'shop');
     put(12,10,'solar');put(13,10,'water');put(7,10,'park');
-    return {version:2,seed:seed>>>0,tiles,money:900,population:12,month:1,achievements:[],grantUsed:false,stage:0,areas:['center'],stableMonths:0,
+    return {version:2,seed:seed>>>0,tiles,money:900,population:12,month:1,achievements:[],grantUsed:false,stage:0,areas:['center'],stableMonths:0,projectDone:[],contract:null,contractsCompleted:0,
       lastFinance:{income:0,expense:0,net:0},lastGrowth:0};
   }
   function stats(state) {
@@ -69,7 +84,7 @@
     for(let head=0;head<queue.length;head++)for(const id of neighbors(queue[head])) {
       if(state.tiles[id].type==='road'&&!roadSet.has(id)) {roadSet.add(id);queue.push(id);}
     }
-    const connected=new Set(hall>=0?[hall]:[]),counts={},activeCounts={},homes=[],parks=[],clinics=[],factories=[],schools=[],police=[],libraries=[],recyclers=[];
+    const connected=new Set(hall>=0?[hall]:[]),counts={},activeCounts={},homes=[],parks=[],clinics=[],hospitals=[],factories=[],schools=[],universities=[],police=[],libraries=[],recyclers=[];
     const areaBuildings=Object.fromEntries(AREAS.map(area=>[area.id,0]));
     let powerDemand=0,waterDemand=0,rawJobs=0,totalCapacity=0,rawCapacity=0,powerCapacity=0,waterCapacity=0,expense=0,disconnected=0,businessIncome=0;
     for(let id=0;id<state.tiles.length;id++) {
@@ -85,12 +100,15 @@
       if(type==='shop')businessIncome+=3;
       if(type==='factory')businessIncome+=4;
       if(type==='office')businessIncome+=6;
+      if(type==='tech')businessIncome+=12;
       powerDemand+=definition.power||0;waterDemand+=definition.water||0;rawJobs+=definition.jobs||0;
       if(definition.capacity){rawCapacity+=definition.capacity;homes.push(id);}
       if(type==='park')parks.push(id);
       if(type==='clinic')clinics.push(id);
+      if(type==='hospital')hospitals.push(id);
       if(type==='factory')factories.push(id);
       if(type==='school')schools.push(id);
+      if(type==='university')universities.push(id);
       if(type==='police')police.push(id);
       if(type==='library')libraries.push(id);
       if(type==='recycling')recyclers.push(id);
@@ -102,9 +120,9 @@
     const supply=Math.min(powerDemand?powerCapacity/powerDemand:1,waterDemand?waterCapacity/waterDemand:1,1);
     const activeCapacity=Math.floor(rawCapacity*supply),jobs=Math.floor(rawJobs*supply);
     const parkCoverage=homes.length?homes.filter(home=>parks.some(park=>distance(home,park)<=3)).length/homes.length:0;
-    const clinicCoverage=homes.length?homes.filter(home=>clinics.some(clinic=>distance(home,clinic)<=5)).length/homes.length:0;
+    const clinicCoverage=homes.length?homes.filter(home=>clinics.some(clinic=>distance(home,clinic)<=5)||hospitals.some(hospital=>distance(home,hospital)<=8)).length/homes.length:0;
     const coverage=(services,radius)=>homes.length?homes.filter(home=>services.some(service=>distance(home,service)<=radius)).length/homes.length:0;
-    const educationCoverage=coverage(schools,5),safetyCoverage=coverage(police,5),cultureCoverage=coverage(libraries,4);
+    const educationCoverage=homes.length?homes.filter(home=>schools.some(school=>distance(home,school)<=5)||universities.some(university=>distance(home,university)<=8)).length/homes.length:0,safetyCoverage=coverage(police,5),cultureCoverage=coverage(libraries,4);
     const pollution=homes.length?homes.reduce((sum,home)=>sum+(factories.some(factory=>distance(home,factory)<=4)?(recyclers.some(recycler=>distance(home,recycler)<=5)&&supply===1?.35:1):0),0)/homes.length:0;
     const employment=state.population?Math.min(1,jobs/state.population):1;
     const happiness=Math.round(clamp(60+parkCoverage*20+clinicCoverage*12*supply+employment*14+(educationCoverage*8+safetyCoverage*8+cultureCoverage*4)*supply-pollution*24-(1-supply)*45-Math.min(15,disconnected*2),10,100));
@@ -179,6 +197,45 @@
     state.stage++;state.money+=stage.reward;
     return {ok:true,stage,message:`完成「${stage.name}」！奖励 +${stage.reward} 城币。${state.stage===STAGES.length?'全部阶段已完成！':'新的建设步骤已开启。'}`};
   }
+  const aftergameOpen=state=>state.stage>=STAGES.length;
+  function projectGoals(state,id,report=stats(state)) {
+    const goal=(name,value,target,unit='')=>({name,value,target,unit}),count=type=>report.activeCounts[type]||0;
+    switch(id){
+      case 'health':return [goal('常住居民',state.population,500,'人'),goal('接通综合医院',count('hospital'),1,'座'),goal('水电供应',Math.round(report.supply*100),100,'%')];
+      case 'knowledge':return [goal('接通大学',count('university'),1,'座'),goal('接通科技园',count('tech'),2,'座'),goal('就业岗位',report.jobs,300,'个'),goal('水电供应',Math.round(report.supply*100),100,'%')];
+      case 'vertical':return [goal('常住居民',state.population,600,'人'),goal('接通摩天住宅',count('tower'),3,'座'),goal('幸福度',report.happiness,80,'%'),goal('水电供应',Math.round(report.supply*100),100,'%')];
+      case 'sustainable':return [goal('接通风力电站',count('wind'),3,'座'),goal('接通供水站',count('pump'),3,'座'),goal('接通回收站',count('recycling'),2,'座'),goal('预计月结余',report.net,150,'城币'),goal('水电供应',Math.round(report.supply*100),100,'%')];
+      default:return [];
+    }
+  }
+  function claimProject(state,id){
+    const project=PROJECTS.find(p=>p.id===id);
+    if(!aftergameOpen(state)||!project)return {ok:false,message:'完成七个建设阶段后开放城市项目。'};
+    if(state.projectDone.includes(id))return {ok:false,message:'这个城市项目已经完成。'};
+    if(!projectGoals(state,id).every(g=>g.value>=g.target))return {ok:false,message:'项目目标尚未全部达成。'};
+    state.projectDone.push(id);state.money+=project.reward;return {ok:true,message:`完成「${project.name}」！奖励 +${project.reward} 城币。`};
+  }
+  function acceptContract(state,id){
+    const contract=CONTRACTS.find(c=>c.id===id);
+    if(!aftergameOpen(state)||!contract)return {ok:false,message:'完成七个建设阶段后开放经营委托。'};
+    if(state.contract)return {ok:false,message:'请先完成或放弃当前委托。'};
+    state.contract={id,startMonth:state.month,startPopulation:state.population};return {ok:true,message:`已接取「${contract.name}」，请至少经营 3 个月。`};
+  }
+  function contractGoals(state,report=stats(state)){
+    if(!state.contract)return [];
+    const goal=(name,value,target,unit='')=>({name,value,target,unit}),c=state.contract,base=[goal('接取后运营',state.month-c.startMonth,3,'月')],supply=goal('水电供应',Math.round(report.supply*100),100,'%');
+    if(c.id==='budget')return [...base,goal('预计月结余',report.net,100,'城币'),goal('幸福度',report.happiness,75,'%'),supply];
+    if(c.id==='growth')return [...base,goal('新增居民',state.population-c.startPopulation,12,'人'),supply];
+    if(c.id==='services')return [...base,goal('幸福度',report.happiness,85,'%'),goal('医疗覆盖',Math.round(report.clinicCoverage*100),60,'%'),goal('教育覆盖',Math.round(report.educationCoverage*100),60,'%'),supply];
+    return [];
+  }
+  function claimContract(state){
+    const contract=CONTRACTS.find(c=>c.id===state.contract?.id);
+    if(!aftergameOpen(state)||!contract)return {ok:false,message:'请先接取经营委托。'};
+    if(!contractGoals(state).every(g=>g.value>=g.target))return {ok:false,message:'委托目标尚未全部达成。'};
+    state.contract=null;state.contractsCompleted++;state.money+=contract.reward;return {ok:true,message:`完成「${contract.name}」！奖励 +${contract.reward} 城币，可以继续接取委托。`};
+  }
+  function cancelContract(state){if(!state.contract)return {ok:false,message:'当前没有委托。'};state.contract=null;return {ok:true,message:'已放弃委托，可重新选择。'};}
   function advance(state) {
     let report=stats(state),growth=0;
     if(state.population>report.activeCapacity||report.happiness<35)growth=-Math.min(8,Math.max(1,Math.ceil((state.population-report.activeCapacity)*0.3)));
@@ -211,15 +268,19 @@
         if(!Number.isInteger(value.stage)||value.stage<0||value.stage>STAGES.length||!Number.isInteger(value.stableMonths)||value.stableMonths<0||value.stableMonths>1000000)return null;
         if(!Array.isArray(value.areas)||!value.areas.includes('center')||new Set(value.areas).size!==value.areas.length||value.areas.some(id=>!AREAS.some(area=>area.id===id&&area.stage<=value.stage)))return null;
         if(value.tiles.some((tile,id)=>tile.type!=='empty'&&!value.areas.includes(areaAt(id%SIZE,Math.floor(id/SIZE)))))return null;
+        if(value.projectDone!==undefined&&(!Array.isArray(value.projectDone)||new Set(value.projectDone).size!==value.projectDone.length||value.projectDone.some(id=>!PROJECTS.some(p=>p.id===id))))return null;
+        if(value.contractsCompleted!==undefined&&(!Number.isInteger(value.contractsCompleted)||value.contractsCompleted<0||value.contractsCompleted>1000000))return null;
+        if(value.contract!=null&&(!CONTRACTS.some(c=>c.id===value.contract.id)||!Number.isInteger(value.contract.startMonth)||value.contract.startMonth<1||value.contract.startMonth>value.month||!Number.isInteger(value.contract.startPopulation)||value.contract.startPopulation<0||value.contract.startPopulation>24576))return null;
+        if(value.stage<STAGES.length&&((value.projectDone||[]).length||value.contract||(value.contractsCompleted||0)))return null;
       }
       const result=createCity(value.seed);
       for(const key of ['money','population','month'])result[key]=value[key];
       if(value.version===1){for(let y=0;y<OLD_SIZE;y++)for(let x=0;x<OLD_SIZE;x++){const tile=value.tiles[y*OLD_SIZE+x];result.tiles[index(x,y)]={terrain:tile.terrain,type:tile.type};}}
-      else{result.tiles=value.tiles.map(tile=>({terrain:tile.terrain,type:tile.type}));result.stage=value.stage;result.areas=[...value.areas];result.stableMonths=value.stableMonths;}
+      else{result.tiles=value.tiles.map(tile=>({terrain:tile.terrain,type:tile.type}));result.stage=value.stage;result.areas=[...value.areas];result.stableMonths=value.stableMonths;result.projectDone=[...(value.projectDone||[])];result.contract=value.contract?{id:value.contract.id,startMonth:value.contract.startMonth,startPopulation:value.contract.startPopulation}:null;result.contractsCompleted=value.contractsCompleted||0;}
       result.achievements=[...new Set(value.achievements)];result.grantUsed=value.grantUsed===true;
       return result;
     }catch(_){return null;}
   }
-  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,stageGoals,claimStage,advance,grant,restore};
+  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,PROJECTS,CONTRACTS,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,stageGoals,claimStage,projectGoals,claimProject,acceptContract,contractGoals,claimContract,cancelContract,advance,grant,restore};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else globalThis.PixelCity=api;
 })();
