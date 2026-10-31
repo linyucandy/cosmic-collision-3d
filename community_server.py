@@ -23,7 +23,7 @@ CATEGORIES = {'sandbox':'沙盒模拟', 'puzzle':'益智解谜', 'action':'动�
 PUBLIC_FILES = {'index.html', 'community.html', 'game.html', 'publish.html',
                 'community.css', 'community.js', 'community-github.js', 'community-github-data.js', 'community-snapshot.json', 'cosmic-collision-3d.html',
                 'cosmic-collision-simulator.html', 'planet-assessment.js', 'game-overlays.css', 'pixel-city.html', 'pixel-city.css',
-                'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city-economy.js', 'pixel-city-business-ui.js', 'pixel-city.js',
+                'pixel-city-engine.js', 'pixel-city-renderer.js', 'pixel-city-economy.js', 'pixel-city-business-ui.js', 'pixel-city-region-ui.js', 'pixel-city-region.css', 'pixel-city.js',
                 '宇宙实验室_3D碰撞模拟器.html', 'vendor/three.module.js', 'vendor/THREE-LICENSE.txt', 'cosmos_collision_lab.html', 'pickFish.html'}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users (

@@ -1,0 +1,12 @@
+.region-minimap{position:absolute;z-index:4;right:14px;bottom:74px;width:134px;padding:5px;background:#faf7e9e8;border:1px solid #b2c49d;border-bottom:3px solid #91a780;border-radius:5px;box-shadow:0 4px 14px #48613b20}
+.region-minimap canvas{display:block;width:122px;height:122px;image-rendering:pixelated;cursor:crosshair;border:1px solid #b3c3a3}
+.region-minimap button{display:block;width:100%;padding:4px 2px;font-size:10px;margin-top:4px;background:#eaf0da;border-color:#becbae;-webkit-tap-highlight-color:transparent}
+.region-dialog{width:min(1040px,calc(100% - 24px));max-height:90dvh;padding:26px}
+.region-dialog .close-dialog{position:absolute;right:14px;top:10px}.region-dialog h2{font-size:25px}
+.region-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
+.region-card{border:1px solid #d3ddc5;border-top:6px solid var(--region-color);border-radius:5px;background:#f4f5e9;padding:12px;display:flex;flex-direction:column;gap:4px}
+.region-card strong{font-size:14px;color:#486445}.region-card small{font-size:10px;color:#869477}.region-card p{font-size:10px;line-height:1.7;flex:1;margin:5px 0 9px}
+.region-card-actions{display:flex;gap:6px;margin-top:5px}.region-card-actions button{font-size:10px;padding:5px 9px}
+.metro-plan{padding:16px;background:#edf2df;border:1px solid #c4d2b1;border-radius:6px;margin:20px 0}.metro-plan h3{font-size:17px;margin:0 0 5px}.metro-plan button{background:#5e7b56;color:#fff9e9;border-color:#5e7b56}.metro-plan button:disabled{opacity:.5}
+@media(max-width:760px){.region-minimap{right:10px;bottom:88px;width:88px;padding:3px}.region-minimap canvas{width:80px;height:80px}.region-minimap button{font-size:8px;padding:3px 0;margin-top:3px}.region-dialog{padding:23px 15px}.region-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.region-card{padding:9px}.region-card strong{font-size:12px}.region-card small,.region-card p{font-size:9px}.region-card-actions{flex-wrap:wrap}.region-card-actions button{font-size:9px;padding:4px 7px}.metro-plan{padding:12px}.region-dialog h2{font-size:22px}}
+@media(max-height:650px) and (max-width:760px){.region-minimap canvas{height:58px;width:58px}.region-minimap{width:66px;bottom:70px}}

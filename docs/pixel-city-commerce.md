@@ -7,7 +7,7 @@
 1. 完成第二阶段后建设粮田、蔬菜农场与仓库。每区有独立库存，建筑需要通路和充足水电。
 2. 完成第三阶段后建设奶牛牧场、养鸡场、磨坊与购物商场。粮食供应饲养或加工，商场卖货获得真实月收入。
 3. 完成第四阶段后建设面包坊、乳品工坊与货运站。面包、奶酪售价更高，也需要完整上游供应。
-4. 跨区经营时，两端分别建设通路仓库，建立指定货物的单向商业线路。线路建立费 120，启用后维护费 4/月。发货配额为 1–24 份，实际运力为 12 份/月，起点有通路货运站时提高到 24。
+4. 跨区经营时，两端分别建设通路仓库，建立指定货物的单向商业线路。线路建立费 120，启用后维护费 4/月。发货配额为 1–60 份，实际运力为 12 份/月，起点有通路货运站时提高到 24，两端均有地铁货运枢纽时提高到 60。最多建立 80 条线路。
 
 例如：北岸农场供应粮食；南部牧场把粮食变成奶蛋，乳品工坊再生产奶酪；东部磨坊与面包坊加工粮食，商场销售不同城区运来的食品。通过发货配额，将粮食分给牧场与磨坊。
 
@@ -30,3 +30,5 @@
 - [Paradox：《Cities: Skylines – Industries》官方介绍](https://www.paradoxinteractive.com/media/press-releases/paradox-interactive/cities-skylines-industries-inbound-on-october-23-along-with-synthetic-dawn-radio-and-new-free-update)：专门产业区、从原料到最终商品的生产链。
 - [GIANTS：《Farming Simulator 25》官方介绍](https://www.farming-simulator.com/about.php?platform=ps5)：种植、畜牧、生产链与农场商店。
 - [GIANTS 官方游戏手册](https://manuals.giants-software.com/Farming_Simulator_Signature_Edition/Basegame/lang/en/FSSIG-manual_EN.pdf)：加工产品、工厂与售卖点之间的经营关系。
+
+都市群版现有十三片区域，并增加恒温温室、贸易出口及区域特色加成，详见[区域都市群玩法](pixel-city-metropolis.md)。

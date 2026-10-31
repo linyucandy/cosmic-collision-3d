@@ -5,7 +5,7 @@
   const SAVE_KEY='chenchen-pixel-city-v1';
   let state=C.createCity(),tool='house',running=false,speed=1,elapsed=0,lastTime=0,lastDraw=0,space=false;
   let cursor={x:6,y:10},pointer=null,saveTimer=null,storageAvailable=true;
-  let business=null;
+  let business=null,regions=null,reportCache=null,lastMinimap=0;
   const signed=value=>(value>=0?'+':'')+value;
   const message=text=>{$('cityMessage').textContent=text;};
   try {
@@ -32,29 +32,29 @@
     const pos=renderer.hover;if(!pos)return;
     const tile=state.tiles[C.index(pos.x,pos.y)],area=C.AREAS.find(a=>a.id===C.areaAt(pos.x,pos.y)),name=tile.type==='empty'?(tile.terrain==='water'?'河流':'待建设草地'):C.BUILDINGS[tile.type].name;
     $('plotTitle').textContent=name+' · '+(pos.x+1)+', '+(pos.y+1);
-    const report=C.stats(state);
+    const report=reportCache||C.stats(state);
     $('plotText').textContent=!state.areas.includes(area.id)?area.name+'尚未开放。请在城市报告查看阶段和费用。':tile.type==='empty'?(tile.terrain==='water'?'保留一条清澈的河流，城市会更美。':C.BUILDINGS[tool].description):C.BUILDINGS[tile.type].description+(report.connected.has(C.index(pos.x,pos.y))?' 已接入市政道路。':' 尚未接入市政道路。');
   }
   function update(){
-    const report=C.stats(state);
+    const report=C.stats(state);reportCache=report;renderer.invalidate();
     $('moneyValue').textContent=state.money.toLocaleString('zh-CN');$('populationValue').textContent=state.population;$('happinessValue').textContent=report.happiness;
     $('monthValue').textContent='第 '+(Math.floor((state.month-1)/12)+1)+' 年 · '+((state.month-1)%12+1)+' 月';
     $('runStatus').textContent=running?'城市运营中':'规划时间';$('pauseButton').textContent=running?'Ⅱ 暂停':'▶ 开始运营';$('pauseButton').setAttribute('aria-pressed',String(running));$('speedButton').textContent=speed+'×';
     for(const key of ['power','water']){$(key+'Text').textContent=report[key+'Capacity']+' / '+report[key+'Demand'];$(key+'Meter').value=Math.min(100,report[key+'Demand']?report[key+'Capacity']/report[key+'Demand']*100:100);}
     $('housingValue').textContent=state.population+' / '+report.activeCapacity+' 人';$('jobsValue').textContent=report.employed+' / '+report.jobs+' 个';$('incomeValue').textContent='+'+report.income;$('expenseValue').textContent='−'+report.expense;$('netValue').textContent=signed(report.net);$('netValue').className=report.net>=0?'positive':'negative';
-    $('cityLevel').textContent=state.population>=100?'繁荣城市':state.population>=50?'热闹小镇':state.population>=20?'温暖社区':'起步街区';
+    $('cityLevel').textContent=state.population>=4000?'区域都市群':state.population>=1000?'大都会':state.population>=400?'区域中心':state.population>=100?'繁荣城市':state.population>=50?'热闹小镇':state.population>=20?'温暖社区':'起步街区';
     $('grantButton').disabled=state.grantUsed||state.money>=150;$('grantButton').textContent=state.grantUsed?'本城援助已领取':'低资金援助 +250';
-    const stage=C.STAGES[state.stage],objectives=C.stageGoals(state,report),done=objectives.filter(goal=>goal.value>=goal.target).length;
+    const baseStage=C.STAGES[state.stage],stage=baseStage||C.METRO_PLANS[state.metroStage],objectives=baseStage?C.stageGoals(state,report):stage?C.metroGoals(state,report):[],done=objectives.filter(goal=>goal.value>=goal.target).length;
     $('achievementCount').textContent=state.stage+' / '+C.STAGES.length;
-    $('goalTitle').textContent=stage?'第 '+(state.stage+1)+' 阶段 · '+stage.name:'全部阶段已完成！';
+    $('goalTitle').textContent=baseStage?'第 '+(state.stage+1)+' 阶段 · '+stage.name:stage?'都市群计划 '+(state.metroStage+1)+' / '+C.METRO_PLANS.length+' · '+stage.name:'都市群计划全部完成！';
     $('goalCount').textContent=stage?done+' / '+objectives.length+' 项完成':C.STAGES.length+' / '+C.STAGES.length+' 已完成';
     $('goalReward').textContent=stage?'奖励 +'+stage.reward:'继续自由建设';
     $('goalFill').style.width=(stage?objectives.reduce((sum,g)=>sum+Math.max(0,Math.min(1,g.value/g.target)),0)/objectives.length*100:100)+'%';
     $('stageObjectives').replaceChildren(...objectives.map(goal=>{const li=document.createElement('li'),ok=goal.value>=goal.target;li.className=ok?'done':'';li.textContent=(ok?'✓ ':'○ ')+goal.name+' '+Math.min(goal.value,goal.target)+' / '+goal.target+(goal.unit||'');return li;}));
     $('completeStage').hidden=!stage;$('completeStage').disabled=!stage||done!==objectives.length;
-    $('completeStage').textContent=stage?'完成本阶段 · +'+stage.reward+' 城币':'已完成';
-    $('aftergameSection').hidden=!!stage;
-    if(!stage){
+    $('completeStage').textContent=stage?(baseStage?'完成本阶段':'完成都市群计划')+' · +'+stage.reward+' 城币':'已完成';
+    $('aftergameSection').hidden=!!baseStage;
+    if(!baseStage){
       const goalList=goals=>{const list=document.createElement('ul');list.className='stage-objectives';for(const goal of goals){const li=document.createElement('li'),ok=goal.value>=goal.target;li.className=ok?'done':'';li.textContent=(ok?'✓ ':'○ ')+goal.name+' '+Math.min(goal.value,goal.target)+' / '+goal.target+(goal.unit||'');list.append(li);}return list;};
       $('projectCount').textContent=state.projectDone.length+' / '+C.PROJECTS.length;
       $('projectList').replaceChildren(...C.PROJECTS.map(project=>{const card=document.createElement('article');card.className='aftergame-card';const title=document.createElement('strong');title.textContent=project.name;const note=document.createElement('small');note.textContent=project.description;card.append(title,note);const done=state.projectDone.includes(project.id),goals=C.projectGoals(state,project.id,report);if(!done)card.append(goalList(goals));const button=document.createElement('button');button.dataset.project=project.id;button.disabled=done||!goals.every(g=>g.value>=g.target);button.textContent=done?'已完成':'领取 +'+project.reward+' 城币';card.append(button);return card;}));
@@ -64,17 +64,17 @@
     }
     $('goalList').replaceChildren(...C.STAGES.map((item,index)=>{const li=document.createElement('li'),completed=index<state.stage;li.className=completed?'completed':index===state.stage?'current':'';const mark=document.createElement('span');mark.textContent=completed?'✓':index===state.stage?'●':'○';const label=document.createElement('span');label.textContent=(index+1)+'. '+item.name;const small=document.createElement('small');small.textContent=item.description+' · +'+item.reward;label.append(small);li.append(mark,label);return li;}));
     $('areaList').replaceChildren(...C.AREAS.filter(area=>area.id!=='center').map(area=>{
-      const unlocked=state.areas.includes(area.id),locked=state.stage<area.stage,poor=state.money<area.cost,card=document.createElement('div');card.className='district-card';
-      const title=document.createElement('strong');title.textContent=area.name;const note=document.createElement('small');note.textContent=unlocked?'已开放 · 接通 '+report.areaBuildings[area.id]+' 座建筑':locked?'完成第 '+area.stage+' 阶段后开放':area.cost+' 城币'+(poor?' · 资金不足':'');
-      const button=document.createElement('button');button.dataset.area=area.id;button.disabled=!unlocked&&(locked||poor);button.textContent=unlocked?'查看':'开放';button.setAttribute('aria-label',(unlocked?'查看':'开放')+area.name);card.append(title,note,button);return card;
+      const unlocked=state.areas.includes(area.id),locked=state.stage<area.stage,poor=state.money<area.cost,parent=area.requires&&!area.requires.some(id=>state.areas.includes(id)),card=document.createElement('div');card.className='district-card';
+      const title=document.createElement('strong');title.textContent=area.name;const note=document.createElement('small');note.textContent=unlocked?'已开放 · 接通 '+report.areaBuildings[area.id]+' 座建筑':locked?'完成第 '+area.stage+' 阶段后开放':parent?'请先开放相邻区域':area.cost+' 城币'+(poor?' · 资金不足':'');
+      const button=document.createElement('button');button.dataset.area=area.id;button.disabled=!unlocked&&(locked||poor||parent);button.textContent=unlocked?'查看':'开放';button.setAttribute('aria-label',(unlocked?'查看':'开放')+area.name);card.append(title,note,button);return card;
     }));
     for(const button of $('toolGrid').children){const def=C.BUILDINGS[button.dataset.tool],locked=(def.unlock||0)>state.stage;button.disabled=locked;button.classList.toggle('unaffordable',state.money<def.cost);button.querySelector('small').textContent=locked?'第 '+def.unlock+' 阶段后':def.cost?def.cost+' 城币':button.dataset.tool==='bulldoze'?'返还 25%':'拖动画布';}
-    updatePlot();business?.update(report);
+    updatePlot();business?.update(report);regions?.update(report);
   }
   function buildAt(pos,quiet=false){if(!pos||tool==='hand')return;const result=C.build(state,pos.x,pos.y,tool);if(!quiet||result.ok)message(result.message);if(result.ok){update();scheduleSave();}}
   function month(){const result=C.advance(state);message('月度结算：城市收入 +'+result.income+'（含货物销售 '+result.economy.revenue+'），维护 −'+result.expense+'，结余 '+signed(result.net)+'。居民 '+signed(result.growth)+' 人。'+result.rewards.map(goal=>'达成「'+goal.name+'」奖励 +'+goal.reward+'！').join(''));update();scheduleSave();}
   $('pauseButton').onclick=()=>{running=!running;elapsed=0;update();};$('speedButton').onclick=()=>{speed=speed===4?1:speed*2;update();};$('nextMonthButton').onclick=()=>{elapsed=0;month();};
-  $('completeStage').onclick=()=>{const result=C.claimStage(state);message(result.message);if(result.ok){update();scheduleSave();}};
+  $('completeStage').onclick=()=>{const result=C.STAGES[state.stage]?C.claimStage(state):C.claimMetroPlan(state);message(result.message);if(result.ok){update();scheduleSave();}};
   $('aftergameSection').addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;let result;if(button.dataset.project)result=C.claimProject(state,button.dataset.project);else if(button.dataset.contract)result=C.acceptContract(state,button.dataset.contract);else if(button.dataset.contractAction==='claim')result=C.claimContract(state);else if(button.dataset.contractAction==='cancel')result=C.cancelContract(state);if(result){message(result.message);if(result.ok){update();scheduleSave();}}});
   $('areaList').addEventListener('click',event=>{const button=event.target.closest('[data-area]');if(!button)return;const area=C.AREAS.find(a=>a.id===button.dataset.area);if(!area)return;
     if(!state.areas.includes(area.id)){const result=C.unlockArea(state,area.id);message(result.message);if(!result.ok)return;update();scheduleSave();}else message('正在查看'+area.name+'。');
@@ -92,7 +92,7 @@
   canvas.addEventListener('contextmenu',event=>event.preventDefault());canvas.addEventListener('wheel',event=>{event.preventDefault();renderer.zoomBy(event.deltaY<0?1.12:1/1.12);},{passive:false});
   canvas.addEventListener('pointerdown',event=>{
     if(pointer||event.button>2)return;canvas.focus({preventScroll:true});canvas.setPointerCapture(event.pointerId);
-    const pan=tool==='hand'||event.button===2||space;pointer={id:event.pointerId,x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,pan,moved:false,paint:['road','bulldoze'].includes(tool)&&!pan,last:null};
+    const pan=tool==='hand'||event.button===2||space;pointer={id:event.pointerId,x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,pan,moved:false,paint:['road','bridge','bulldoze'].includes(tool)&&!pan,last:null};
     renderer.hover=renderer.pick(event.clientX,event.clientY);if(pointer.paint){buildAt(renderer.hover);pointer.last=renderer.hover?C.index(renderer.hover.x,renderer.hover.y):null;}updatePlot();
   });
   canvas.addEventListener('pointermove',event=>{
@@ -130,8 +130,9 @@
   document.addEventListener('keyup',event=>{if(event.code==='Space')space=false;});window.addEventListener('blur',()=>{space=false;});
   window.addEventListener('beforeunload',()=>{if(saveTimer)save();});document.addEventListener('visibilitychange',()=>{elapsed=0;lastTime=0;if(document.hidden&&saveTimer)save();});
   new ResizeObserver(()=>renderer.resize()).observe(canvas);
-  function frame(time){const delta=lastTime?Math.min(time-lastTime,100):0;lastTime=time;if(running&&!document.hidden&&!document.querySelector('dialog[open]')){elapsed+=delta*speed;if(elapsed>=5000){elapsed-=5000;month();}}if(time-lastDraw>32){renderer.draw(state,C.stats(state),tool,time);lastDraw=time;}requestAnimationFrame(frame);}
+  function frame(time){const delta=lastTime?Math.min(time-lastTime,100):0;lastTime=time;if(running&&!document.hidden&&!document.querySelector('dialog[open]')){elapsed+=delta*speed;if(elapsed>=5000){elapsed-=5000;month();}}if(time-lastDraw>32){renderer.draw(state,reportCache,tool,time);lastDraw=time;}if(time-lastMinimap>250){regions.drawCamera();lastMinimap=time;}requestAnimationFrame(frame);}
   business=new CityBusinessPanel({getState:()=>state,onMonth:month,onChange:result=>{message(result.message);if(result.ok){update();scheduleSave();}},onFocus:area=>{renderer.focus(...area.center);$('cityReport').classList.remove('open');$('cityInfoToggle').setAttribute('aria-expanded','false');},onOverlay:visible=>{renderer.showTradeRoutes=visible;}});
   $('businessButton').onclick=()=>business.open();
+  regions=new CityRegionPanel({getState:()=>state,getReport:()=>reportCache,renderer,onUnlock:id=>{const result=C.unlockArea(state,id);message(result.message);if(result.ok){update();scheduleSave();}},onClaim:()=>{const result=C.claimMetroPlan(state);message(result.message);if(result.ok){update();scheduleSave();}},onFocus:area=>{renderer.focusRegion(area);$('cityReport').classList.remove('open');$('cityInfoToggle').setAttribute('aria-expanded','false');}});
   renderer.resize();select(tool);update();if(!storageAvailable)$('saveStatus').textContent='本地存储不可用，请允许存储以保留进度';requestAnimationFrame(frame);
 })();

@@ -1,7 +1,7 @@
 /* The simulation is independent of the renderer and browser storage. */
 (() => {
   const Economy=typeof module!=='undefined'&&module.exports?require('./pixel-city-economy.js'):CityEconomy;
-  const SIZE=32,OLD_SIZE=20;
+  const SIZE=96,OLD_SIZE=20,PREVIOUS_SIZE=32;
   const BUILDINGS={
     road:{name:'道路',cost:10,upkeep:0.15,description:'连接市政厅与建筑。按住拖动可连续铺设。',key:'1'},
     house:{name:'住宅',cost:60,upkeep:0.8,capacity:8,power:2,water:2,description:'提供 8 人住所，需要连接道路、水和电。',key:'2'},
@@ -25,6 +25,16 @@
     tech:{name:'科技园',cost:440,upkeep:12,jobs:36,power:8,water:5,unlock:7,description:'提供 36 个岗位和科技产业收入。'},
     hospital:{name:'综合医院',cost:500,upkeep:12,power:8,water:6,unlock:7,description:'为 8 格范围的住宅提供医疗服务。'},
     university:{name:'大学',cost:480,upkeep:10,power:7,water:5,unlock:7,description:'为 8 格范围的住宅提供教育服务。'},
+    bridge:{name:'桥梁',cost:35,upkeep:.4,unlock:2,category:'city',description:'在水面铺设桥梁，延伸连通市政厅的道路。'},
+    bus:{name:'公交站',cost:260,upkeep:6,power:2,water:1,unlock:5,category:'services',description:'为 6 格内住宅提供公共交通，提高幸福度与大城市移民速度。'},
+    metro:{name:'地铁货运枢纽',cost:900,upkeep:18,jobs:12,power:10,water:3,unlock:7,category:'logistics',description:'服务 12 格内住宅。线路两端都有接通枢纽时，运力上限提高到 60 份/月。'},
+    solarfield:{name:'大型光伏园',cost:820,upkeep:12,unlock:7,category:'services',description:'提供 256 单位电力，支持远期大规模城区。'},
+    reservoir:{name:'城市水库',cost:780,upkeep:12,unlock:7,category:'services',description:'提供 256 单位供水，为新城区持续供水。'},
+    block:{name:'住宅组团',cost:1000,upkeep:22,capacity:120,power:18,water:18,unlock:7,category:'city',description:'提供 120 人住所，适合公共交通覆盖的卫星城区。'},
+    hub:{name:'商务中心',cost:1100,upkeep:26,jobs:90,power:18,water:10,unlock:7,category:'city',description:'提供 90 个岗位，并带来商务收入。'},
+    hotel:{name:'城市酒店',cost:650,upkeep:16,jobs:12,power:8,water:8,unlock:7,category:'tourism',description:'容纳 80 位游客。需要公园、博物馆或度假村吸引游客。'},
+    museum:{name:'城市博物馆',cost:700,upkeep:14,jobs:10,power:6,water:3,unlock:7,category:'tourism',description:'增加 25 单位旅游吸引力，与酒店共同产生旅游收入。'},
+    resort:{name:'生态度假村',cost:900,upkeep:20,jobs:16,power:8,water:8,unlock:7,category:'tourism',description:'增加 40 单位旅游吸引力。森林公园区内吸引力提高到 60。'},
     ...Economy.BUILDINGS,
     townhall:{name:'市政厅',cost:0,upkeep:2,description:'城市的道路网络从这里出发。不能拆除。'}
   };
@@ -39,7 +49,15 @@
     {id:'north',name:'北岸产业园',cost:220,stage:1,center:[25,5],description:'适合连接产业和教育设施。'},
     {id:'east',name:'东部新城',cost:350,stage:2,center:[25,15],description:'规划住宅与工作岗位的新街区。'},
     {id:'south',name:'南部滨水区',cost:500,stage:3,center:[10,25],description:'延伸道路，建设滨水生活区。'},
-    {id:'valley',name:'绿谷新城',cost:700,stage:4,center:[25,25],description:'城市远期扩张与绿色公共服务。'}
+    {id:'valley',name:'绿谷新城',cost:700,stage:4,center:[25,25],description:'城市远期扩张与绿色公共服务。'},
+    {id:'meadow',name:'丰收平原',cost:2000,stage:5,center:[48,16],requires:['north','east'],theme:'农业',description:'粮田与蔬菜农场每座每月额外收获 2 份。'},
+    {id:'highland',name:'高地牧场',cost:3000,stage:6,center:[80,16],requires:['meadow'],theme:'畜牧',description:'奶牛牧场与养鸡场每次产出额外增加 1 份。'},
+    {id:'lakeside',name:'湖畔新城',cost:2200,stage:5,center:[16,48],requires:['south'],theme:'滨水',description:'辽阔的湖畔土地，适合住宅与旅游设施。'},
+    {id:'cbd',name:'中央商务区',cost:4500,stage:7,center:[48,48],requires:['meadow','lakeside'],theme:'商业',description:'每座商场销售能力提高到 18 份/月，仍需充足客流。'},
+    {id:'science',name:'科创新城',cost:5500,stage:7,center:[80,48],requires:['highland','cbd'],theme:'科研',description:'科技园每座每月增加 6 城币产业收入。'},
+    {id:'forest',name:'森林公园区',cost:3500,stage:7,center:[16,80],requires:['lakeside'],theme:'生态',description:'度假村旅游吸引力提高 50%，可发展酒店与博物馆。'},
+    {id:'harbor',name:'港湾贸易区',cost:6500,stage:7,center:[48,80],requires:['cbd','forest'],theme:'贸易',description:'贸易港出口能力从 24 提高到 40 份/月。'},
+    {id:'frontier',name:'远景新区',cost:10000,stage:7,center:[80,80],requires:['science','harbor'],theme:'未来',description:'大片连贯土地，为区域都市群提供远期发展空间。'}
   ];
   const STAGES=[
     {id:'start',name:'邻里起步',reward:180,description:'迎接居民，建立稳定的街区。'},
@@ -61,7 +79,15 @@
     {id:'growth',name:'欢迎新居民',description:'运营至少 3 个月，人口比接取时增加 12 人，并保证充足水电。',reward:650},
     {id:'services',name:'宜居服务',description:'运营至少 3 个月，幸福度达到 85%，医疗和教育覆盖各达到 60%，水电充足。',reward:800}
   ];
-  const areaAt=(x,y)=>x<20&&y<20?'center':x>=20&&y<10?'north':x>=20&&y<20?'east':x<20?'south':'valley';
+  const METRO_PLANS=[
+    {name:'区域开拓者',reward:5000,description:'把旧城市延伸到丰收平原和湖畔。'},
+    {name:'都市交通网',reward:7500,description:'发展高地与中央商务区，建立轨道枢纽。'},
+    {name:'生态旅游名城',reward:10000,description:'在森林中发展酒店、度假与文化旅游。'},
+    {name:'港湾贸易圈',reward:15000,description:'连接科创新城与港湾，对外销售城市产品。'},
+    {name:'未来都市群',reward:25000,description:'形成拥有十三片区域的四千人都市群。'}
+  ];
+  const areaAt=(x,y)=>x<32&&y<32?(x<20&&y<20?'center':x>=20&&y<10?'north':x>=20&&y<20?'east':x<20?'south':'valley'):
+    [['center','meadow','highland'],['lakeside','cbd','science'],['forest','harbor','frontier']][Math.floor(y/32)]?.[Math.floor(x/32)];
   const index=(x,y)=>y*SIZE+x;
   const inBounds=(x,y)=>Number.isInteger(x)&&Number.isInteger(y)&&x>=0&&y>=0&&x<SIZE&&y<SIZE;
   const neighbors=id=>{const x=id%SIZE,y=Math.floor(id/SIZE);return [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([a,b])=>inBounds(a,b)).map(([a,b])=>index(a,b));};
@@ -70,7 +96,8 @@
   function createCity(seed=42) {
     const tiles=Array.from({length:SIZE*SIZE},(_,id)=>{
       const x=id%SIZE,y=Math.floor(id/SIZE);
-      const water=x<20&&y<20?(x<2+(y>13?1:0)||(x>16&&y>14)):(x<2||(y>=30&&(x<5||x>29))||(x===31&&y>7&&y<13));
+      const oldWater=x<20&&y<20?(x<2+(y>13?1:0)||(x>16&&y>14)):(x<2||(y>=30&&(x<5||x>29))||(x===31&&y>7&&y<13));
+      const lx=x%32,ly=y%32,water=x<32&&y<32?oldWater:Math.abs(lx-16)>2&&Math.abs(ly-16)>2&&((lx-7)**2+(ly-24)**2<20||(areaAt(x,y)==='lakeside'&&(lx-24)**2+(ly-8)**2<35));
       return {terrain:water?'water':'grass',type:'empty'};
     });
     const put=(x,y,type)=>{tiles[index(x,y)]={terrain:'grass',type};};
@@ -78,15 +105,15 @@
     for(let y=8;y<=14;y++)if(y!==10)put(10,y,'road');
     put(10,10,'townhall');put(8,10,'house');put(9,10,'house');put(11,10,'shop');
     put(12,10,'solar');put(13,10,'water');put(7,10,'park');
-    return {version:2,seed:seed>>>0,tiles,money:900,population:12,month:1,achievements:[],grantUsed:false,stage:0,areas:['center'],stableMonths:0,projectDone:[],contract:null,contractsCompleted:0,
+    return {version:3,seed:seed>>>0,tiles,money:900,population:12,month:1,achievements:[],grantUsed:false,stage:0,areas:['center'],stableMonths:0,metroStage:0,projectDone:[],contract:null,contractsCompleted:0,
       economy:Economy.create(AREAS.map(a=>a.id)),lastFinance:{income:0,expense:0,net:0},lastGrowth:0};
   }
   function stats(state) {
     const hall=state.tiles.findIndex(tile=>tile.type==='townhall'),roadSet=new Set(),queue=hall<0?[]:[hall];
     for(let head=0;head<queue.length;head++)for(const id of neighbors(queue[head])) {
-      if(state.tiles[id].type==='road'&&!roadSet.has(id)) {roadSet.add(id);queue.push(id);}
+      if(['road','bridge'].includes(state.tiles[id].type)&&!roadSet.has(id)) {roadSet.add(id);queue.push(id);}
     }
-    const connected=new Set(hall>=0?[hall]:[]),counts={},activeCounts={},homes=[],parks=[],clinics=[],hospitals=[],factories=[],schools=[],universities=[],police=[],libraries=[],recyclers=[];
+    const connected=new Set(hall>=0?[hall]:[]),counts={},activeCounts={},homes=[],parks=[],clinics=[],hospitals=[],factories=[],schools=[],universities=[],police=[],libraries=[],recyclers=[],buses=[],metros=[];
     const areaBuildings=Object.fromEntries(AREAS.map(area=>[area.id,0]));
     const areaActive=Object.fromEntries(AREAS.map(area=>[area.id,{}]));
     let powerDemand=0,waterDemand=0,rawJobs=0,totalCapacity=0,rawCapacity=0,powerCapacity=0,waterCapacity=0,expense=0,disconnected=0,businessIncome=0;
@@ -96,15 +123,17 @@
       counts[type]=(counts[type]||0)+1;expense+=definition.upkeep||0;
       totalCapacity+=definition.capacity||0;
       const active=type==='townhall'||roadSet.has(id)||neighbors(id).some(next=>roadSet.has(next));
-      if(!active){if(type!=='road')disconnected++;continue;}
+      if(!active){if(!['road','bridge'].includes(type))disconnected++;continue;}
       connected.add(id);
       activeCounts[type]=(activeCounts[type]||0)+1;
       const districtCounts=areaActive[areaAt(id%SIZE,Math.floor(id/SIZE))];districtCounts[type]=(districtCounts[type]||0)+1;
-      if(!['road','townhall'].includes(type))areaBuildings[areaAt(id%SIZE,Math.floor(id/SIZE))]++;
+      if(!['road','bridge','townhall'].includes(type))areaBuildings[areaAt(id%SIZE,Math.floor(id/SIZE))]++;
       if(type==='shop')businessIncome+=3;
       if(type==='factory')businessIncome+=4;
       if(type==='office')businessIncome+=6;
       if(type==='tech')businessIncome+=12;
+      if(type==='tech'&&areaAt(id%SIZE,Math.floor(id/SIZE))==='science')businessIncome+=6;
+      if(type==='hub')businessIncome+=24;
       powerDemand+=definition.power||0;waterDemand+=definition.water||0;rawJobs+=definition.jobs||0;
       if(definition.capacity){rawCapacity+=definition.capacity;homes.push(id);}
       if(type==='park')parks.push(id);
@@ -113,6 +142,8 @@
       if(type==='factory')factories.push(id);
       if(type==='school')schools.push(id);
       if(type==='university')universities.push(id);
+      if(type==='bus')buses.push(id);
+      if(type==='metro')metros.push(id);
       if(type==='police')police.push(id);
       if(type==='library')libraries.push(id);
       if(type==='recycling')recyclers.push(id);
@@ -120,6 +151,8 @@
       if(type==='water')waterCapacity+=32;
       if(type==='wind')powerCapacity+=64;
       if(type==='pump')waterCapacity+=64;
+      if(type==='solarfield')powerCapacity+=256;
+      if(type==='reservoir')waterCapacity+=256;
     }
     const supply=Math.min(powerDemand?powerCapacity/powerDemand:1,waterDemand?waterCapacity/waterDemand:1,1);
     const activeCapacity=Math.floor(rawCapacity*supply),jobs=Math.floor(rawJobs*supply);
@@ -127,16 +160,19 @@
     const clinicCoverage=homes.length?homes.filter(home=>clinics.some(clinic=>distance(home,clinic)<=5)||hospitals.some(hospital=>distance(home,hospital)<=8)).length/homes.length:0;
     const coverage=(services,radius)=>homes.length?homes.filter(home=>services.some(service=>distance(home,service)<=radius)).length/homes.length:0;
     const educationCoverage=homes.length?homes.filter(home=>schools.some(school=>distance(home,school)<=5)||universities.some(university=>distance(home,university)<=8)).length/homes.length:0,safetyCoverage=coverage(police,5),cultureCoverage=coverage(libraries,4);
+    const transitCoverage=homes.length?homes.filter(home=>buses.some(bus=>distance(home,bus)<=6)||metros.some(metro=>distance(home,metro)<=12)).length/homes.length*supply:0;
     const pollution=homes.length?homes.reduce((sum,home)=>sum+(factories.some(factory=>distance(home,factory)<=4)?(recyclers.some(recycler=>distance(home,recycler)<=5)&&supply===1?.35:1):0),0)/homes.length:0;
     const employment=state.population?Math.min(1,jobs/state.population):1;
-    const happiness=Math.round(clamp(60+parkCoverage*20+clinicCoverage*12*supply+employment*14+(educationCoverage*8+safetyCoverage*8+cultureCoverage*4)*supply-pollution*24-(1-supply)*45-Math.min(15,disconnected*2),10,100));
+    const happiness=Math.round(clamp(60+parkCoverage*20+clinicCoverage*12*supply+employment*14+(educationCoverage*8+safetyCoverage*8+cultureCoverage*4)*supply+transitCoverage*6-pollution*24-(1-supply)*45-Math.min(15,disconnected*2),10,100));
     const employed=Math.min(state.population,jobs);
-    const baseIncome=Math.round(state.population*1.1+employed*1.2+businessIncome*supply);
+    const attraction=(activeCounts.museum||0)*25+(activeCounts.resort||0)*40+(areaActive.forest.resort||0)*20+(activeCounts.park||0)*2;
+    const visitors=Math.floor(Math.min((activeCounts.hotel||0)*80,attraction)*(happiness/100)*supply),tourismIncome=visitors*3;
+    const baseIncome=Math.round(state.population*1.1+employed*1.2+businessIncome*supply)+tourismIncome;
     expense=Math.round(expense);
     const economy=Economy.simulate(state,{areaActive,supply});
     expense+=economy.expense;const income=baseIncome+economy.revenue;
     return {connected,roads:roadSet,counts,activeCounts,areaBuildings,areaActive,totalCapacity,activeCapacity,jobs,employed,happiness,powerDemand,waterDemand,powerCapacity,waterCapacity,
-      supply,parkCoverage,clinicCoverage,educationCoverage,safetyCoverage,cultureCoverage,pollution,disconnected,income,expense,net:income-expense,economy,baseIncome};
+      supply,parkCoverage,clinicCoverage,educationCoverage,safetyCoverage,cultureCoverage,transitCoverage,visitors,tourismIncome,pollution,disconnected,income,expense,net:income-expense,economy,baseIncome};
   }
   function canBuild(state,x,y,type) {
     if(!inBounds(x,y))return {ok:false,message:'请在城市地图内建设。'};
@@ -150,7 +186,8 @@
       if(tile.type==='empty')return {ok:false,message:'这里没有需要拆除的建筑。'};
       return {ok:true,cost:0};
     }
-    if(tile.terrain==='water')return {ok:false,message:'这里是水面，请选择草地。'};
+    if(type==='bridge'&&tile.terrain!=='water')return {ok:false,message:'桥梁只能建设在水面，陆地请使用道路。'};
+    if(tile.terrain==='water'&&type!=='bridge')return {ok:false,message:'这里是水面，可以用桥梁延伸道路。'};
     if(tile.type!=='empty')return {ok:false,message:'这块地已有建筑，可以先用拆除工具清理。'};
     if(state.money<definition.cost)return {ok:false,message:`资金不足，${definition.name}需要 ${definition.cost} 城币。`};
     return {ok:true,cost:definition.cost};
@@ -173,6 +210,7 @@
     if(!area||id==='center')return {ok:false,message:'请选择可扩建的城区。'};
     if(state.areas.includes(id))return {ok:false,message:area.name+'已经开放。'};
     if(state.stage<area.stage)return {ok:false,message:`请先完成第 ${area.stage} 阶段。`};
+    if(area.requires&&!area.requires.some(id=>state.areas.includes(id)))return {ok:false,message:'请先开放相邻区域：'+area.requires.map(id=>AREAS.find(a=>a.id===id).name).join(' 或 ')+'。'};
     if(state.money<area.cost)return {ok:false,message:`开放${area.name}需要 ${area.cost} 城币。`};
     state.money-=area.cost;state.areas.push(id);
     return {ok:true,message:`${area.name}已开放 · −${area.cost} 城币。请铺路接入市政厅。`,area};
@@ -180,8 +218,8 @@
   function addRoute(state,from,to,good,quota=24){
     if(state.stage<3)return {ok:false,message:'完成第 3 阶段后开放商业线路。'};
     if(from===to||!state.areas.includes(from)||!state.areas.includes(to)||!Object.hasOwn(Economy.GOODS,good))return {ok:false,message:'请选择两个已开放的不同城区和有效货物。'};
-    if(!Number.isInteger(quota)||quota<1||quota>24)return {ok:false,message:'每月发货配额必须是 1–24 份。'};
-    if(state.economy.routes.length>=20||state.economy.nextRouteId>=1000000)return {ok:false,message:'商业线路已达上限。'};
+    if(!Number.isInteger(quota)||quota<1||quota>60)return {ok:false,message:'每月发货配额必须是 1–60 份。'};
+    if(state.economy.routes.length>=80||state.economy.nextRouteId>=1000000)return {ok:false,message:'商业线路已达上限。'};
     if(state.economy.routes.some(r=>r.from===from&&r.to===to&&r.good===good))return {ok:false,message:'这条货物线路已存在。'};
     const report=stats(state);
     if(!report.areaActive[from].warehouse||!report.areaActive[to].warehouse)return {ok:false,message:'请先在两个城区分别建仓库，并接入市政道路。'};
@@ -255,12 +293,25 @@
     state.contract=null;state.contractsCompleted++;state.money+=contract.reward;return {ok:true,message:`完成「${contract.name}」！奖励 +${contract.reward} 城币，可以继续接取委托。`};
   }
   function cancelContract(state){if(!state.contract)return {ok:false,message:'当前没有委托。'};state.contract=null;return {ok:true,message:'已放弃委托，可重新选择。'};}
+  function metroGoals(state,report=stats(state)){
+    const g=(name,value,target,unit='')=>({name,value,target,unit}),open=id=>g('开放'+AREAS.find(a=>a.id===id).name,state.areas.includes(id)?1:0,1),building=(type,n)=>g('接通'+BUILDINGS[type].name,report.activeCounts[type]||0,n,'座'),pop=n=>g('常住居民',state.population,n,'人'),supply=g('水电供应',Math.round(report.supply*100),100,'%');
+    switch(state.metroStage){
+      case 0:return [pop(800),open('meadow'),open('lakeside'),building('bus',2),g('丰收平原接通建筑',report.areaBuildings.meadow,6,'座'),g('湖畔接通建筑',report.areaBuildings.lakeside,6,'座'),supply];
+      case 1:return [pop(1200),open('highland'),open('cbd'),building('metro',2),g('就业岗位',report.jobs,800,'个'),supply];
+      case 2:return [pop(1600),open('forest'),building('hotel',2),building('museum',2),building('resort',2),g('到访游客',report.visitors,100,'人'),g('幸福度',report.happiness,85,'%'),supply];
+      case 3:return [pop(2400),open('science'),open('harbor'),building('tradeport',2),g('累计出口',state.economy.exportedTotal,200,'份'),g('就业岗位',report.jobs,1600,'个'),supply];
+      case 4:return [pop(4000),open('frontier'),g('开放区域',state.areas.length,AREAS.length,'区'),g('公共交通覆盖',Math.round(report.transitCoverage*100),60,'%'),g('预计月结余',report.net,1000,'城币'),g('连续稳定经营',state.stableMonths,12,'月'),...AREAS.filter(a=>a.requires).map(a=>g(a.name+'接通建筑',report.areaBuildings[a.id],10,'座')),supply];
+      default:return [];
+    }
+  }
+  function claimMetroPlan(state){const plan=METRO_PLANS[state.metroStage];if(!aftergameOpen(state)||!plan)return {ok:false,message:'完成原有七阶段后，可开启都市群计划。'};if(!metroGoals(state).every(g=>g.value>=g.target))return {ok:false,message:'都市群计划还有目标未达成。'};state.metroStage++;state.money+=plan.reward;return {ok:true,message:'完成「'+plan.name+'」！奖励 +'+plan.reward+' 城币。'};}
   function advance(state) {
     let report=stats(state),growth=0;
     if(state.population>report.activeCapacity||report.happiness<35)growth=-Math.min(8,Math.max(1,Math.ceil((state.population-report.activeCapacity)*0.3)));
-    else if(state.population<report.activeCapacity&&report.happiness>=45&&report.jobs>state.population*0.45)growth=Math.min(report.activeCapacity-state.population,Math.max(1,Math.floor((report.happiness-40)/18)));
+    else if(state.population<report.activeCapacity&&report.happiness>=45&&report.jobs>state.population*0.45)growth=Math.min(report.activeCapacity-state.population,Math.min(80,Math.max(1,Math.floor((report.happiness-40)/18)+Math.floor(state.population/120)*(1+report.transitCoverage))));
+    growth=Math.floor(growth);
     state.population=Math.max(0,state.population+growth);state.lastGrowth=growth;
-    report=stats(state);state.economy=report.economy.next;state.month++;state.lastFinance={income:report.income,expense:report.expense,net:report.net,tradeRevenue:report.economy.revenue};state.money+=report.net;
+    report=stats(state);state.economy=report.economy.next;state.month++;state.lastFinance={income:report.income,expense:report.expense,net:report.net,tradeRevenue:report.economy.revenue,tourismIncome:report.tourismIncome};state.money+=report.net;
     state.stableMonths=report.net>=15&&report.supply>=1&&report.happiness>=65?Math.min(1000000,state.stableMonths+1):0;
     const rewards=[];
     for(const goal of GOALS) {
@@ -277,30 +328,34 @@
   function restore(raw) {
     try {
       const value=typeof raw==='string'?JSON.parse(raw):raw;
-      if(!value||![1,2].includes(value.version)||!Array.isArray(value.tiles)||value.tiles.length!==(value.version===1?OLD_SIZE*OLD_SIZE:SIZE*SIZE))return null;
-      for(const [key,min,max] of [['money',-1000000,1000000000],['population',0,24576],['month',1,1000000],['seed',0,4294967295]])if(!Number.isInteger(value[key])||value[key]<min||value[key]>max)return null;
+      if(!value||![1,2,3].includes(value.version)||!Array.isArray(value.tiles))return null;
+      const sourceSize=value.version===1?OLD_SIZE:value.version===2?PREVIOUS_SIZE:SIZE;
+      if(value.tiles.length!==sourceSize*sourceSize)return null;
+      for(const [key,min,max] of [['money',-1000000,1000000000],['population',0,SIZE*SIZE*120],['month',1,1000000],['seed',0,4294967295]])if(!Number.isInteger(value[key])||value[key]<min||value[key]>max)return null;
       const validTypes=['empty',...Object.keys(BUILDINGS).filter(type=>!['hand','bulldoze'].includes(type))];
-      if(!value.tiles.every(tile=>tile&&['grass','water'].includes(tile.terrain)&&validTypes.includes(tile.type)&&(tile.terrain!=='water'||tile.type==='empty')))return null;
+      if(!value.tiles.every(tile=>tile&&['grass','water'].includes(tile.terrain)&&validTypes.includes(tile.type)&&(tile.terrain!=='water'||['empty','bridge'].includes(tile.type))&&(tile.type!=='bridge'||tile.terrain==='water')))return null;
       if(value.tiles.filter(tile=>tile.type==='townhall').length!==1)return null;
       if(!Array.isArray(value.achievements)||value.achievements.some(id=>!GOALS.some(goal=>goal.id===id)))return null;
-      if(value.version===2){
+      if(value.version>=2){
         if(!Number.isInteger(value.stage)||value.stage<0||value.stage>STAGES.length||!Number.isInteger(value.stableMonths)||value.stableMonths<0||value.stableMonths>1000000)return null;
         if(!Array.isArray(value.areas)||!value.areas.includes('center')||new Set(value.areas).size!==value.areas.length||value.areas.some(id=>!AREAS.some(area=>area.id===id&&area.stage<=value.stage)))return null;
-        if(value.tiles.some((tile,id)=>tile.type!=='empty'&&!value.areas.includes(areaAt(id%SIZE,Math.floor(id/SIZE)))))return null;
+        if(value.areas.some(id=>{const area=AREAS.find(a=>a.id===id);return area.requires&&!area.requires.some(parent=>value.areas.includes(parent));}))return null;
+        if(value.tiles.some((tile,id)=>tile.type!=='empty'&&!value.areas.includes(areaAt(id%sourceSize,Math.floor(id/sourceSize)))))return null;
         if(value.projectDone!==undefined&&(!Array.isArray(value.projectDone)||new Set(value.projectDone).size!==value.projectDone.length||value.projectDone.some(id=>!PROJECTS.some(p=>p.id===id))))return null;
         if(value.contractsCompleted!==undefined&&(!Number.isInteger(value.contractsCompleted)||value.contractsCompleted<0||value.contractsCompleted>1000000))return null;
-        if(value.contract!=null&&(!CONTRACTS.some(c=>c.id===value.contract.id)||!Number.isInteger(value.contract.startMonth)||value.contract.startMonth<1||value.contract.startMonth>value.month||!Number.isInteger(value.contract.startPopulation)||value.contract.startPopulation<0||value.contract.startPopulation>24576))return null;
+        if(value.contract!=null&&(!CONTRACTS.some(c=>c.id===value.contract.id)||!Number.isInteger(value.contract.startMonth)||value.contract.startMonth<1||value.contract.startMonth>value.month||!Number.isInteger(value.contract.startPopulation)||value.contract.startPopulation<0||value.contract.startPopulation>SIZE*SIZE*120))return null;
+        if(value.metroStage!==undefined&&(!Number.isInteger(value.metroStage)||value.metroStage<0||value.metroStage>METRO_PLANS.length||value.metroStage>0&&value.stage<STAGES.length))return null;
         if(value.stage<STAGES.length&&((value.projectDone||[]).length||value.contract||(value.contractsCompleted||0)))return null;
       }
       const result=createCity(value.seed);
       for(const key of ['money','population','month'])result[key]=value[key];
-      if(value.version===1){for(let y=0;y<OLD_SIZE;y++)for(let x=0;x<OLD_SIZE;x++){const tile=value.tiles[y*OLD_SIZE+x];result.tiles[index(x,y)]={terrain:tile.terrain,type:tile.type};}}
-      else{result.tiles=value.tiles.map(tile=>({terrain:tile.terrain,type:tile.type}));result.stage=value.stage;result.areas=[...value.areas];result.stableMonths=value.stableMonths;result.projectDone=[...(value.projectDone||[])];result.contract=value.contract?{id:value.contract.id,startMonth:value.contract.startMonth,startPopulation:value.contract.startPopulation}:null;result.contractsCompleted=value.contractsCompleted||0;}
+      for(let y=0;y<sourceSize;y++)for(let x=0;x<sourceSize;x++){const tile=value.tiles[y*sourceSize+x];result.tiles[index(x,y)]={terrain:tile.terrain,type:tile.type};}
+      if(value.version>=2){result.stage=value.stage;result.areas=[...value.areas];result.stableMonths=value.stableMonths;result.metroStage=value.metroStage||0;result.projectDone=[...(value.projectDone||[])];result.contract=value.contract?{id:value.contract.id,startMonth:value.contract.startMonth,startPopulation:value.contract.startPopulation}:null;result.contractsCompleted=value.contractsCompleted||0;}
       result.achievements=[...new Set(value.achievements)];result.grantUsed=value.grantUsed===true;
       const economy=Economy.restore(value.economy,AREAS.map(a=>a.id),result.areas);if(!economy)return null;result.economy=economy;
       return result;
     }catch(_){return null;}
   }
-  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,PROJECTS,CONTRACTS,GOODS:Economy.GOODS,RECIPES:Economy.RECIPES,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,addRoute,toggleRoute,removeRoute,stageGoals,claimStage,projectGoals,claimProject,acceptContract,contractGoals,claimContract,cancelContract,advance,grant,restore};
+  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,PROJECTS,CONTRACTS,METRO_PLANS,GOODS:Economy.GOODS,RECIPES:Economy.RECIPES,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,addRoute,toggleRoute,removeRoute,stageGoals,claimStage,projectGoals,claimProject,acceptContract,contractGoals,claimContract,cancelContract,metroGoals,claimMetroPlan,advance,grant,restore};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else globalThis.PixelCity=api;
 })();

@@ -12,9 +12,9 @@
         <div class="business-chain" aria-label="生产链"><span>农场 · 粮菜</span><b>→</b><span>牧场 · 奶蛋</span><b>→</b><span>工坊 · 食品</span><b>→</b><span>仓储运输</span><b>→</b><span>商场销售</span></div>
         <div class="business-topline"><strong id="businessSeason"></strong><span id="businessRevenue"></span><button type="button" id="businessNextMonth">经营下个月 ▸</button></div>
         <p id="businessStatus" class="business-status" role="status">查看库存与预计销售，再安排下一步建设。</p>
-        <details><summary>建设步骤与生产配方</summary><ol><li>在任一已开放城区建设粮田或蔬菜农场，接入道路和水电。每区初始仓储 40 份。</li><li>牧场和养鸡场需要本区粮食。每座牧场用 2 粮产 3 奶，每座养鸡场用 1 粮产 3 蛋。</li><li>磨坊用 3 粮产 3 面粉；面包坊用 2 面粉产 3 面包；乳品工坊用 2 奶产 3 奶酪。</li><li>跨区运输：两区分别建仓库并通路，选择起点、终点和货物。线路建立费 120、启用时维护费 4/月；默认运力上限 12，起点有货运站时为 24。可设置发货配额，将货物分给不同线路。</li><li>商场每座最多销售 12 份/月，全市共享客流需求（每 8 位居民约 1 份）。优先卖奶酪、面包，再销售其他货物。多建商场也需要足够居民。</li></ol><p>同区自动供货，跨区线路每月只运一段。运输后的原料下个月才能在目的区加工。缺水电会暂停产业；仓储满会停产。每月依次结算收获、饲养、加工、运输和销售。</p><p id="businessPrices"></p></details>
+        <details><summary>建设步骤与生产配方</summary><ol><li>在任一已开放城区建设粮田或蔬菜农场，接入道路和水电。每区初始仓储 40 份。</li><li>牧场和养鸡场需要本区粮食。每座牧场用 2 粮产 3 奶，每座养鸡场用 1 粮产 3 蛋。</li><li>磨坊用 3 粮产 3 面粉；面包坊用 2 面粉产 3 面包；乳品工坊用 2 奶产 3 奶酪。</li><li>跨区运输：两区分别建仓库并通路，选择起点、终点和货物。线路建立费 120、启用时维护费 4/月；默认运力上限 12，起点有货运站时为 24，两端均有地铁货运枢纽时为 60。可设置发货配额，将货物分给不同线路。</li><li>商场每座最多销售 12 份/月（中央商务区为 18 份），全市共享客流需求（每 8 位居民约 1 份）。优先卖奶酪、面包，再销售其他货物。多建商场也需要足够居民。</li></ol><p>同区自动供货，跨区线路每月只运一段。运输后的原料下个月才能在目的区加工。区域特色会提高农业、畜牧、零售或港口能力。贸易港按零售价的 80%（向下取整）出口零售后剩余货物。缺水电会暂停产业；仓储满会停产。每月依次结算收获、饲养、加工、运输和销售。</p><p id="businessPrices"></p></details>
         <section><h3>城区经营与库存</h3><div id="businessDistricts" class="business-districts"></div></section>
-        <section><h3>建立商业连接</h3><form id="routeForm" class="route-form"><label>供货城区<select id="routeFrom" required></select></label><label>收货城区<select id="routeTo" required></select></label><label>运输货物<select id="routeGood" required></select></label><label>发货配额/月<input id="routeQuota" type="number" min="1" max="24" value="12" required></label><button type="submit" id="createRoute">建立线路 · 120</button></form><p class="small-note">最多 20 条线路；单向运送指定货物。两端仓库必须接入连通市政厅的道路。</p><label class="route-overlay"><input type="checkbox" id="routeOverlay"> 在地图显示商业连接（城区示意线）</label><div id="businessRoutes"></div></section>
+        <section><h3>建立商业连接</h3><form id="routeForm" class="route-form"><label>供货城区<select id="routeFrom" required></select></label><label>收货城区<select id="routeTo" required></select></label><label>运输货物<select id="routeGood" required></select></label><label>发货配额/月<input id="routeQuota" type="number" min="1" max="60" value="12" required></label><button type="submit" id="createRoute">建立线路 · 120</button></form><p class="small-note">最多 80 条线路；单向运送指定货物。两端仓库必须接入连通市政厅的道路。</p><label class="route-overlay"><input type="checkbox" id="routeOverlay"> 在地图显示商业连接（城区示意线）</label><div id="businessRoutes"></div></section>
         <details><summary>生产与经营提醒</summary><ul id="businessWarnings"></ul></details>`;
       document.body.append(dialog);this.dialog=dialog;
       this.$=id=>dialog.querySelector('#'+id);
@@ -33,7 +33,7 @@
       if(!this.dialog.open)return;
       const state=this.getState(),economy=report.economy;
       this.$('businessSeason').textContent=economy.season.name+'季 · 粮田 '+economy.season.grain+' / 蔬菜 '+economy.season.vegetables+' 份每座/月';
-      this.$('businessRevenue').textContent='预计货物销售 +'+economy.revenue+' · 线路维护 −'+economy.expense+' / 月；上月销售 +'+state.economy.last.revenue+'、运送 '+state.economy.last.transported+' 份；累计销售 '+state.economy.soldTotal+' 份';
+      this.$('businessRevenue').textContent='预计货物销售 +'+economy.revenue+' · 线路维护 −'+economy.expense+' / 月；上月销售 +'+state.economy.last.revenue+'、运送 '+state.economy.last.transported+' 份；累计销售 '+state.economy.soldTotal+' 份；累计出口 '+state.economy.exportedTotal+' 份';
       const openAreas=C.AREAS.filter(a=>state.areas.includes(a.id));
       for(const id of ['routeFrom','routeTo']){
         const select=this.$(id),old=select.value,values=Array.from(select.options).map(o=>o.value).join(',');

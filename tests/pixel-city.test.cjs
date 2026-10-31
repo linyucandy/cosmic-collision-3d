@@ -21,7 +21,7 @@ test('a detached road cannot make housing active until connected to town hall',(
 });
 test('new districts remain locked until the correct stage and charge only once',()=>{
  const state=fresh();state.money=5000;
- assert.equal(city.SIZE,32);assert.equal(city.build(state,21,5,'road').ok,false);
+ assert.equal(city.SIZE,96);assert.equal(city.build(state,21,5,'road').ok,false);
  assert.equal(city.unlockArea(state,'north').ok,false);
  state.stage=1;const money=state.money;
  assert.equal(city.unlockArea(state,'north').ok,true);
@@ -53,7 +53,7 @@ test('old 20×20 saves migrate without moving tiles or losing progress',()=>{
  const modern=fresh(),tiles=[];for(let y=0;y<20;y++)for(let x=0;x<20;x++)tiles.push(modern.tiles[city.index(x,y)]);
  const legacy={...modern,version:1,tiles,money:1234,population:12,month:18,achievements:['neighbors']};
  delete legacy.stage;delete legacy.areas;delete legacy.stableMonths;
- const restored=city.restore(JSON.stringify(legacy));assert.ok(restored);assert.equal(restored.version,2);assert.equal(restored.tiles.length,32*32);
+ const restored=city.restore(JSON.stringify(legacy));assert.ok(restored);assert.equal(restored.version,3);assert.equal(restored.tiles.length,96*96);
  assert.equal(restored.tiles[city.index(10,10)].type,'townhall');assert.equal(restored.tiles[city.index(8,10)].type,'house');
  assert.equal(restored.money,1234);assert.equal(restored.month,18);assert.ok(restored.achievements.includes('neighbors'));
  assert.equal(city.build(restored,21,5,'road').ok,false);

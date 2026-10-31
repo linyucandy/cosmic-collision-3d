@@ -4,7 +4,7 @@ test('all seven stages are reachable from the normal budget with road-connected 
 const s=C.createCity();
 function ensure(cost){let n=0;while(s.money<cost&&n++<400){if(C.stats(s).net<=0&&s.money<150&&!s.grantUsed)C.grant(s);C.advance(s)}if(s.money<cost)throw Error("Funding stalled stage "+s.stage+" balance "+s.money+" net "+C.stats(s).net)}
 function unlock(id){const area=C.AREAS.find(a=>a.id===id);ensure(area.cost);let r=C.unlockArea(s,id);if(!r.ok)throw Error(r.message)}
-function road(x,y){const t=s.tiles[C.index(x,y)];if(t.type==='road')return;if(t.type!=='empty')throw Error(`road occupied ${x},${y} ${t.type}`);ensure(C.BUILDINGS.road.cost);let r=C.build(s,x,y,'road');if(!r.ok)throw Error(r.message+' '+x+','+y);}
+function road(x,y){const t=s.tiles[C.index(x,y)];if(['road','bridge'].includes(t.type))return;if(t.type!=='empty')throw Error(`road occupied ${x},${y} ${t.type}`);const type=t.terrain==='water'?'bridge':'road';ensure(C.BUILDINGS[type].cost);let r=C.build(s,x,y,type);if(!r.ok)throw Error(r.message+' '+x+','+y);}
 function line(x1,y1,x2,y2){let x=x1,y=y1;road(x,y);while(x!==x2||y!==y2){x+=Math.sign(x2-x);y+=Math.sign(y2-y);road(x,y)}}
 function plot(type,area='center',n=1){for(let k=0;k<n;k++){const r=C.stats(s);let spots=[];for(let y=0;y<C.SIZE;y++)for(let x=0;x<C.SIZE;x++){if(C.areaAt(x,y)!==area||s.tiles[C.index(x,y)].type!=='empty'||s.tiles[C.index(x,y)].terrain!=='grass')continue;if(area==='center'&&x===10&&y>=18)continue;if(area==='south'&&x===16&&y>=22)continue;const adjacent=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]].some(([a,b])=>C.inBounds(a,b)&&r.roads.has(C.index(a,b)));if(adjacent)spots.push([x,y]);}spots.sort((a,b)=>(Math.abs(a[0]-9)+Math.abs(a[1]-13))-(Math.abs(b[0]-9)+Math.abs(b[1]-13)));if(!spots.length)throw Error('no space '+type+' '+area);let [x,y]=spots[0];ensure(C.BUILDINGS[type].cost);let res=C.build(s,x,y,type);if(!res.ok)throw Error(res.message);}}
 function grow(target){let n=0;while(s.population<target&&n++<300)C.advance(s);if(s.population<target)throw Error('growth stalled '+JSON.stringify({target,pop:s.population,stats:C.stats(s)}));for(let i=0;i<12;i++)C.advance(s)}
@@ -39,4 +39,20 @@ for(let i=0;i<24;i++)C.advance(s);
 assert.ok(s.economy.last.produced.milk>0);assert.ok(s.economy.last.produced.bread>0);assert.ok(s.economy.last.produced.cheese>0);
 assert.ok(s.economy.soldTotal>100);assert.ok(s.economy.transportedTotal>200);assert.ok(s.economy.revenueTotal>1000);
 assert.ok(s.lastFinance.tradeRevenue>0);assert.deepEqual(C.restore(JSON.stringify(s)).economy,s.economy);
+// Expand this same earned city into all eight large regions and finish the metro plans.
+function connectTo(x,y){const target=C.index(x,y),parents=new Int32Array(C.SIZE*C.SIZE);parents.fill(-2);const q=[...C.stats(s).roads];for(const id of q)parents[id]=-1;
+  for(let head=0;head<q.length&&parents[target]===-2;head++){const id=q[head],px=id%C.SIZE,py=Math.floor(id/C.SIZE);for(const [nx,ny] of [[px-1,py],[px+1,py],[px,py-1],[px,py+1]]){if(!C.inBounds(nx,ny)||!s.areas.includes(C.areaAt(nx,ny)))continue;const next=C.index(nx,ny);if(parents[next]!==-2||!['empty','road','bridge'].includes(s.tiles[next].type))continue;parents[next]=id;q.push(next);}}
+  assert.notEqual(parents[target],-2,'new region needs a buildable road connection');const path=[];for(let id=target;parents[id]!==-1;id=parents[id])path.push(id);for(const id of path.reverse())road(id%C.SIZE,Math.floor(id/C.SIZE));
+}
+function district(id){unlock(id);const a=C.AREAS.find(a=>a.id===id);connectTo(...a.center);for(let y=a.center[1]-11;y<=a.center[1]+11;y++)road(a.center[0],y);
+  plot('solarfield',id);plot('reservoir',id);plot('block',id,4);plot('hub',id,3);plot('metro',id);plot('park',id,2);plot('clinic',id,2);plot('school',id,2);
+}
+function claimMetro(){assert.deepEqual(C.metroGoals(s).filter(g=>g.value<g.target),[],'all metro objectives must be genuinely met');assert.equal(C.claimMetroPlan(s).ok,true);}
+district('meadow');district('lakeside');plot('bus','center',2);plot('metro','center',2);grow(800);claimMetro();
+district('highland');district('cbd');grow(1200);claimMetro();
+district('forest');plot('hotel','forest',2);plot('museum','forest',2);plot('resort','forest',2);grow(1600);claimMetro();
+district('science');district('harbor');plot('tradeport','harbor',2);plot('greenhouse','harbor',8);grow(2400);claimMetro();
+district('frontier');grow(4000);claimMetro();
+assert.equal(s.metroStage,C.METRO_PLANS.length);assert.equal(s.areas.length,13);assert.ok(s.population>=4000);assert.ok(s.economy.exportedTotal>=200);assert.ok(C.restore(JSON.stringify(s)));
+const finalBalance=s.money;assert.equal(C.claimMetroPlan(s).ok,false);assert.equal(s.money,finalBalance,'completed plans cannot pay twice');
 });

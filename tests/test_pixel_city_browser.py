@@ -32,7 +32,7 @@ class PixelCityBrowserTests(unittest.TestCase):
         try:
             page.goto(self.url)
             page.wait_for_selector('#tool-house')
-            self.assertEqual(page.locator('#toolGrid button').count(), 32)
+            self.assertEqual(page.locator('#toolGrid button').count(), 44)
             page.locator('#cityMap').focus(); page.keyboard.press('Enter')
             self.assertEqual(page.locator('#moneyValue').inner_text(), '840')
             page.locator('#nextMonthButton').click()
@@ -72,7 +72,7 @@ class PixelCityBrowserTests(unittest.TestCase):
             self.assertEqual(page.locator('#moneyValue').inner_text(),'890','another pointer must not build')
             page.mouse.move(points[1]['x'],points[1]['y'],steps=1);page.mouse.up()
             page.wait_for_timeout(400)
-            self.assertEqual(page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1')).tiles.slice(267,272).map(t=>t.type)"),['road']*5)
+            self.assertEqual(page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1')).tiles.slice(8*PixelCity.SIZE+11,8*PixelCity.SIZE+16).map(t=>t.type)"),['road']*5)
             self.assertEqual(page.locator('#moneyValue').inner_text(),'850')
         finally:context.close()
 
@@ -119,7 +119,7 @@ class PixelCityBrowserTests(unittest.TestCase):
             self.assertIn('已开放',page.locator('.district-card').first.inner_text())
             page.locator('#tool-road').click();box=page.locator('#cityMap').bounding_box();page.mouse.click(box['x']+box['width']/2,box['y']+box['height']/2)
             page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
-            self.assertEqual(saved['stage'],1);self.assertIn('north',saved['areas']);self.assertEqual(saved['tiles'][5*32+25]['type'],'road');self.assertEqual(saved['tiles'][9*32+6]['type'],'apartment')
+            self.assertEqual(saved['stage'],1);self.assertIn('north',saved['areas']);self.assertEqual(saved['tiles'][5*96+25]['type'],'road');self.assertEqual(saved['tiles'][9*96+6]['type'],'apartment')
             page.reload();self.assertIn('第 2 阶段',page.locator('#goalTitle').inner_text());self.assertEqual(errors,[])
         finally:context.close()
 
@@ -128,11 +128,11 @@ class PixelCityBrowserTests(unittest.TestCase):
         page.on('pageerror',lambda error:errors.append(str(error)))
         try:
             page.goto(self.url);page.wait_for_selector('#tool-house')
-            page.evaluate("""() => {const s=PixelCity.createCity();s.version=1;s.money=1234;s.month=18;s.achievements=['neighbors'];s.tiles=Array.from({length:400},(_,i)=>s.tiles[Math.floor(i/20)*32+i%20]);delete s.stage;delete s.areas;delete s.stableMonths;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.evaluate("""() => {const s=PixelCity.createCity();s.version=1;s.money=1234;s.month=18;s.achievements=['neighbors'];s.tiles=Array.from({length:400},(_,i)=>s.tiles[PixelCity.index(i%20,Math.floor(i/20))]);delete s.stage;delete s.areas;delete s.stableMonths;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
             page.reload();page.wait_for_selector('#tool-house');self.assertEqual(page.locator('#moneyValue').inner_text(),'1,234')
             self.assertIn('6 月',page.locator('#monthValue').inner_text());page.locator('#cityInfoToggle').click()
             self.assertTrue(page.locator('#cityReport').is_visible());self.assertIn('第 1 阶段',page.locator('#goalTitle').inner_text())
-            self.assertEqual(page.locator('#toolGrid button').count(),32);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
+            self.assertEqual(page.locator('#toolGrid button').count(),44);self.assertGreater(page.locator('#toolGrid').evaluate('(e)=>e.scrollWidth-e.clientWidth'),0)
             self.assertEqual(errors,[])
         finally:context.close()
 
@@ -195,15 +195,48 @@ class PixelCityBrowserTests(unittest.TestCase):
         try:
             page.goto(self.url);page.wait_for_selector('#tool-house')
             page.evaluate("""() => {const s=PixelCity.createCity();s.stage=7;s.areas=PixelCity.AREAS.map(a=>a.id);s.money=10000;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
-            page.reload();page.locator('#toolCategory').select_option('farm');self.assertEqual(page.locator('#toolGrid button:visible').count(),2)
+            page.reload();page.locator('#toolCategory').select_option('farm');self.assertEqual(page.locator('#toolGrid button:visible').count(),3)
             page.locator('#tool-field').tap()
             point=page.evaluate("""() => {const c=document.querySelector('#cityMap'),r=c.getBoundingClientRect(),w=c.width,h=c.height,z=Math.max(.2,Math.min((w-30)/640,(h-40)/360,1.25));return {x:r.left+(w/2+(6-10)*16*z)*r.width/w,y:r.top+(h/2+(6+10-20)*8*z)*r.height/h};}""")
             page.touchscreen.tap(point['x'],point['y']);page.locator('#businessButton').tap();page.locator('#businessNextMonth').tap();page.wait_for_timeout(400)
-            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertEqual(saved['tiles'][10*32+6]['type'],'field');self.assertGreater(saved['economy']['stock']['center']['grain'],0)
+            saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertEqual(saved['tiles'][10*96+6]['type'],'field');self.assertGreater(saved['economy']['stock']['center']['grain'],0)
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
             self.assertLessEqual(page.locator('#businessDialog').evaluate('(e)=>e.scrollWidth-e.clientWidth'),1)
             page.screenshot(path=str(ROOT/'.screenshots/pixel-city-commerce-mobile.png'))
             page.locator('#businessClose').tap();self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_old_v2_city_migrates_then_builds_in_a_new_region(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#tool-house')
+            page.evaluate("""() => {const C=PixelCity,s=C.createCity();s.version=2;s.stage=7;s.money=6543;s.areas=['center','north','east','south','valley'];s.projectDone=['health'];s.tiles=Array.from({length:1024},(_,i)=>s.tiles[C.index(i%32,Math.floor(i/32))]);s.economy.stock=Object.fromEntries(Object.entries(s.economy.stock).filter(([id])=>s.areas.includes(id)));s.economy.stock.center.grain=23;delete s.metroStage;delete s.economy.exportedTotal;delete s.economy.last.exportRevenue;delete s.economy.last.exported;localStorage.setItem('chenchen-pixel-city-v1',JSON.stringify(s));}""")
+            page.reload();page.wait_for_selector('#regionAtlasButton');self.assertEqual(page.locator('#moneyValue').inner_text(),'6,543')
+            page.locator('#regionAtlasButton').click();self.assertEqual(page.locator('.region-card').count(),13);self.assertIn('9,216',page.locator('#regionSummary').inner_text())
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-regions-desktop.png'))
+            page.locator('[data-region-open="meadow"]').click();self.assertEqual(page.locator('[data-region-open="meadow"]').count(),0)
+            page.locator('[data-region-focus="meadow"]').click();page.locator('#tool-road').click()
+            box=page.locator('#cityMap').bounding_box();page.mouse.click(box['x']+box['width']/2,box['y']+box['height']/2)
+            page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertEqual(saved['version'],3);self.assertEqual(len(saved['tiles']),9216);self.assertEqual(saved['tiles'][16*96+48]['type'],'road');self.assertEqual(saved['economy']['stock']['center']['grain'],23);self.assertEqual(saved['projectDone'],['health'])
+            self.assertIn('meadow',saved['areas']);self.assertEqual(saved['money'],4533)
+            page.evaluate("() => {const stats=PixelCity.stats;window.cityStatsCalls=0;PixelCity.stats=(...args)=>{window.cityStatsCalls++;return stats(...args)};}")
+            page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2+20,steps=5);page.wait_for_timeout(700)
+            self.assertEqual(page.evaluate('window.cityStatsCalls'),0,'idle rendering and pointer hover reuse the city report')
+            page.reload();self.assertEqual(page.locator('#moneyValue').inner_text(),'4,533');self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_region_atlas_and_minimap_work_on_mobile(self):
+        context=self.browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True);page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#regionAtlasButton');page.locator('#regionAtlasButton').tap()
+            self.assertEqual(page.locator('.region-card').count(),13);self.assertLessEqual(page.locator('#regionDialog').evaluate('(e)=>e.scrollWidth-e.clientWidth'),1)
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-regions-mobile.png'))
+            page.locator('[data-region-focus="frontier"]').tap();self.assertFalse(page.locator('#regionDialog').is_visible())
+            mini=page.locator('#regionMinimap').bounding_box();page.touchscreen.tap(mini['x']+mini['width']*10/96,mini['y']+mini['height']*10/96)
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'));self.assertEqual(errors,[])
         finally:context.close()
 
 if __name__ == '__main__': unittest.main()
