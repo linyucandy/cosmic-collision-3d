@@ -161,6 +161,7 @@
       }
       const ctx=this.ctx,ratio=this.zoom/this.sceneCamera.zoom;ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#cbd8b9';ctx.fillRect(0,0,this.width,this.height);
       ctx.drawImage(this.scene,this.x-this.sceneCamera.x*ratio-padding*ratio,this.y-this.sceneCamera.y*ratio-padding*ratio,this.scene.width*ratio,this.scene.height*ratio);
+      this.drawCitizens(state,report,time);
       if(this.hover&&tool!=='hand'){
         const {x,y}=this.hover,valid=E.canBuild(state,x,y,tool).ok;ctx.save();ctx.translate(this.x,this.y);ctx.scale(this.zoom,this.zoom);ctx.translate((x-y)*16,(x+y)*8);
         polygon(ctx,[[0,-8],[16,0],[0,8],[-16,0]],valid?'#d6e6ab77':'#d77c6b55',valid?'#f8f2cd':'#c16858');
@@ -170,6 +171,19 @@
         ctx.save();ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
         for(const flow of report.economy.flows){const from=E.AREAS.find(a=>a.id===flow.from),to=E.AREAS.find(a=>a.id===flow.to),a=this.project(...from.center),b=this.project(...to.center);ctx.strokeStyle=flow.amount?'#427c70':'#aa9371';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();if(flow.amount){const t=(time/2400+flow.id*.17)%1;ctx.fillStyle='#f7e6a2';ctx.fillRect(a.x+(b.x-a.x)*t-2,a.y+(b.y-a.y)*t-2,4,4);}}
         ctx.restore();
+      }
+    }
+    drawCitizens(state,report,time){
+      if(!state.autonomy.enabled||!report.roads.size)return;
+      const ctx=this.ctx,visible=[...report.roads].filter(id=>{const p=this.project(id%E.SIZE,Math.floor(id/E.SIZE));return p.x>0&&p.x<this.width&&p.y>0&&p.y<this.height;});if(!visible.length)return;
+      if(!this.citizens)this.citizens=E.COUNCILLORS.map((m,i)=>({id:visible[Math.floor(i*visible.length/E.COUNCILLORS.length)],next:null,previous:null,progress:0,lastTime:time,color:m.color,seed:i}));
+      for(const person of this.citizens){
+        let point=this.project(person.id%E.SIZE,Math.floor(person.id/E.SIZE));if(!report.roads.has(person.id)||point.x< -30||point.x>this.width+30||point.y< -30||point.y>this.height+30){person.id=visible[Math.floor(person.seed*visible.length/E.COUNCILLORS.length)];person.next=null;person.progress=0;}
+        if(person.next===null||!report.roads.has(person.next)){const x=person.id%E.SIZE,y=Math.floor(person.id/E.SIZE),choices=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([x,y])=>E.inBounds(x,y)&&report.roads.has(E.index(x,y))).map(([x,y])=>E.index(x,y)),forward=choices.filter(id=>id!==person.previous);person.next=(forward.length?forward:choices)[person.seed%(forward.length||choices.length)]??person.id;}
+        person.progress+=Math.min(100,Math.max(0,time-person.lastTime))/1400;person.lastTime=time;
+        if(person.progress>=1){person.previous=person.id;person.id=person.next;person.next=null;person.progress=0;}
+        const next=person.next??person.id,t=person.progress,x=person.id%E.SIZE+(next%E.SIZE-person.id%E.SIZE)*t,y=Math.floor(person.id/E.SIZE)+(Math.floor(next/E.SIZE)-Math.floor(person.id/E.SIZE))*t;point=this.project(x,y);
+        ctx.save();ctx.translate(point.x,point.y);ctx.scale(Math.max(.65,this.zoom),Math.max(.65,this.zoom));ctx.fillStyle='#536a4d55';ctx.fillRect(-2,1,5,2);ctx.fillStyle=person.color;ctx.fillRect(-1,-4,3,4);ctx.fillStyle='#efd0a6';ctx.fillRect(-1,-7,3,3);ctx.fillStyle='#5d5b47';ctx.fillRect(-1,-8,3,1);ctx.fillRect(-1,0,1,2);ctx.fillRect(1,Math.floor(time/180+person.seed)%2,1,2);ctx.restore();
       }
     }
     drawWorld(state,report,tool,time) {

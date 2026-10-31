@@ -239,4 +239,36 @@ class PixelCityBrowserTests(unittest.TestCase):
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'));self.assertEqual(errors,[])
         finally:context.close()
 
+    def test_citizens_autonomously_build_and_report_in_a_live_council(self):
+        context=self.browser.new_context(viewport={'width':1440,'height':1000});page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').click()
+            self.assertEqual(page.locator('.council-member').count(),6);page.locator('#councilEnable').click()
+            page.wait_for_function("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))?.autonomy?.reports.length >= 1",timeout=9000)
+            page.locator('#councilRun').click()
+            for _ in range(2):page.locator('#councilNextMonth').click()
+            page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertTrue(saved['autonomy']['enabled']);self.assertEqual(len(saved['autonomy']['reports']),3);self.assertEqual(saved['autonomy']['reports'][0]['kind'],'quarter');self.assertGreater(saved['autonomy']['totalSpent'],0)
+            page.locator('#councilReportFilter').select_option('quarter');self.assertEqual(page.locator('.council-report').count(),1)
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-council-desktop.png'))
+            page.locator('#councilEnable').click();page.locator('#councilNextMonth').click();page.wait_for_timeout(400)
+            paused=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))");self.assertFalse(paused['autonomy']['enabled']);self.assertEqual(paused['autonomy']['totalSpent'],saved['autonomy']['totalSpent']);self.assertEqual(len(paused['autonomy']['reports']),3)
+            page.reload();page.locator('#councilButton').click();self.assertEqual(page.locator('#councilFocus').input_value(),'balanced');self.assertEqual(errors,[])
+        finally:context.close()
+
+    def test_council_budget_focus_reports_and_resume_on_mobile(self):
+        context=self.browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True);page=context.new_page();errors=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        try:
+            page.goto(self.url);page.wait_for_selector('#councilButton');page.locator('#councilButton').tap();page.locator('#councilEnable').tap();page.locator('#councilRun').tap()
+            page.locator('#councilFocus').select_option('food');page.locator('#councilReserve').fill('350');page.locator('#councilBudget').fill('25');page.locator('#councilSettings button').tap()
+            page.screenshot(path=str(ROOT/'.screenshots/pixel-city-council-mobile.png'))
+            for _ in range(3):page.locator('#councilNextMonth').tap()
+            page.wait_for_timeout(400);saved=page.evaluate("JSON.parse(localStorage.getItem('chenchen-pixel-city-v1'))")
+            self.assertEqual(saved['autonomy']['focus'],'food');self.assertEqual(saved['autonomy']['reserve'],350);self.assertEqual(saved['autonomy']['budgetPercent'],25);self.assertEqual(saved['autonomy']['reports'][0]['kind'],'quarter')
+            self.assertLessEqual(page.locator('#councilDialog').evaluate('(e)=>e.scrollWidth-e.clientWidth'),1);self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+            page.reload();page.locator('#councilButton').tap();self.assertEqual(page.locator('#councilFocus').input_value(),'food');self.assertEqual(page.locator('#councilReserve').input_value(),'350');self.assertEqual(errors,[])
+        finally:context.close()
+
 if __name__ == '__main__': unittest.main()

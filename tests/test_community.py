@@ -65,6 +65,11 @@ class CommunityTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/games/'+game_id).json['game']['play_url'],'/'+file)
             with self.client.get('/'+file) as result:self.assertEqual(result.status_code,200)
 
+    def test_pixel_city_council_assets_are_published(self):
+        for file,marker in [('pixel-city-council.js',b'CityCouncilRules'),('pixel-city-council-ui.js',b'CityCouncilPanel'),('pixel-city-council.css',b'council-dialog')]:
+            with self.client.get('/'+file) as response:
+                self.assertEqual(response.status_code,200);self.assertIn(marker,response.data)
+
     def test_publish_is_shared_and_persists_across_app_restart(self):
         game_id = self.publish()
         second = create_app({'TESTING':True,'DATABASE':self.db}).test_client()

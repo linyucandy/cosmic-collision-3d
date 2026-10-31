@@ -1,6 +1,7 @@
 /* The simulation is independent of the renderer and browser storage. */
 (() => {
   const Economy=typeof module!=='undefined'&&module.exports?require('./pixel-city-economy.js'):CityEconomy;
+  const Council=typeof module!=='undefined'&&module.exports?require('./pixel-city-council.js'):CityCouncilRules;
   const SIZE=96,OLD_SIZE=20,PREVIOUS_SIZE=32;
   const BUILDINGS={
     road:{name:'道路',cost:10,upkeep:0.15,description:'连接市政厅与建筑。按住拖动可连续铺设。',key:'1'},
@@ -106,7 +107,7 @@
     put(10,10,'townhall');put(8,10,'house');put(9,10,'house');put(11,10,'shop');
     put(12,10,'solar');put(13,10,'water');put(7,10,'park');
     return {version:3,seed:seed>>>0,tiles,money:900,population:12,month:1,achievements:[],grantUsed:false,stage:0,areas:['center'],stableMonths:0,metroStage:0,projectDone:[],contract:null,contractsCompleted:0,
-      economy:Economy.create(AREAS.map(a=>a.id)),lastFinance:{income:0,expense:0,net:0},lastGrowth:0};
+      economy:Economy.create(AREAS.map(a=>a.id)),autonomy:Council.create(),lastFinance:{income:0,expense:0,net:0},lastGrowth:0};
   }
   function stats(state) {
     const hall=state.tiles.findIndex(tile=>tile.type==='townhall'),roadSet=new Set(),queue=hall<0?[]:[hall];
@@ -230,20 +231,20 @@
   function removeRoute(state,id){const i=state.economy.routes.findIndex(r=>r.id===id);if(i<0)return {ok:false,message:'线路不存在。'};state.economy.routes.splice(i,1);return {ok:true,message:'线路已移除，库存保留在各城区。'};}
   function stageGoals(state,report=stats(state)) {
     const count=type=>report.activeCounts[type]||0,inside=id=>report.areaBuildings[id]||0,
-      open=id=>state.areas.includes(id)?1:0,goal=(name,value,target,unit='')=>({name,value,target,unit});
-    const pop=n=>goal('常住居民',state.population,n,'人'),happy=n=>goal('幸福度',report.happiness,n,'%'),
-      buildings=(name,type,n)=>goal(name,count(type),n,'座'),district=(id,n)=>goal(AREAS.find(a=>a.id===id).name+'接通建筑',inside(id),n,'座'),
-      unlocked=id=>goal('开放'+AREAS.find(a=>a.id===id).name,open(id),1),
-      services=()=>goal('水电供应',Math.round(report.supply*100),100,'%'),
-      net=n=>goal('预计月结余',report.net,n,'城币'),stable=n=>goal('连续稳定月数',state.stableMonths,n,'月');
+      open=id=>state.areas.includes(id)?1:0,goal=(name,value,target,unit='',details={})=>({name,value,target,unit,...details});
+    const pop=n=>goal('常住居民',state.population,n,'人',{kind:'population'}),happy=n=>goal('幸福度',report.happiness,n,'%',{kind:'happiness'}),
+      buildings=(name,type,n)=>goal(name,count(type),n,'座',{kind:'building',building:type}),district=(id,n)=>goal(AREAS.find(a=>a.id===id).name+'接通建筑',inside(id),n,'座',{kind:'district',area:id}),
+      unlocked=id=>goal('开放'+AREAS.find(a=>a.id===id).name,open(id),1,'',{kind:'area',area:id}),
+      services=()=>goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'}),
+      net=n=>goal('预计月结余',report.net,n,'城币',{kind:'profit'}),stable=n=>goal('连续稳定月数',state.stableMonths,n,'月',{kind:'stability'});
     switch(state.stage){
       case 0:return [pop(20),buildings('接通商店','shop',1),happy(65),services()];
       case 1:return [pop(45),buildings('接通公园','park',2),buildings('接通诊所','clinic',1),unlocked('north'),district('north',3),services()];
       case 2:return [pop(90),buildings('接通学校','school',1),buildings('接通办公楼','office',1),unlocked('east'),district('east',3),net(15),stable(3),services()];
       case 3:return [pop(150),happy(80),buildings('接通警局','police',1),buildings('接通图书馆','library',1),buildings('接通回收站','recycling',1),unlocked('south'),district('south',4),services()];
       case 4:return [pop(220),buildings('接通风力电站','wind',1),buildings('接通供水站','pump',1),buildings('接通公园','park',3),buildings('接通诊所','clinic',2),unlocked('valley'),district('valley',5),net(60),stable(3),services()];
-      case 5:return [pop(300),happy(85),goal('就业岗位',report.jobs,150,'个'),buildings('接通学校','school',2),buildings('接通诊所','clinic',2),buildings('接通公园','park',4),...['north','east','south','valley'].map(id=>district(id,4)),net(80),stable(6),services()];
-      case 6:return [pop(400),happy(85),goal('就业岗位',report.jobs,240,'个'),...['north','east','south','valley'].map(id=>district(id,8)),net(120),stable(12),services()];
+      case 5:return [pop(300),happy(85),goal('就业岗位',report.jobs,150,'个',{kind:'jobs'}),buildings('接通学校','school',2),buildings('接通诊所','clinic',2),buildings('接通公园','park',4),...['north','east','south','valley'].map(id=>district(id,4)),net(80),stable(6),services()];
+      case 6:return [pop(400),happy(85),goal('就业岗位',report.jobs,240,'个',{kind:'jobs'}),...['north','east','south','valley'].map(id=>district(id,8)),net(120),stable(12),services()];
       default:return [];
     }
   }
@@ -256,12 +257,12 @@
   }
   const aftergameOpen=state=>state.stage>=STAGES.length;
   function projectGoals(state,id,report=stats(state)) {
-    const goal=(name,value,target,unit='')=>({name,value,target,unit}),count=type=>report.activeCounts[type]||0;
+    const goal=(name,value,target,unit='',details={})=>({name,value,target,unit,...details}),count=type=>report.activeCounts[type]||0;
     switch(id){
-      case 'health':return [goal('常住居民',state.population,500,'人'),goal('接通综合医院',count('hospital'),1,'座'),goal('水电供应',Math.round(report.supply*100),100,'%')];
-      case 'knowledge':return [goal('接通大学',count('university'),1,'座'),goal('接通科技园',count('tech'),2,'座'),goal('就业岗位',report.jobs,300,'个'),goal('水电供应',Math.round(report.supply*100),100,'%')];
-      case 'vertical':return [goal('常住居民',state.population,600,'人'),goal('接通摩天住宅',count('tower'),3,'座'),goal('幸福度',report.happiness,80,'%'),goal('水电供应',Math.round(report.supply*100),100,'%')];
-      case 'sustainable':return [goal('接通风力电站',count('wind'),3,'座'),goal('接通供水站',count('pump'),3,'座'),goal('接通回收站',count('recycling'),2,'座'),goal('预计月结余',report.net,150,'城币'),goal('水电供应',Math.round(report.supply*100),100,'%')];
+      case 'health':return [goal('常住居民',state.population,500,'人'),goal('接通综合医院',count('hospital'),1,'座'),goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'})];
+      case 'knowledge':return [goal('接通大学',count('university'),1,'座'),goal('接通科技园',count('tech'),2,'座'),goal('就业岗位',report.jobs,300,'个'),goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'})];
+      case 'vertical':return [goal('常住居民',state.population,600,'人'),goal('接通摩天住宅',count('tower'),3,'座'),goal('幸福度',report.happiness,80,'%'),goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'})];
+      case 'sustainable':return [goal('接通风力电站',count('wind'),3,'座'),goal('接通供水站',count('pump'),3,'座'),goal('接通回收站',count('recycling'),2,'座'),goal('预计月结余',report.net,150,'城币'),goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'})];
       default:return [];
     }
   }
@@ -280,7 +281,7 @@
   }
   function contractGoals(state,report=stats(state)){
     if(!state.contract)return [];
-    const goal=(name,value,target,unit='')=>({name,value,target,unit}),c=state.contract,base=[goal('接取后运营',state.month-c.startMonth,3,'月')],supply=goal('水电供应',Math.round(report.supply*100),100,'%');
+    const goal=(name,value,target,unit='',details={})=>({name,value,target,unit,...details}),c=state.contract,base=[goal('接取后运营',state.month-c.startMonth,3,'月')],supply=goal('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'});
     if(c.id==='budget')return [...base,goal('预计月结余',report.net,100,'城币'),goal('幸福度',report.happiness,75,'%'),supply];
     if(c.id==='growth')return [...base,goal('新增居民',state.population-c.startPopulation,12,'人'),supply];
     if(c.id==='services')return [...base,goal('幸福度',report.happiness,85,'%'),goal('医疗覆盖',Math.round(report.clinicCoverage*100),60,'%'),goal('教育覆盖',Math.round(report.educationCoverage*100),60,'%'),supply];
@@ -294,13 +295,13 @@
   }
   function cancelContract(state){if(!state.contract)return {ok:false,message:'当前没有委托。'};state.contract=null;return {ok:true,message:'已放弃委托，可重新选择。'};}
   function metroGoals(state,report=stats(state)){
-    const g=(name,value,target,unit='')=>({name,value,target,unit}),open=id=>g('开放'+AREAS.find(a=>a.id===id).name,state.areas.includes(id)?1:0,1),building=(type,n)=>g('接通'+BUILDINGS[type].name,report.activeCounts[type]||0,n,'座'),pop=n=>g('常住居民',state.population,n,'人'),supply=g('水电供应',Math.round(report.supply*100),100,'%');
+    const g=(name,value,target,unit='',details={})=>({name,value,target,unit,...details}),open=id=>g('开放'+AREAS.find(a=>a.id===id).name,state.areas.includes(id)?1:0,1,'',{kind:'area',area:id}),building=(type,n)=>g('接通'+BUILDINGS[type].name,report.activeCounts[type]||0,n,'座',{kind:'building',building:type}),pop=n=>g('常住居民',state.population,n,'人',{kind:'population'}),supply=g('水电供应',Math.round(report.supply*100),100,'%',{kind:'utilities'});
     switch(state.metroStage){
-      case 0:return [pop(800),open('meadow'),open('lakeside'),building('bus',2),g('丰收平原接通建筑',report.areaBuildings.meadow,6,'座'),g('湖畔接通建筑',report.areaBuildings.lakeside,6,'座'),supply];
-      case 1:return [pop(1200),open('highland'),open('cbd'),building('metro',2),g('就业岗位',report.jobs,800,'个'),supply];
-      case 2:return [pop(1600),open('forest'),building('hotel',2),building('museum',2),building('resort',2),g('到访游客',report.visitors,100,'人'),g('幸福度',report.happiness,85,'%'),supply];
-      case 3:return [pop(2400),open('science'),open('harbor'),building('tradeport',2),g('累计出口',state.economy.exportedTotal,200,'份'),g('就业岗位',report.jobs,1600,'个'),supply];
-      case 4:return [pop(4000),open('frontier'),g('开放区域',state.areas.length,AREAS.length,'区'),g('公共交通覆盖',Math.round(report.transitCoverage*100),60,'%'),g('预计月结余',report.net,1000,'城币'),g('连续稳定经营',state.stableMonths,12,'月'),...AREAS.filter(a=>a.requires).map(a=>g(a.name+'接通建筑',report.areaBuildings[a.id],10,'座')),supply];
+      case 0:return [pop(800),open('meadow'),open('lakeside'),building('bus',2),g('丰收平原接通建筑',report.areaBuildings.meadow,6,'座',{kind:'district',area:'meadow'}),g('湖畔接通建筑',report.areaBuildings.lakeside,6,'座',{kind:'district',area:'lakeside'}),supply];
+      case 1:return [pop(1200),open('highland'),open('cbd'),building('metro',2),g('就业岗位',report.jobs,800,'个',{kind:'jobs'}),supply];
+      case 2:return [pop(1600),open('forest'),building('hotel',2),building('museum',2),building('resort',2),g('到访游客',report.visitors,100,'人',{kind:'tourism'}),g('幸福度',report.happiness,85,'%',{kind:'happiness'}),supply];
+      case 3:return [pop(2400),open('science'),open('harbor'),building('tradeport',2),g('累计出口',state.economy.exportedTotal,200,'份',{kind:'exports'}),g('就业岗位',report.jobs,1600,'个',{kind:'jobs'}),supply];
+      case 4:return [pop(4000),open('frontier'),g('开放区域',state.areas.length,AREAS.length,'区',{kind:'areas'}),g('公共交通覆盖',Math.round(report.transitCoverage*100),60,'%',{kind:'transit'}),g('预计月结余',report.net,1000,'城币',{kind:'profit'}),g('连续稳定经营',state.stableMonths,12,'月',{kind:'stability'}),...AREAS.filter(a=>a.requires).map(a=>g(a.name+'接通建筑',report.areaBuildings[a.id],10,'座',{kind:'district',area:a.id})),supply];
       default:return [];
     }
   }
@@ -318,7 +319,8 @@
       const met=state.population>=goal.target&&(goal.id!=='green'||((report.counts.park||0)>=3&&report.happiness>=85));
       if(met&&!state.achievements.includes(goal.id)){state.achievements.push(goal.id);state.money+=goal.reward;rewards.push(goal);}
     }
-    return {growth,rewards,...report};
+    const civic=Council.tick(state,api);state.lastFinance.investment=civic.spent;state.lastFinance.civicRewards=civic.rewards;
+    return {growth,rewards,...report,civic};
   }
   function grant(state) {
     if(state.grantUsed)return {ok:false,message:'这座城市已经领取过一次援助。'};
@@ -353,9 +355,12 @@
       if(value.version>=2){result.stage=value.stage;result.areas=[...value.areas];result.stableMonths=value.stableMonths;result.metroStage=value.metroStage||0;result.projectDone=[...(value.projectDone||[])];result.contract=value.contract?{id:value.contract.id,startMonth:value.contract.startMonth,startPopulation:value.contract.startPopulation}:null;result.contractsCompleted=value.contractsCompleted||0;}
       result.achievements=[...new Set(value.achievements)];result.grantUsed=value.grantUsed===true;
       const economy=Economy.restore(value.economy,AREAS.map(a=>a.id),result.areas);if(!economy)return null;result.economy=economy;
+      const autonomy=Council.restore(value.autonomy);if(!autonomy)return null;result.autonomy=autonomy;
+      if(autonomy.startedMonth>result.month||autonomy.plan&&autonomy.plan.startMonth>result.month||autonomy.reports.some(r=>r.month>result.month))return null;
       return result;
     }catch(_){return null;}
   }
-  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,PROJECTS,CONTRACTS,METRO_PLANS,GOODS:Economy.GOODS,RECIPES:Economy.RECIPES,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,addRoute,toggleRoute,removeRoute,stageGoals,claimStage,projectGoals,claimProject,acceptContract,contractGoals,claimContract,cancelContract,metroGoals,claimMetroPlan,advance,grant,restore};
+  const setAutonomy=(state,settings)=>Council.configure(state,api,settings);
+  const api={SIZE,BUILDINGS,GOALS,AREAS,STAGES,PROJECTS,CONTRACTS,METRO_PLANS,COUNCILLORS:Council.MEMBERS,CIVIC_FOCUSES:Council.FOCUSES,GOODS:Economy.GOODS,RECIPES:Economy.RECIPES,index,inBounds,areaAt,createCity,stats,canBuild,build,unlockArea,addRoute,toggleRoute,removeRoute,stageGoals,claimStage,projectGoals,claimProject,acceptContract,contractGoals,claimContract,cancelContract,metroGoals,claimMetroPlan,setAutonomy,advance,grant,restore};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else globalThis.PixelCity=api;
 })();
