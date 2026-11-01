@@ -39,7 +39,7 @@ class SimulatorTests(unittest.TestCase):
         source = source.replace('\nloop();', '''
 paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
-  clearScene, explosions, shockwaves, flashes, step, updateEffects, explode,
+  clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody,
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get selected() { return selected; },
@@ -161,6 +161,59 @@ loop();''')
         distance=self.page.evaluate('sim.bodies[1].mesh.position.distanceTo(sim.controls.target)')
         self.assertLess(distance,1000, 'new bodies should launch near the current view')
         self.assertEqual(self.errors,[])
+
+    def test_cancelled_or_secondary_touch_does_not_launch_body(self):
+        self.open_sim();self.page.evaluate('sim.clear()')
+        self.page.evaluate("""() => {
+          const c=document.getElementById('space');
+          const fire=(type,id,primary,x)=>c.dispatchEvent(new PointerEvent(type,
+            {pointerId:id,pointerType:'touch',isPrimary:primary,button:0,clientX:x,clientY:450,bubbles:true}));
+          fire('pointerdown',1,true,1000);fire('pointerdown',2,false,1050);
+          fire('pointerup',2,false,1050);fire('pointerup',1,true,1100);
+          fire('pointerdown',3,true,1000);fire('pointercancel',3,true,1000);fire('pointerup',3,true,1100);
+        }""")
+        self.assertEqual(self.page.evaluate('sim.bodies.length'),0)
+        self.assertEqual(self.errors,[])
+
+    def test_click_empty_canvas_places_body(self):
+        self.open_sim();self.page.evaluate('sim.clear()')
+        self.page.mouse.click(1100,450)
+        self.assertEqual(self.page.evaluate('sim.bodies.length'),1)
+        self.assertEqual(self.errors,[])
+
+    def test_focused_body_survives_collision_and_evolution_as_selection(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,100,'planet');
+          const b=sim.spawnBody(a.r,0,0,0,0,0,40,'planet');
+          sim.selectBody(b);sim.handleCollisions();
+          const afterCollision=sim.selected===a;
+          const evolved=sim.transformBody(a,'brownDwarf');
+          return {afterCollision,afterEvolution:sim.selected===evolved,mass:evolved.mass};
+        }""")
+        self.assertTrue(result['afterCollision'],result)
+        self.assertTrue(result['afterEvolution'],result)
+        self.assertEqual(result['mass'],140)
+
+    def test_full_scene_never_deletes_existing_body_to_make_room(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();for(let i=0;i<320;i++)sim.spawnBody(i*20,0,0,0,0,0,40,'planet');
+          const existing=[...sim.bodies], extra=sim.spawnBody(9000,0,0,0,0,0,40,'planet');
+          return {count:sim.bodies.length,allPresent:existing.every(b=>sim.bodies.includes(b)),rejected:extra===null};
+        }""")
+        self.assertEqual(result,{'count':320,'allPresent':True,'rejected':True})
+
+    def test_drag_from_body_starts_outside_existing_surface(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star')")
+        self.page.mouse.move(720,450);self.page.mouse.down()
+        self.page.mouse.move(800,450,steps=4);self.page.mouse.up()
+        result=self.page.evaluate("""() => {
+          const [a,b]=sim.bodies;return {count:sim.bodies.length,distance:a.mesh.position.distanceTo(b.mesh.position),minimum:a.r+b.r};
+        }""")
+        self.assertEqual(result['count'],2,result)
+        self.assertGreater(result['distance'],result['minimum'],result)
 
     def test_deformation_preserves_body_volume(self):
         self.open_sim()

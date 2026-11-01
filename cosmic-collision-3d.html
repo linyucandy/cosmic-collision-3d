@@ -117,7 +117,8 @@
   </div>
 </div>
 
-<div class="hint">左键按住拖动发射天体 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
+<div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
+<div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
 <script src="celestial-size.js?v=2"></script>
 <script src="planet-assessment.js?v=2"></script>
@@ -743,12 +744,8 @@ function makeTrail(color) {
 }
 
 function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
-  if (bodies.length >= 320) {
-    // 满员时优先淘汰小碎片，避免误删星系核心等大天体
-    let idx = bodies.findIndex(b => b.type === 'asteroid' && b.mass < 10);
-    if (idx < 0) idx = 1 + (Math.random() * (bodies.length - 1) | 0);
-    removeBody(bodies[idx]);
-  }
+  // Keep existing bodies intact at capacity; callers can handle a refused spawn.
+  if (bodies.length >= 320) return null;
   const r = radiusFor(type, mass);
   const color = colorOverride || (type === 'planet'
     ? PLANET_COLORS[(Math.random() * PLANET_COLORS.length) | 0]
@@ -1220,6 +1217,7 @@ function spark(pos, color) {
 /* 离心解体：从赤道切向甩出碎片，速度=自转线速度≈轨道速度 → 碎片形成环绕吸积盘 */
 function shedFragments(b, n) {
   for (let i = 0; i < n; i++) {
+    if (bodies.length >= 320) break;
     const dm = Math.max(0.8, b.mass * (0.006 + Math.random() * 0.01));
     if (b.mass - dm < 5) break;
     // 甩出物种类：大质量母体除小行星外还会甩出行星/褐矮星/白矮星残骸
@@ -1406,6 +1404,10 @@ function handleCollisions(swept = false) {
         const vT = relV.sub(nvec.multiplyScalar(relV.dot(nvec))).length();
         survivor.spinW += (other.mass * vT) / (0.4 * M * survivor.r) * 0.5;
         explode(other.mesh.position, other);
+        if (selected === other || selected === survivor) {
+          selectBody(survivor);
+          showNotice(`碰撞合并：继续跟随${TYPE_NAMES[survivor.type] || survivor.type}，质量 ${M.toFixed(1)}`);
+        }
         dead.add(other);
         collisions++;
       } else {
@@ -1536,6 +1538,7 @@ function checkEvolution(b) {
     explode(b.mesh.position, b);
     explode(b.mesh.position, { mass: M * 0.8, color: 0xbfd8ff, r: b.r, mesh: b.mesh });
     scatterDebris(b);
+    if (selected === b) showNotice('白矮星发生超新星爆发，已碎裂为小天体。');
     removeBody(b);
     return true;
   }
@@ -1559,8 +1562,13 @@ function checkEvolution(b) {
 /* 原地转化：保留位置/速度/质量，重建外观 */
 function transformBody(b, newType) {
   const p = b.mesh.position, v = b.vel, m = b.mass;
+  const wasSelected = selected === b;
   removeBody(b);
   const nb = spawnBody(p.x, p.y, p.z, v.x, v.y, v.z, m, newType);
+  if (wasSelected) {
+    selectBody(nb);
+    showNotice(`天体已演化为${TYPE_NAMES[newType] || newType}，继续跟随。`);
+  }
   nb.shedCd = 1;                                 // 防止转化瞬间连锁甩碎片
   return nb;
 }
@@ -1680,59 +1688,106 @@ function planePoint(e, out) {
   return raycaster.ray.intersectPlane(spawnPlane, out);
 }
 
+// Move a new body toward the viewer if its starting point is inside another body.
+// Merge intersecting intervals along the ray to handle several overlapping bodies.
+function safeLaunchPosition(point, radius) {
+  const direction = camera.position.clone().sub(point).normalize();
+  if (!direction.lengthSq()) camera.getWorldDirection(direction).negate();
+  const intervals = [];
+  for (const body of bodies) {
+    if (body.type === 'wormhole') continue;
+    const relative = point.clone().sub(body.mesh.position);
+    const projection = relative.dot(direction);
+    const clearance = body.r + radius + Math.max(0.05, radius * 0.05);
+    const discriminant = projection * projection - (relative.lengthSq() - clearance * clearance);
+    if (discriminant < 0) continue;
+    const root = Math.sqrt(discriminant);
+    const lo = -projection - root, hi = -projection + root;
+    if (hi >= 0) intervals.push([lo, hi]);
+  }
+  intervals.sort((a, b) => a[0] - b[0]);
+  let offset = 0;
+  for (const [lo, hi] of intervals) {
+    if (lo > offset) break;
+    if (hi >= offset) offset = hi + 0.01;
+  }
+  return point.clone().addScaledVector(direction, offset);
+}
+let noticeTimer;
+function showNotice(message) {
+  const notice = document.getElementById('launchNotice');
+  notice.textContent = message;
+  notice.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { notice.hidden = true; }, 5000);
+}
+let launchPoint = null, activeLaunchPointer = null;
+function cancelLaunch() {
+  activeLaunchPointer = null; dragA = null; launchPoint = null;
+  ghost.visible = false; arrow.visible = false;
+}
+function placeLaunch(velocity) {
+  const mass = TYPES[curType].base * mMul;
+  const body = spawnBody(launchPoint.x, launchPoint.y, launchPoint.z,
+    velocity.x, velocity.y, velocity.z, mass, curType);
+  if (!body) {
+    showNotice('天体已达 320 个上限，请先清空场景后再创建。');
+    return;
+  }
+  shockwaveReplay = false;
+  setShockwaveReplayUI(false);
+  showNotice(`已创建${TYPE_NAMES[curType] || curType}；碰撞时会合并。`);
+}
 canvas.addEventListener('pointerdown', e => {
   ensureAudio();
-  if (e.button !== 0) return;
+  if (activeLaunchPointer !== null) { cancelLaunch(); return; }
+  if (e.button !== 0 || !e.isPrimary) return;
   downX = e.clientX; downY = e.clientY;
-  // 过当前观察中心、垂直于视线的发射平面
   const n = new THREE.Vector3();
   camera.getWorldDirection(n);
   spawnPlane.setFromNormalAndCoplanarPoint(n, controls.target);
   const p = planePoint(e, new THREE.Vector3());
-  if (!p) return;
+  if (!p) { showNotice('当前视角无法放置天体，请调整视角后重试。'); return; }
+  activeLaunchPointer = e.pointerId;
   dragA = p;
-  const mass = TYPES[curType].base * mMul;
-  ghost.scale.setScalar(radiusFor(curType, mass));
+  const radius = radiusFor(curType, TYPES[curType].base * mMul);
+  launchPoint = safeLaunchPosition(p, radius);
+  ghost.scale.setScalar(radius);
   ghost.material.color.setHex(curType === 'planet' ? PLANET_COLORS[0] : TYPES[curType].color);
-  ghost.position.copy(p);
+  ghost.position.copy(launchPoint);
   ghost.visible = true;
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
-  if (!dragA) return;
+  if (!dragA || e.pointerId !== activeLaunchPointer) return;
   const p = planePoint(e, new THREE.Vector3());
   if (!p) { arrow.visible = false; return; }
   const d = p.clone().sub(dragA);
   const len = d.length();
   if (len > 6) {
-    arrow.position.copy(dragA);
+    arrow.position.copy(launchPoint);
     arrow.setDirection(d.normalize());
     arrow.setLength(Math.min(len, 180), 12, 8);
     arrow.visible = true;
   } else arrow.visible = false;
 });
 canvas.addEventListener('pointerup', e => {
-  // 点击（位移 < 7px）：点中天体 → 跟随观察；点空处 → 原地放置（原有行为）
+  if (e.pointerId !== activeLaunchPointer || !dragA) return;
   const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
   if (moved < 7) {
     const hit = pickBody(e);
-    dragA = null; ghost.visible = false; arrow.visible = false;
     if (hit) selectBody(hit === selected ? null : hit);
-    else selectBody(null);
-    return;
+    else placeLaunch(new THREE.Vector3());
+  } else {
+    const p = planePoint(e, new THREE.Vector3()) || dragA;
+    const v = p.clone().sub(dragA).multiplyScalar(0.05);
+    if (v.length() > 9) v.setLength(9);
+    placeLaunch(v);
   }
-  if (!dragA) return;
-  const p = planePoint(e, new THREE.Vector3()) || dragA;
-  const d = p.clone().sub(dragA);
-  const v = d.multiplyScalar(0.05);
-  if (v.length() > 9) v.setLength(9);
-  const mass = TYPES[curType].base * mMul;
-  shockwaveReplay = false;
-  setShockwaveReplayUI(false);
-  spawnBody(dragA.x, dragA.y, dragA.z, v.x, v.y, v.z, mass, curType);
-  dragA = null;
-  ghost.visible = false;
-  arrow.visible = false;
+  cancelLaunch();
+});
+canvas.addEventListener('pointercancel', e => {
+  if (e.pointerId === activeLaunchPointer) cancelLaunch();
 });
 
 /* ================= 预设场景 ================= */
@@ -2094,6 +2149,7 @@ function loop() {
             }
           } else if (b.mass <= 4) {              // 烧成烟尘消失
             spark(b.mesh.position, 0xffa050);
+            if (selected === b) showNotice('小天体受热蒸发，已化为烟尘。');
             removeBody(b);
             continue;
           }
