@@ -39,7 +39,9 @@ class SimulatorTests(unittest.TestCase):
         source = source.replace('\nloop();', '''
 paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
-  clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody,
+  clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody, checkEvolution,
+  get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
+  get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get selected() { return selected; },
@@ -230,6 +232,44 @@ loop();''')
         self.assertEqual(self.page.evaluate('sim.bodies.map(b=>({mass:b.mass,r:b.r}))'),before)
         toggle.check()
         self.page.wait_for_function('sim.bodies[1].xray.visible')
+        self.assertEqual(self.errors,[])
+
+    def test_probe_launch_and_nearby_target_telemetry(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,40,'planet')")
+        self.page.locator('#tools [data-type="probe"]').click()
+        self.page.mouse.click(1100,450)
+        data=self.page.evaluate("""() => {
+          const probe=sim.bodies.find(b=>b.type==='probe');
+          if(!probe)return null;
+          probe.mesh.position.set(20,0,0);sim.updateProbeTelemetry();
+          return {mass:probe.mass, text:document.querySelector('#probeTelemetry').textContent,
+            visible:!document.querySelector('#probeTelemetry').hidden};
+        }""")
+        self.assertIsNotNone(data);self.assertGreater(data['mass'],0)
+        self.assertTrue(data['visible']);self.assertIn('行星',data['text']);self.assertIn('距离',data['text'])
+        self.page.evaluate("sim.bodies.find(b=>b.type==='probe').mesh.position.set(5000,0,0);sim.updateProbeTelemetry()")
+        self.assertIn('超出扫描范围',self.page.locator('#probeReadout').inner_text())
+        self.page.evaluate('sim.clearScene();sim.updateProbeTelemetry()')
+        self.assertTrue(self.page.locator('#probeTelemetry').is_hidden())
+        self.assertEqual(self.errors,[])
+
+    def test_stellar_demos_and_natural_evolution_create_and_clear_nebulae(self):
+        self.open_sim()
+        self.page.locator('#btnSupernova').click()
+        result=self.page.evaluate("""() => ({type:sim.nebulae[0]?.type,body:sim.bodies[0]?.type})""")
+        self.assertEqual(result,{'type':'supernova','body':'blackhole'})
+        self.page.locator('#btnPlanetaryNebula').click()
+        result=self.page.evaluate("""() => ({count:sim.nebulae.length,type:sim.nebulae[0]?.type,body:sim.bodies[0]?.type})""")
+        self.assertEqual(result,{'count':1,'type':'planetary','body':'whiteDwarf'})
+        self.page.evaluate("sim.clearScene();sim.checkEvolution(sim.spawnBody(0,0,0,0,0,0,900,'redGiant'))")
+        self.assertEqual(self.page.evaluate('sim.nebulae[0].type'),'planetary')
+        self.page.evaluate('sim.nebulae[0].age=sim.nebulae[0].duration;sim.updateEffects()')
+        self.assertEqual(self.page.evaluate('sim.nebulae.length'),0)
+        self.page.evaluate("sim.clearScene();sim.checkEvolution(sim.spawnBody(0,0,0,0,0,0,5000,'whiteDwarf'))")
+        self.assertEqual(self.page.evaluate('sim.nebulae[0].type'),'supernova')
+        self.page.evaluate('sim.clearScene()')
+        self.assertEqual(self.page.evaluate('sim.nebulae.length'),0)
         self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):

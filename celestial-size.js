@@ -1,7 +1,7 @@
-﻿(function(root){
+(function(root){
   // Representative radii at each type's baseline mass, relative to Earth.
   // Mass and distance remain game units; the curves are gameplay approximations.
-  const models={planet:[1,1/3],gasGiant:[11,.12],ringplanet:[9.14,.12],star:[109,.25],brownDwarf:[11,.05],whiteDwarf:[1,-.1],neutron:[.0016,.05],quarkStar:[.0013,.05],asteroid:[.015,1/3],comet:[.001,1/3],redGiant:[1090,.3],blueGiant:[545,.3],blackhole:[.005,1],wormhole:[32,.3]};
+  const models={planet:[1,1/3],gasGiant:[11,.12],ringplanet:[9.14,.12],star:[109,.25],brownDwarf:[11,.05],whiteDwarf:[1,-.1],neutron:[.0016,.05],quarkStar:[.0013,.05],asteroid:[.015,1/3],comet:[.001,1/3],redGiant:[1090,.3],blueGiant:[545,.3],blackhole:[.005,1],wormhole:[32,.3],probe:[1,0]};
   const radiusFor=(type,mass,types,mode='reference')=>{
     if(mode==='display') return Math.max(1.8,Math.cbrt(mass)*types[type].rk);
     const [ratio,exponent]=models[type];

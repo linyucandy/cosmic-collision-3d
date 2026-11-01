@@ -80,6 +80,7 @@
     <div class="btn" data-type="blueGiant">🔵 蓝巨星</div>
     <div class="btn" data-type="quarkStar">🟣 夸克星</div>
     <div class="btn" data-type="wormhole">🌀 虫洞</div>
+    <div class="btn" data-type="probe">🛰️ 探测器</div>
   </div>
   <div class="slider-row">
     <label><span>质量倍率</span><span id="massVal">×1.0</span></label>
@@ -103,6 +104,8 @@
   </div>
   <div class="row">
     <div class="btn" id="btnDemo">💥 演示碰撞</div>
+    <div class="btn" id="btnSupernova">🌟 超新星演示</div>
+    <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <div class="btn" id="btnSystem">✨ 随机星系</div>
     <div class="btn" id="btnPause">⏸ 暂停</div>
     <div class="btn" id="btnSpeed">⏩ ×1</div>
@@ -119,10 +122,14 @@
   </div>
 </div>
 
+<section id="probeTelemetry" hidden aria-live="polite" style="position:fixed;z-index:16;right:14px;bottom:68px;max-width:220px;padding:10px 12px;border:1px solid #72ddff66;border-radius:10px;background:#0c1b32ef;color:#d7edff;font-size:12px;line-height:1.6">
+  <strong>🛰️ 探测器遥测</strong> <button id="nextProbe" type="button" style="float:right;background:#233956;color:#d7edff;border:0;border-radius:4px;cursor:pointer">切换 / 跟随</button>
+  <div id="probeReadout"></div><small>游戏模拟数据，扫描范围 300 单位</small>
+</section>
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=2"></script>
+<script src="celestial-size.js?v=3"></script>
 <script src="planet-assessment.js?v=2"></script>
 
 <script type="module">
@@ -710,7 +717,8 @@ const TYPES = {
   redGiant:  { base: 350,  rk: 4.6, color: 0xff7a55 },
   blueGiant: { base: 1500, rk: 2.6, color: 0x86b8ff },
   quarkStar: { base: 9000, rk: 0.16,color: 0xd18aff },
-  wormhole:  { base: 1500, rk: 0.95,color: 0x59ffd8 }
+  wormhole:  { base: 1500, rk: 0.95,color: 0x59ffd8 },
+  probe:     { base: 0.02, rk: 1, color: 0x9edcff }
 };
 const PLANET_COLORS = [0x5fb2ff, 0x7de0a3, 0xe0a35f, 0xc98bff, 0xff8b8b, 0x8be0dd];
 let sizeMode = 'reference';
@@ -722,6 +730,7 @@ const omegaBreak = (mass, r) => Math.sqrt(G * mass / (r * r * r));
 const sphereGeo = new THREE.SphereGeometry(1, 28, 20);
 const sphereGeoHi = new THREE.SphereGeometry(1, 48, 32);   // 带贴图的行星需要更密
 const ringGeo = new THREE.RingGeometry(1.3, 3.8, 160, 1);
+const probePanelGeo = new THREE.BoxGeometry(1.4, .12, .75);
 
 const markerCanvas = document.createElement('canvas');
 markerCanvas.width = markerCanvas.height = 32;
@@ -778,7 +787,15 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     : TYPES[type].color);
 
   let mesh, extra = {};
-  if (type === 'star' || type === 'blueGiant' || type === 'whiteDwarf') {
+  if (type === 'probe') {
+    mesh = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({color:0xd5eaff, metalness:.7, roughness:.3}));
+    const panelMaterial = new THREE.MeshStandardMaterial({color:0x2454a2, metalness:.35, roughness:.4});
+    for (const side of [-1, 1]) {
+      const panel = new THREE.Mesh(probePanelGeo, panelMaterial);
+      panel.position.x = side * 1.65;
+      mesh.add(panel);
+    }
+  } else if (type === 'star' || type === 'blueGiant' || type === 'whiteDwarf') {
     // 发光恒星类：颜色可定制（星系核金黄、旋臂偏蓝）
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color }));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true,
@@ -961,7 +978,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
-  if (type !== 'blackhole') {
+  if (type !== 'blackhole' && type !== 'probe') {
     // 初始自转 = 滑块比例 × 解体角速度（≥1 出生即解体）
     b.spinW = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
   }
@@ -1039,7 +1056,7 @@ const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
   comet: '彗星', blackhole: '黑洞', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
-  redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞' };
+  redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器' };
 function updateLights() {
   const stars = bodies.filter(b => LIT_TYPES.has(b.type))
     .sort((a, b2) => b2.mass - a.mass).slice(0, 3);
@@ -1076,6 +1093,7 @@ function updateCometTail(b) {
 const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
+const nebulae = [];     // Expanding gas visualization; not a collidable body.
 let shockwaveReplay = false, nextShockwaveAt = 0;
 window.addEventListener('stop-shockwave-replay', () => {
   shockwaveReplay = false;
@@ -1103,6 +1121,44 @@ function removeShockwave(wave) {
   wave.ring.material.dispose();
 }
 
+function removeNebula(n) {
+  scene.remove(n.group);
+  n.points.geometry.dispose(); n.points.material.dispose();
+  n.glow.material.dispose(); n.ring.material.dispose();
+}
+function createNebula(type, position, sourceRadius) {
+  if (nebulae.length >= 12) removeNebula(nebulae.shift());
+  const group = new THREE.Group(); group.position.copy(position);
+  const count = 420, vertices = new Float32Array(count * 3), colors = new Float32Array(count * 3);
+  const c1 = new THREE.Color(type === 'planetary' ? 0x44dfe4 : 0xffb35a);
+  const c2 = new THREE.Color(type === 'planetary' ? 0xc66fff : 0xc46bff);
+  for (let i = 0; i < count; i++) {
+    const theta = Math.random() * Math.PI * 2, y = Math.random() * 2 - 1;
+    const shell = .65 + Math.random() * .35, radial = Math.sqrt(1 - y*y) * shell;
+    vertices[i*3] = Math.cos(theta)*radial;
+    vertices[i*3+1] = y*shell * (type === 'planetary' ? .65 : 1);
+    vertices[i*3+2] = Math.sin(theta)*radial;
+    const color = c1.clone().lerp(c2, Math.random());
+    colors[i*3]=color.r; colors[i*3+1]=color.g; colors[i*3+2]=color.b;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const points = new THREE.Points(geo, new THREE.PointsMaterial({size:3,map:glowTex,vertexColors:true,
+    transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));
+  points.frustumCulled = false; group.add(points);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:purpleGlowTex,
+    color:type === 'planetary' ? 0x55dce6 : 0xff9c65,transparent:true,opacity:.35,
+    blending:THREE.AdditiveBlending,depthWrite:false}));
+  glow.scale.setScalar(2.5); group.add(glow);
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({map:shockwaveTexture,
+    color:type === 'planetary' ? 0x80e9ff : 0xffaa75,transparent:true,opacity:.65,
+    blending:THREE.AdditiveBlending,depthWrite:false}));
+  ring.scale.setScalar(2.1); group.add(ring);
+  const initialRadius = Math.max(12, sourceRadius * .75);
+  group.scale.setScalar(initialRadius); scene.add(group);
+  nebulae.push({type,group,points,glow,ring,age:0,duration:type === 'planetary' ? 60 : 45,initialRadius});
+}
 function clearScene() {
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
@@ -1110,6 +1166,7 @@ function clearScene() {
   while (bodies.length) removeBody(bodies[0]);
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
   for (const s of shockwaves.splice(0)) removeShockwave(s);
+  for (const n of nebulae.splice(0)) removeNebula(n);
   for (const f of flashes.splice(0)) { scene.remove(f.light, f.sp); f.sp.material.dispose(); }
   collisions = 0;
   document.querySelectorAll('#systems .btn').forEach(b => b.classList.remove('active'));
@@ -1175,6 +1232,15 @@ function explode(pos, body) {
 }
 
 function updateEffects() {
+  for (let i = nebulae.length - 1; i >= 0; i--) {
+    const n = nebulae[i]; n.age += timeScale / 60;
+    n.group.scale.setScalar(n.initialRadius * (1 + n.age * .055));
+    n.group.rotation.y += .0015 * timeScale;
+    const fade = Math.max(0, 1 - n.age / n.duration);
+    n.points.material.opacity = .85 * fade; n.glow.material.opacity = .35 * fade;
+    n.ring.material.opacity = .65 * fade;
+    if (n.age >= n.duration) { removeNebula(n); nebulae.splice(i, 1); }
+  }
   for (let i = explosions.length - 1; i >= 0; i--) {
     const ex = explosions[i];
     ex.life--;
@@ -1550,7 +1616,8 @@ function checkEvolution(b) {
   if (b.stable) return false;
   const M = b.mass;
   if ((b.type === 'star' && M >= 3500) || (b.type === 'blueGiant' && M >= 3500)) {
-    // 核心坍缩超新星 → 黑洞
+    // 核心坍缩超新星 → 黑洞与膨胀中的残骸
+    createNebula('supernova', b.mesh.position, b.r);
     explode(b.mesh.position, b);
     explode(b.mesh.position, { mass: M * 0.5, color: 0xbfd8ff, r: b.r, mesh: b.mesh });
     transformBody(b, 'blackhole');
@@ -1561,11 +1628,12 @@ function checkEvolution(b) {
     return true;
   }
   if (b.type === 'redGiant' && M >= 900) {       // 包层抛射（行星状星云）→ 白矮星
-    shedFragments(b, 4); shedFragments(b, 4);
+    createNebula('planetary', b.mesh.position, b.r);
     transformBody(b, 'whiteDwarf');
     return true;
   }
   if (b.type === 'whiteDwarf' && M >= 5000) {    // Ia 型超新星：完全炸碎，无残骸
+    createNebula('supernova', b.mesh.position, b.r);
     explode(b.mesh.position, b);
     explode(b.mesh.position, { mass: M * 0.8, color: 0xbfd8ff, r: b.r, mesh: b.mesh });
     scatterDebris(b);
@@ -1822,6 +1890,17 @@ canvas.addEventListener('pointercancel', e => {
 });
 
 /* ================= 预设场景 ================= */
+function demoStellarEvolution(type) {
+  clearScene(); paused = false;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  const star = spawnBody(0, 0, 0, 0, 0, 0, type === 'planetary' ? 900 : 3500,
+    type === 'planetary' ? 'redGiant' : 'star');
+  const radius = star.r;
+  checkEvolution(star);
+  camera.position.set(0, radius * .9, radius * 3.7);
+  controls.target.set(0, 0, 0);
+  showNotice(type === 'planetary' ? '红巨星抛出气体，形成行星状星云与白矮星。' : '恒星爆发超新星，留下扩散的残骸和黑洞。');
+}
 function demoShockwave() {
   clearScene();
   paused = false;
@@ -2064,6 +2143,8 @@ document.getElementById('btnReset').addEventListener('click', () => {
   clearScene();
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
+document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
+document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
 document.getElementById('btnShockwave').addEventListener('click', () => { ensureAudio(); demoShockwave(); });
 document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
 /* 恒星系统预设：单星 / 双星 / 三星 */
@@ -2085,6 +2166,32 @@ const statBodies = document.getElementById('statBodies');
 const statCollisions = document.getElementById('statCollisions');
 const statParticles = document.getElementById('statParticles');
 let lastAssessmentAt = 0;
+let telemetryProbe = null;
+function updateProbeTelemetry() {
+  const probes = bodies.filter(b => b.type === 'probe');
+  const panel = document.getElementById('probeTelemetry');
+  if (!probes.length) { panel.hidden = true; telemetryProbe = null; return; }
+  if (selected && selected.type === 'probe' && probes.includes(selected)) telemetryProbe = selected;
+  if (!probes.includes(telemetryProbe)) telemetryProbe = probes[0];
+  const probe = telemetryProbe;
+  let nearest = null, distance = Infinity;
+  for (const body of bodies) {
+    if (body === probe || body.type === 'probe') continue;
+    const d = Math.max(0, body.mesh.position.distanceTo(probe.mesh.position) - body.r);
+    if (d < distance) { distance = d; nearest = body; }
+  }
+  const readout = document.getElementById('probeReadout');
+  const target = nearest ? `${TYPE_NAMES[nearest.type] || nearest.type} · 距离 ${distance.toFixed(1)} 单位` : '附近没有可扫描的天体';
+  const status = !nearest ? '巡航中' : distance <= 300 ? '扫描中' : '巡航中 · 目标超出扫描范围';
+  readout.textContent = `${status} | ${target} | 速度 ${probe.vel.length().toFixed(2)} 单位/步`;
+  panel.hidden = false;
+}
+document.getElementById('nextProbe').addEventListener('click', () => {
+  const probes = bodies.filter(b => b.type === 'probe');
+  if (!probes.length) return;
+  telemetryProbe = probes[(probes.indexOf(telemetryProbe) + 1) % probes.length];
+  selectBody(telemetryProbe); updateProbeTelemetry();
+});
 document.getElementById('nextPlanet').addEventListener('click', () => {
   const candidates = bodies.filter(b => b.type === 'planet');
   const list = candidates.length ? candidates : bodies;
@@ -2248,6 +2355,7 @@ function loop() {
       type:b.type, mass:b.mass, distance:b.mesh.position.distanceTo(observed.mesh.position)
     })) : [];
     renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
+    updateProbeTelemetry();
     lastAssessmentAt = performance.now();
   }
   updateCameraFarPlane();
