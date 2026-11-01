@@ -215,6 +215,23 @@ loop();''')
         self.assertEqual(result['count'],2,result)
         self.assertGreater(result['distance'],result['minimum'],result)
 
+    def test_xray_view_shows_high_energy_and_heated_bodies_without_changing_physics(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,6000,'neutron');sim.spawnBody(200,0,0,0,0,0,40,'planet')")
+        toggle=self.page.locator('#xrayToggle')
+        self.assertTrue(toggle.is_checked())
+        self.page.wait_for_function('sim.bodies[0].xray && sim.bodies[0].xray.visible')
+        self.assertFalse(self.page.evaluate('sim.bodies[1].xray.visible'))
+        self.page.evaluate('sim.bodies[1].heat=1')
+        self.page.wait_for_function('sim.bodies[1].xray.visible')
+        before=self.page.evaluate('sim.bodies.map(b=>({mass:b.mass,r:b.r}))')
+        toggle.uncheck()
+        self.page.wait_for_function('sim.bodies.every(b=>!b.xray.visible)')
+        self.assertEqual(self.page.evaluate('sim.bodies.map(b=>({mass:b.mass,r:b.r}))'),before)
+        toggle.check()
+        self.page.wait_for_function('sim.bodies[1].xray.visible')
+        self.assertEqual(self.errors,[])
+
     def test_deformation_preserves_body_volume(self):
         self.open_sim()
         result=self.page.evaluate('''() => {

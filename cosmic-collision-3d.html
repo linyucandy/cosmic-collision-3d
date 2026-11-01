@@ -94,6 +94,8 @@
     <input id="spinSlider" type="range" min="0" max="2" step="0.05" value="0.4">
   </div>
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨道轨迹</label></div>
+  <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">蓝紫射线表示模拟的高能辐射与碰撞热量，仅供观察，并非真实测量。</div>
   <div class="row" id="systems">
     <div class="btn" data-sys="1">★ 单星</div>
     <div class="btn" data-sys="2">★★ 双星</div>
@@ -727,6 +729,30 @@ const markerContext = markerCanvas.getContext('2d');
 markerContext.strokeStyle = '#b9eaff'; markerContext.lineWidth = 2;
 markerContext.beginPath(); markerContext.arc(16, 16, 10, 0, Math.PI * 2); markerContext.stroke();
 const markerTexture = new THREE.CanvasTexture(markerCanvas);
+// Stylized radiation sprite; the renderer does not simulate real X-ray transport.
+const xrayCanvas = document.createElement('canvas');
+xrayCanvas.width = xrayCanvas.height = 128;
+const xrayContext = xrayCanvas.getContext('2d');
+const xrayGradient = xrayContext.createRadialGradient(64, 64, 0, 64, 64, 62);
+xrayGradient.addColorStop(0, 'rgba(238,252,255,0)');
+xrayGradient.addColorStop(.12, 'rgba(114,213,255,.7)');
+xrayGradient.addColorStop(.4, 'rgba(98,112,255,.23)');
+xrayGradient.addColorStop(1, 'rgba(80,40,255,0)');
+xrayContext.fillStyle = xrayGradient;
+xrayContext.fillRect(0, 0, 128, 128);
+xrayContext.strokeStyle = 'rgba(165,231,255,.8)';
+xrayContext.lineWidth = 1.5;
+for (let i = 0; i < 8; i++) {
+  const angle = i * Math.PI / 4, inner = 12, outer = i % 2 ? 38 : 60;
+  xrayContext.beginPath();
+  xrayContext.moveTo(64 + Math.cos(angle) * inner, 64 + Math.sin(angle) * inner);
+  xrayContext.lineTo(64 + Math.cos(angle) * outer, 64 + Math.sin(angle) * outer);
+  xrayContext.stroke();
+}
+const xrayTexture = new THREE.CanvasTexture(xrayCanvas);
+const xrayToggle = document.getElementById('xrayToggle');
+let xrayEnabled = xrayToggle.checked;
+xrayToggle.addEventListener('change', () => { xrayEnabled = xrayToggle.checked; });
 const bodies = [];
 let collisions = 0;
 let simT = 0;
@@ -917,11 +943,16 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
   scene.add(mesh);
   if (extra.tail) extra.tail.position.copy(mesh.position);   // 防止首帧彗尾落在原点
 
+  const xray = new THREE.Sprite(new THREE.SpriteMaterial({map:xrayTexture, color:0xa8caff,
+    transparent:true, depthWrite:false, depthTest:false, toneMapped:false, blending:THREE.AdditiveBlending}));
+  xray.visible = false;
+  xray.raycast = () => {}; // Radiation is visual only and must not intercept selection.
+  mesh.add(xray);
   const sizeMarker = new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture, transparent:true, depthWrite:false, toneMapped:false}));
   sizeMarker.visible = false;
   mesh.add(sizeMarker);
   const b = {
-    sizeMarker, mesh, type, mass, r, color,
+    xray, sizeMarker, mesh, type, mass, r, color,
     previousPosition: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(vx, vy, vz),
     acc: new THREE.Vector3(),
@@ -2082,6 +2113,19 @@ document.getElementById('sizeMode').addEventListener('change', event => {
   updateSizeMarkers();
   updateFocusLabel();
 });
+function updateXrayEffects() {
+  const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  const baseline = {blackhole:.85, neutron:1, quarkStar:1, whiteDwarf:.35, blueGiant:.4, star:.16, redGiant:.13};
+  for (const b of bodies) {
+    const strength = Math.min(1, (baseline[b.type] || 0) + Math.max(0, b.heat || 0) * .6);
+    b.xray.visible = xrayEnabled && strength > .12;
+    if (!b.xray.visible) continue;
+    const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
+    const worldSize = Math.max(b.r * (3.2 + strength), distance * 24 / focal);
+    b.xray.scale.setScalar(worldSize / Math.max(.000001, b.mesh.scale.x));
+    b.xray.material.opacity = Math.min(.85, .2 + strength * .65);
+  }
+}
 function updateCameraFarPlane() {
   let required = 12000;
   for (const b of bodies) {
@@ -2207,6 +2251,7 @@ function loop() {
     lastAssessmentAt = performance.now();
   }
   updateCameraFarPlane();
+  updateXrayEffects();
   updateSizeMarkers();
   if (composer) composer.render(); else renderer.render(scene, camera);
   statBodies.textContent = bodies.length;
