@@ -42,6 +42,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody, checkEvolution,
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
+  get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get selected() { return selected; },
@@ -326,6 +327,46 @@ loop();''')
         self.page.evaluate("sim.spawnBody(0,0,0,0,0,0,600,'star')")
         self.page.locator('#btnAutoOrbit').click()
         self.assertIn('重叠',self.page.locator('#launchNotice').inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_planetary_ring_distorts_near_massive_body_and_recovers(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          if(!sim.updatePlanetaryRings)return null;
+          sim.clear(); const star=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const planet=sim.spawnBody(40,0,0,0,0,0,55,'ringplanet');
+          const before={radius:planet.r,mass:planet.mass};
+          for(let i=0;i<80;i++)sim.updatePlanetaryRings();
+          const near={x:planet.ring.scale.x,y:planet.ring.scale.y, angle:planet.ring.rotation.z};
+          planet.mesh.position.set(500,0,0);
+          for(let i=0;i<150;i++)sim.updatePlanetaryRings();
+          return {near,far:{x:planet.ring.scale.x,y:planet.ring.scale.y},before,after:{radius:planet.r,mass:planet.mass}};
+        }""")
+        self.assertIsNotNone(result)
+        self.assertGreater(result['near']['x'],1.05,result)
+        self.assertLess(result['near']['y'],.98,result)
+        self.assertAlmostEqual(result['far']['x'],1,places=4)
+        self.assertAlmostEqual(result['far']['y'],1,places=4)
+        self.assertEqual(result['before'],result['after'])
+        self.assertEqual(self.errors,[])
+
+    def test_ring_stretches_toward_strongest_tidal_source(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();const ring=sim.spawnBody(0,0,0,0,0,0,55,'ringplanet');
+          const star=sim.spawnBody(40,0,0,0,0,0,600,'star');
+          sim.spawnBody(3,0,0,0,0,0,2,'asteroid');
+          for(let i=0;i<80;i++)sim.updatePlanetaryRings();
+          const first=ring.ring.rotation.z, strength=ring.ringTide;
+          star.mesh.position.set(0,0,40);
+          for(let i=0;i<3;i++)sim.updatePlanetaryRings();
+          const second=ring.ring.rotation.z;
+          sim.removeBody(star);for(let i=0;i<150;i++)sim.updatePlanetaryRings();
+          return {first,second,strength,recovered:ring.ringTide};
+        }""")
+        self.assertGreater(result['strength'],.1,result)
+        self.assertGreater(abs(result['first']-result['second']),.5,result)
+        self.assertLess(result['recovered'],.00001,result)
         self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):

@@ -115,7 +115,7 @@
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
   <div class="row"><label for="sizeMode">天体大小 </label><select id="sizeMode"><option value="reference">参考大小</option><option value="display">易观察（旧比例）</option></select></div>
-  <div style="font-size:11px;color:#abc;line-height:1.4">基准地球、木星、太阳直径约 1:11:109。小天体的圆圈是定位标记；光晕和星环不是本体。质量和距离使用游戏单位。两个虫洞自动配对传送天体。切换比例会改变碰撞半径。</div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">基准地球、木星、太阳直径约 1:11:109。小天体的圆圈是定位标记；光晕和星环不是本体。质量和距离使用游戏单位。两个虫洞自动配对传送天体。切换比例会改变碰撞半径。行星环靠近较重天体时会产生简化潮汐变形。</div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
     <span>碰撞 <b id="statCollisions">0</b></span>
@@ -891,6 +891,9 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
       transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = 0.45 + Math.random() * 0.35;
     mesh.add(ring);
+    extra.ring = ring;
+    extra.ringTilt = ring.rotation.x;
+    extra.ringTide = 0;
     extra.mats = [ring.material, ...addAtmo(purpleGlowTex, mesh, 0xffd9a8, 2.4, 1.7)];
   } else if (type === 'gasGiant') {
     // 气态巨行星：条带花纹 + 风暴，厚重大气
@@ -1758,7 +1761,8 @@ function pickBody(e) {
 function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
-  focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`;
+  focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
+    + (selected.ring ? ` · 环潮汐 ${Math.round(selected.ringTide * 100)}%` : '');
 }
 function selectBody(b) {
   selected = b;
@@ -2266,6 +2270,35 @@ function updateXrayEffects() {
     b.xray.material.opacity = Math.min(.85, .2 + strength * .65);
   }
 }
+// Stylized tidal response of a planetary ring, separate from the body's collision radius.
+const _ringDirection = new THREE.Vector3(), _ringQuaternion = new THREE.Quaternion();
+const _ringAxis = new THREE.Vector3(1, 0, 0);
+function updatePlanetaryRings() {
+  for (const body of bodies) {
+    if (!body.ring) continue;
+    let strongest = 0, source = null;
+    for (const other of bodies) {
+      if (other === body || other.mass <= body.mass) continue;
+      const distance = body.mesh.position.distanceTo(other.mesh.position);
+      if (distance <= 1e-9) continue;
+      const influence = (other.mass / body.mass) * Math.pow(body.r / distance, 3);
+      if (influence > strongest) { strongest = influence; source = other; }
+    }
+    // Tuned for gameplay: a dimensionless relative tidal strength, not a particle simulation.
+    const target = Math.max(0, Math.min(.75, (strongest - .0003) / .015));
+    body.ringTide += (target - body.ringTide) * (1 - Math.pow(.9, timeScale));
+    body.ring.scale.set(1 + body.ringTide * .75, 1 - body.ringTide * .35, 1);
+    body.ring.material.opacity = .9 - body.ringTide * .22;
+    if (source && body.ringTide > .001) {
+      _ringDirection.subVectors(source.mesh.position, body.mesh.position);
+      body.mesh.getWorldQuaternion(_ringQuaternion).invert();
+      _ringDirection.applyQuaternion(_ringQuaternion).applyAxisAngle(_ringAxis, -body.ringTilt);
+      if (_ringDirection.x * _ringDirection.x + _ringDirection.y * _ringDirection.y > 1e-12) {
+        body.ring.rotation.z = Math.atan2(_ringDirection.y, _ringDirection.x);
+      }
+    }
+  }
+}
 function updateCameraFarPlane() {
   let required = 12000;
   for (const b of bodies) {
@@ -2368,6 +2401,7 @@ function loop() {
         b.ringA.rotation.y += 0.012; b.ringB.rotation.y -= 0.014;   // 双环反向进动
       }
     }
+    updatePlanetaryRings();
     updateLights();
   }
   controls.update();
