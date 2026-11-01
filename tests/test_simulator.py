@@ -41,7 +41,9 @@ paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode,
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
-  frame: () => renderer.render(scene, camera) };
+  frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip,
+  get shapeScale() { return typeof shapeScale === 'function' ? shapeScale : null; },
+  get updateFocusLabel() { return typeof updateFocusLabel === 'function' ? updateFocusLabel : null; } };
 loop();''')
         self.page.route('**/cosmic-collision-3d.html*', lambda route: route.fulfill(body=source, content_type='text/html'))
         self.page.goto(self.url + '/cosmic-collision-3d.html?scene=bh')
@@ -68,7 +70,7 @@ loop();''')
           const originalImage = original.image;
           const sibling = sim.spawnBody(200,0,0,0,0,0,40,'planet');
           const siblingMap = sibling.mesh.material.map;
-          const impactor = sim.spawnBody(4,0,0,0,0,0,1,'asteroid');
+          const impactor = sim.spawnBody(target.r*.7,0,0,0,0,0,1,'asteroid');
           sim.handleCollisions();
           const changed = target.mesh.material.map !== original;
           const unchanged = sibling.mesh.material.map === siblingMap;
@@ -87,6 +89,85 @@ loop();''')
         self.assertTrue(result['removed'], result)
         self.assertGreater(result['heat'], 0, result)
         self.assertEqual(self.errors, [])
+
+    def test_reference_ratios_and_mode_switch_apply_to_existing_bodies(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.spawnBody(0,0,0,0,0,0,40,'planet'); sim.spawnBody(100,0,0,0,0,0,70,'gasGiant'); sim.spawnBody(300,0,0,0,0,0,600,'star');")
+        radii = self.page.evaluate("sim.bodies.map(b => b.r)")
+        self.assertAlmostEqual(radii[1] / radii[0], 11)
+        self.assertAlmostEqual(radii[2] / radii[0], 109)
+        self.page.evaluate("sim.spawnBody(500,0,0,0,0,0,2,'comet')")
+        self.page.select_option('#sizeMode', 'display')
+        comet = self.page.evaluate("({r:sim.bodies[3].r, tail:sim.bodies[3].tail.scale.y})")
+        self.assertAlmostEqual(comet['tail'], comet['r'] * 18)
+        switched = self.page.evaluate("sim.bodies.map(b => ({r:b.r,scale:b.mesh.scale.x,mass:b.mass}))")
+        self.assertAlmostEqual(switched[0]['r'], 1.7 * 40**(1/3))
+        self.assertAlmostEqual(switched[0]['scale'], switched[0]['r'])
+        self.assertEqual(switched[0]['mass'], 40)
+        self.page.select_option('#sizeMode', 'reference')
+        self.assertAlmostEqual(self.page.evaluate('sim.bodies[0].r'), radii[0])
+        self.assertEqual(self.errors, [])
+
+    def test_deformation_preserves_body_volume(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          if (!sim.shapeScale) return null;
+          return [[0,0,0],[0.28,0,0],[0,0.3,0.01],[0.28,0.3,-0.01]].map(([deform,tide,wobble]) => {
+            const scales=sim.shapeScale(10,deform,tide,wobble);
+            return {scales, volumeFactor:scales[0]*scales[1]*scales[2]/1000};
+          });
+        }''')
+        self.assertIsNotNone(result, 'shape transformation should preserve the body volume')
+        for item in result:
+            self.assertAlmostEqual(item['volumeFactor'],1,places=10)
+            self.assertTrue(all(value>0 for value in item['scales']))
+
+    def test_dragged_body_matches_previewed_mass_and_radius(self):
+        self.open_sim();self.page.evaluate("sim.clear();window.originalRandom=Math.random;Math.random=()=>0;")
+        self.page.locator('#tools [data-type="star"]').click()
+        self.page.mouse.move(900,450);self.page.mouse.down();preview=self.page.evaluate('sim.ghost.scale.x')
+        self.page.mouse.move(960,450,steps=4);self.page.mouse.up()
+        body=self.page.evaluate("() => ({mass:sim.bodies[0].mass,radius:sim.bodies[0].r})")
+        self.assertEqual(body['mass'],600);self.assertAlmostEqual(body['radius'],preview,places=10)
+        self.assertEqual(self.errors,[])
+
+    def test_spherical_bodies_collide_when_their_surfaces_overlap(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,40,'planet');
+          const b=sim.spawnBody(a.r*1.8,0,0,0,0,0,40,'planet');
+          sim.handleCollisions();return {count:sim.bodies.length,mass:sim.bodies[0].mass,radius:sim.bodies[0].r};
+        }''')
+        self.assertEqual(result['count'],1);self.assertEqual(result['mass'],80)
+        self.assertAlmostEqual(result['radius'],0.25*(2**(1/3)),places=9)
+
+    def test_swept_collision_does_not_merge_a_removed_body_twice(self):
+        self.open_sim()
+        result = self.page.evaluate("""() => {
+          sim.clear();const a=sim.spawnBody(-10,0,0,0,0,0,40,'planet');
+          sim.spawnBody(0,0,0,0,0,0,80,'planet');
+          sim.spawnBody(-5,0,0,0,0,0,10,'planet');
+          a.mesh.position.x=10;sim.handleCollisions(true);
+          return {mass:sim.bodies.reduce((sum,b)=>sum+b.mass,0), count:sim.bodies.length};
+        }""")
+        self.assertEqual(result['mass'],130)
+
+    def test_fast_small_bodies_collide_along_their_paths(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();sim.spawnBody(-8,0,0,16,0,0,40,'planet');sim.spawnBody(8,0,0,-16,0,0,40,'planet');
+          sim.step();return {count:sim.bodies.length,mass:sim.bodies[0].mass};
+        }''')
+        self.assertEqual(result['count'],1);self.assertEqual(result['mass'],80)
+
+    def test_selected_body_displays_simulation_radius_and_volume(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          if(!sim.updateFocusLabel)return null;
+          sim.clear();const b=sim.spawnBody(0,0,0,0,0,0,40,'planet');sim.selectBody(b);sim.updateFocusLabel();
+          return {text:sim.focusChip.textContent,r:b.r};
+        }''')
+        self.assertIsNotNone(result);self.assertIn('模拟半径',result['text']);self.assertIn('模拟体积',result['text'])
 
     def test_home_links_author_and_mobile_layout(self):
         self.page.goto(self.url + '/index.html')
@@ -199,7 +280,7 @@ loop();''')
           const target = sim.spawnBody(0,0,0,0,0,0,40,'planet');
           let materialDisposed = false;
           target.mesh.material.addEventListener('dispose', () => materialDisposed = true);
-          sim.spawnBody(4,0,0,0,0,0,1,'asteroid');
+          sim.spawnBody(target.r*.7,0,0,0,0,0,1,'asteroid');
           sim.handleCollisions();
           const hadEffects = sim.explosions.length > 0;
           sim.clearScene();
@@ -249,7 +330,7 @@ loop();''')
           const x = Math.floor(uv.getX(index) * image.width);
           const y = Math.floor((1 - uv.getY(index)) * image.height);
           const before = [...image.getContext('2d').getImageData(x,y,1,1).data];
-          const point = target.mesh.position.clone().fromBufferAttribute(positions,index).normalize().multiplyScalar(2);
+          const point = target.mesh.position.clone().fromBufferAttribute(positions,index).normalize().multiplyScalar(target.r*.7);
           sim.spawnBody(point.x,point.y,point.z,0,0,0,1,'asteroid');
           sim.handleCollisions();
           const after = [...target.mesh.material.map.image.getContext('2d').getImageData(x,y,1,1).data];

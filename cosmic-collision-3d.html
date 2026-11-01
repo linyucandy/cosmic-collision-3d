@@ -107,6 +107,8 @@
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
+  <div class="row"><label for="sizeMode">天体大小 </label><select id="sizeMode"><option value="reference">参考大小</option><option value="display">易观察（旧比例）</option></select></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">基准地球、木星、太阳直径约 1:11:109。小天体的圆圈是定位标记；光晕和星环不是本体。质量和距离使用游戏单位。切换比例会改变碰撞半径。</div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
     <span>碰撞 <b id="statCollisions">0</b></span>
@@ -116,7 +118,8 @@
 
 <div class="hint">左键按住拖动发射天体 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="planet-assessment.js"></script>
+<script src="celestial-size.js?v=1"></script>
+<script src="planet-assessment.js?v=2"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -144,13 +147,13 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0f24);
 
-const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 12000);
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.001, 12000);
 camera.position.set(0, 180, 520);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.minDistance = 30;
+controls.minDistance = 0.005;
 controls.maxDistance = 3000;
 controls.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.touches = { ONE: -1, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -706,7 +709,9 @@ const TYPES = {
   wormhole:  { base: 1500, rk: 0.95,color: 0x59ffd8 }
 };
 const PLANET_COLORS = [0x5fb2ff, 0x7de0a3, 0xe0a35f, 0xc98bff, 0xff8b8b, 0x8be0dd];
-const radiusFor = (type, mass) => Math.max(1.8, Math.cbrt(mass) * TYPES[type].rk);
+let sizeMode = 'reference';
+const radiusFor = (type, mass) => CelestialSize.radiusFor(type, mass, TYPES, sizeMode);
+const shapeScale = CelestialSize.shapeScale;
 /* 解体角速度：赤道线速度达到表面轨道速度时离心力超过引力 */
 const omegaBreak = (mass, r) => Math.sqrt(G * mass / (r * r * r));
 
@@ -714,6 +719,12 @@ const sphereGeo = new THREE.SphereGeometry(1, 28, 20);
 const sphereGeoHi = new THREE.SphereGeometry(1, 48, 32);   // 带贴图的行星需要更密
 const ringGeo = new THREE.RingGeometry(1.3, 3.8, 160, 1);
 
+const markerCanvas = document.createElement('canvas');
+markerCanvas.width = markerCanvas.height = 32;
+const markerContext = markerCanvas.getContext('2d');
+markerContext.strokeStyle = '#b9eaff'; markerContext.lineWidth = 2;
+markerContext.beginPath(); markerContext.arc(16, 16, 10, 0, Math.PI * 2); markerContext.stroke();
+const markerTexture = new THREE.CanvasTexture(markerCanvas);
 const bodies = [];
 let collisions = 0;
 let simT = 0;
@@ -748,7 +759,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color }));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true,
       blending: THREE.AdditiveBlending, depthWrite: false }));
-    glow.scale.setScalar(type === 'blueGiant' ? 12 : type === 'whiteDwarf' ? 4.5 : 9);  // 父级 scale=r
+    glow.scale.setScalar(4);  // 父级 scale=r
     mesh.add(glow);
     extra.glow = glow;
   } else if (type === 'blackhole') {
@@ -859,7 +870,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
       color, roughness: 1, emissive: color, emissiveIntensity: 0.6 }));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color,
       transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-    glow.scale.setScalar(15);
+    glow.scale.setScalar(4);
     mesh.add(glow);
     extra.glow = glow;
   } else if (type === 'quarkStar') {
@@ -908,8 +919,12 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
   scene.add(mesh);
   if (extra.tail) extra.tail.position.copy(mesh.position);   // 防止首帧彗尾落在原点
 
+  const sizeMarker = new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture, transparent:true, depthWrite:false, toneMapped:false}));
+  sizeMarker.visible = false;
+  mesh.add(sizeMarker);
   const b = {
-    mesh, type, mass, r, color,
+    sizeMarker, mesh, type, mass, r, color,
+    previousPosition: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(vx, vy, vz),
     acc: new THREE.Vector3(),
     trail: makeTrail(color),
@@ -1264,6 +1279,7 @@ const _xAxis = new THREE.Vector3(1, 0, 0), _yAxis = new THREE.Vector3(0, 1, 0);
 const _heatC = new THREE.Color(), _whiteC = new THREE.Color(1, 1, 1);
 
 function step() {
+  for (const b of bodies) b.previousPosition.copy(b.mesh.position);
   // 天体多时（碎片风暴）降为单步积分，总推进时长不变，省一半 O(n²) 引力计算
   const SUB = bodies.length > 150 ? 1 : 2, dt = timeScale / SUB;
   for (let s = 0; s < SUB; s++) {
@@ -1288,7 +1304,7 @@ function step() {
       b.mesh.position.addScaledVector(b.vel, dt);
     }
   }
-  handleCollisions();
+  handleCollisions(true);
   /* 虫洞配对传送：坠入一个洞，从最近的另一个洞吐出（2s 冷却防乒乓） */
   const holes = bodies.filter(b => b.type === 'wormhole');
   if (holes.length >= 2) {
@@ -1319,20 +1335,42 @@ function step() {
   }
 }
 
-function handleCollisions() {
+function handleCollisions(swept = false) {
   const dead = new Set();
   for (const b of bodies) b.tideT = null;      // 每帧重新检测潮汐配对
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i];
     if (dead.has(a)) continue;
     for (let j = i + 1; j < bodies.length; j++) {
+      if (dead.has(a)) break;
       const b = bodies[j];
       if (dead.has(b)) continue;
-      const rr = (a.r + b.r) * 0.8;
+      const rr = a.r + b.r;
       const pa = a.mesh.position, pb = b.mesh.position;
       const _dx = pb.x - pa.x, _dy = pb.y - pa.y, _dz = pb.z - pa.z;
       const d2 = _dx * _dx + _dy * _dy + _dz * _dz;
-      if (d2 < rr * rr) {
+      let impactT = 1;
+      let hit = d2 < rr * rr;
+      if (!hit && swept) {
+        const sx = b.previousPosition.x - a.previousPosition.x;
+        const sy = b.previousPosition.y - a.previousPosition.y;
+        const sz = b.previousPosition.z - a.previousPosition.z;
+        const vx = _dx - sx, vy = _dy - sy, vz = _dz - sz;
+        const len2 = vx*vx + vy*vy + vz*vz;
+        const t = len2 ? Math.max(0, Math.min(1, -(sx*vx + sy*vy + sz*vz) / len2)) : 0;
+        const cx = sx + vx*t, cy = sy + vy*t, cz = sz + vz*t;
+        hit = cx*cx + cy*cy + cz*cz <= rr*rr;
+        if (hit) {
+          const dot = sx*vx + sy*vy + sz*vz;
+          const discriminant = dot*dot - len2*(sx*sx + sy*sy + sz*sz - rr*rr);
+          impactT = len2 ? Math.max(0, Math.min(1, (-dot - Math.sqrt(Math.max(0, discriminant))) / len2)) : 0;
+        }
+      }
+      if (hit) {
+        if (impactT < 1) {
+          pa.lerpVectors(a.previousPosition, pa, impactT);
+          pb.lerpVectors(b.previousPosition, pb, impactT);
+        }
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
         const survivor = small.type === 'blackhole' ? small : big;
@@ -1344,6 +1382,7 @@ function handleCollisions() {
           .addScaledVector(other.vel, other.mass / M);
         survivor.mesh.position.multiplyScalar(survivor.mass / M)
           .addScaledVector(other.mesh.position, other.mass / M);
+        survivor.previousPosition.copy(survivor.mesh.position);
         survivor.mass = M;
         survivor.r = radiusFor(survivor.type, M);
         survivor.mesh.scale.setScalar(survivor.r);   // 子级辉光/吸积盘按比例随动
@@ -1594,11 +1633,17 @@ function pickBody(e) {
   }
   return best;
 }
+function updateFocusLabel() {
+  if (!selected) return;
+  const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
+  focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`;
+}
 function selectBody(b) {
   selected = b;
   selRing.visible = !!b;
   focusChip.style.display = b ? 'block' : 'none';
   if (!b) focusChip.textContent = '';
+  else updateFocusLabel();
 }
 window.addEventListener('keydown', e => { if (e.key === 'Escape') selectBody(null); });
 let downX = -9999, downY = -9999;              // 点击判定基准点
@@ -1657,7 +1702,7 @@ canvas.addEventListener('pointerup', e => {
   const d = p.clone().sub(dragA);
   const v = d.multiplyScalar(0.05);
   if (v.length() > 9) v.setLength(9);
-  const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
+  const mass = TYPES[curType].base * mMul;
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
   spawnBody(dragA.x, dragA.y, dragA.z, v.x, v.y, v.z, mass, curType);
@@ -1674,10 +1719,11 @@ function demoShockwave() {
   timeScale = 1;
   btnSpeed.textContent = '⏩ ×1';
   btnSpeed.classList.remove('active');
-  camera.position.set(0, 60, 210);
+  const r = radiusFor('planet', 40);
+  camera.position.set(0, r * 3, r * 12);
   controls.target.set(0, 0, 0);
-  spawnBody(-4, 0, 0, 0.1, 0, 0, 40, 'planet');
-  spawnBody(4, 0, 0, -0.1, 0, 0, 40, 'planet');
+  spawnBody(-r * 1.2, 0, 0, 0.1, 0, 0, 40, 'planet');
+  spawnBody(r * 1.2, 0, 0, -0.1, 0, 0, 40, 'planet');
   shockwaveReplay = true;
   nextShockwaveAt = performance.now() + 3000;
   setShockwaveReplayUI(true);
@@ -1937,6 +1983,26 @@ document.getElementById('nextPlanet').addEventListener('click', () => {
 });
 
 /* ================= 主循环 ================= */
+function updateSizeMarkers() {
+  const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  for (const b of bodies) {
+    const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
+    b.sizeMarker.visible = sizeMode === 'reference' && b.r * focal / distance < 3;
+    if (b.sizeMarker.visible) b.sizeMarker.scale.setScalar(distance * 16 / focal / Math.max(.000001, b.mesh.scale.x));
+  }
+}
+document.getElementById('sizeMode').addEventListener('change', event => {
+  sizeMode = event.target.value;
+  for (const b of bodies) {
+    const spinRatio = b.spinW / omegaBreak(b.mass, b.r);
+    b.r = radiusFor(b.type, b.mass);
+    b.mesh.scale.setScalar(b.r);
+    if (b.tail) b.tail.scale.set(b.r * 3.5, b.r * 18, 1);
+    b.spinW = spinRatio * omegaBreak(b.mass, b.r);
+  }
+  updateSizeMarkers();
+  updateFocusLabel();
+});
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
@@ -1958,10 +2024,7 @@ function loop() {
         const target = Math.max(0, Math.min(0.28, (ratio - 0.55) * 0.42));
         b.deform += (target - b.deform) * 0.08;
         const wob = b.tide > 0.02 ? Math.sin(simT * 22 + b.spin * 9) * b.tide * 0.05 : 0;
-        b.mesh.scale.set(
-          b.r * (1 + b.deform + b.tide + wob),      // X 轴朝主星拉长
-          b.r * (1 - b.deform * 0.6 - b.tide * 0.7),
-          b.r * (1 + b.deform - b.tide * 0.5 - wob));
+        b.mesh.scale.set(...shapeScale(b.r, b.deform, b.tide, wob));
         if (b.tideT && b.tide > 0.02) {
           // 潮汐定向：局部 X 轴对准吸引源 → 蛋形指向主星
           _tv.subVectors(b.tideT.mesh.position, b.mesh.position).normalize();
@@ -2008,7 +2071,7 @@ function loop() {
       }
       if (checkEvolution(b)) continue;             // 质量上限 → 演化/超新星
       if (b.type === 'star' && b.glow) {
-        b.glow.scale.setScalar(9 * (1 + 0.05 * Math.sin(simT * 3 + b.spin)));
+        b.glow.scale.setScalar(4 * (1 + 0.05 * Math.sin(simT * 3 + b.spin)));
       } else if (b.type === 'blackhole' && b.disk) {
         b.disk.rotation.z += 0.02;             // 旋转几何体，不重采样贴图 → 无闪烁
         if (b.streaks) b.streaks.rotation.z += 0.05;   // 差速：流纹层更快 → 拖尾流动
@@ -2042,11 +2105,7 @@ function loop() {
     selRing.position.copy(selected.mesh.position);
     selRing.scale.setScalar(selected.r * 2.5 * (1 + 0.07 * Math.sin(simT * 6)));
     selRing.lookAt(camera.position);
-    if (frameNo % 12 === 0) {
-      const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
-      focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} · 🔥 ${pct}%`
-        + (selected.heat > 1.35 ? ' · 过热熔融!' : '');
-    }
+    if (frameNo % 12 === 0) updateFocusLabel();
   } else if (selected) selectBody(null);
 
   if (performance.now() - lastAssessmentAt > 200) {
@@ -2054,9 +2113,10 @@ function loop() {
     const sources = observed ? bodies.filter(b => b !== observed && LIT_TYPES.has(b.type)).map(b => ({
       type:b.type, mass:b.mass, distance:b.mesh.position.distanceTo(observed.mesh.position)
     })) : [];
-    renderPlanetAssessment(observed, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
+    renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
     lastAssessmentAt = performance.now();
   }
+  updateSizeMarkers();
   if (composer) composer.render(); else renderer.render(scene, camera);
   statBodies.textContent = bodies.length;
   statCollisions.textContent = collisions;
@@ -2074,8 +2134,8 @@ else if (sceneParam === 'craters') {
   planet.spinW = 0.015;
   planet.mesh.material.emissive.setHex(0x26354b);
   planet.mesh.material.emissiveIntensity = 0.7;
-  spawnBody(0, 1, 16, 0, 0, -0.1, 2, 'asteroid');
-  camera.position.set(0, 8, 34);
+  spawnBody(0, planet.r * 0.1, planet.r * 1.7, 0, 0, -0.1, 2, 'asteroid');
+  camera.position.set(0, planet.r * 1.5, planet.r * 6);
   controls.target.set(0, 0, 0);
   selectBody(planet);
   selRing.visible = false;
@@ -2084,10 +2144,11 @@ else if (sceneParam === 'planets') {
   // 行星细节展示：远距光源 + 类地/气态/环行星并排
   // 质量均低于褐矮星阈值 90，且间距拉大，避免展示中演化/合并
   spawnBody(0, 150, 330, 0, 0, 0, TYPES.star.base, 'star');
-  spawnBody(-190, 0, 0, 0, 0, 0, TYPES.planet.base * 1.2, 'planet');
+  const spacing = radiusFor('gasGiant', TYPES.gasGiant.base) * 4.5;
+  spawnBody(-spacing, 0, 0, 0, 0, 0, TYPES.planet.base * 1.2, 'planet');
   spawnBody(0, 0, 0, 0, 0, 0, TYPES.gasGiant.base * 0.9, 'gasGiant');
-  spawnBody(190, 0, 0, 0, 0, 0, TYPES.ringplanet.base * 1.2, 'ringplanet');
-  camera.position.set(0, 26, 268);
+  spawnBody(spacing, 0, 0, 0, 0, 0, TYPES.ringplanet.base * 1.2, 'ringplanet');
+  camera.position.set(0, spacing * .3, spacing * 2.2);
   controls.target.set(0, 0, 0);
 }
 else if (sceneParam === 'zoo') {

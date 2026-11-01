@@ -7,7 +7,7 @@
       reason: body ? '无类地固体表面' : '等待创建行星'
     };
     const mass = Math.max(0.001, body.mass / 40);
-    const radius = body.r ? body.r / (1.7 * Math.cbrt(40)) : Math.cbrt(mass);
+    const radius = body.r ? body.r / (body.earthReferenceRadius || (1.7 * Math.cbrt(40))) : Math.cbrt(mass);
     const heat = Math.max(0, body.heat || 0);
     const flux = sources.reduce((sum, source) => {
       const intensity = {star:1, blueGiant:2, redGiant:1.5, whiteDwarf:0.2}[source.type] || 0;
