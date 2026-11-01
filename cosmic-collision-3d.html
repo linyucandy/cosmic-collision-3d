@@ -110,6 +110,7 @@
     <div class="btn" id="btnPause">⏸ 暂停</div>
     <div class="btn" id="btnSpeed">⏩ ×1</div>
     <div class="btn" id="btnFindBody" role="button" tabindex="0" title="逐个寻找并跟随天体">🔭 寻找天体</div>
+    <button class="btn" id="btnAutoOrbit" type="button" title="让选中的天体围绕附近较重的天体运行">🪐 自动轨道</button>
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
@@ -1766,6 +1767,38 @@ function selectBody(b) {
   if (!b) focusChip.textContent = '';
   else updateFocusLabel();
 }
+function setAutomaticOrbit() {
+  if (!selected || !bodies.includes(selected)) {
+    showNotice('请先点击选择要进入轨道的天体。'); return;
+  }
+  let center = null, nearest = Infinity;
+  for (const candidate of bodies) {
+    if (candidate === selected || candidate.mass <= selected.mass) continue;
+    const d2 = candidate.mesh.position.distanceToSquared(selected.mesh.position);
+    if (d2 < nearest) { nearest = d2; center = candidate; }
+  }
+  if (!center) { showNotice('附近没有质量更大的天体，无法建立轨道。'); return; }
+  const radial = selected.mesh.position.clone().sub(center.mesh.position);
+  const distance = radial.length();
+  if (distance <= selected.r + center.r) {
+    showNotice('两个天体正在重叠，请先拉开距离再建立轨道。'); return;
+  }
+  const normal = camera.getWorldDirection(new THREE.Vector3());
+  const tangent = new THREE.Vector3().crossVectors(normal, radial);
+  if (tangent.lengthSq() < 1e-12) {
+    const axis = Math.abs(radial.y / distance) < .9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    tangent.crossVectors(axis, radial);
+  }
+  tangent.normalize();
+  const relativeVelocity = selected.vel.clone().sub(center.vel);
+  if (relativeVelocity.dot(tangent) < 0) tangent.negate();
+  // Match the softened gravitational force used in step(), in simulation units.
+  const speed = Math.sqrt(G * (center.mass + selected.mass) * distance * distance /
+    Math.pow(distance * distance + 60, 1.5));
+  selected.vel.copy(center.vel).addScaledVector(tangent, speed);
+  showNotice(`已围绕${TYPE_NAMES[center.type] || center.type}建立近似圆轨道；其他天体的引力会影响轨道。`);
+}
+document.getElementById('btnAutoOrbit').addEventListener('click', setAutomaticOrbit);
 function findNextBody() {
   if (!bodies.length) return;
   const index = selected ? (bodies.indexOf(selected) + 1) % bodies.length : 0;

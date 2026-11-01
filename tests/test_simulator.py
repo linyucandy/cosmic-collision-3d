@@ -272,6 +272,62 @@ loop();''')
         self.assertEqual(self.page.evaluate('sim.nebulae.length'),0)
         self.assertEqual(self.errors,[])
 
+    def test_auto_orbit_uses_selected_body_nearest_heavier_center_and_preserves_position(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const planet=sim.spawnBody(200,0,0,0,0,0,40,'planet');
+          sim.spawnBody(1000,0,0,0,0,0,1200,'star');sim.selectBody(planet);
+        }""")
+        self.page.locator('#btnAutoOrbit').click(timeout=5000)
+        result=self.page.evaluate("""() => {
+          const star=sim.bodies[0],planet=sim.bodies[1];
+          const r=planet.mesh.position.clone().sub(star.mesh.position);
+          const v=planet.vel.clone().sub(star.vel);
+          return {distance:r.length(),radial:r.dot(v),speed:v.length(),text:document.querySelector('#launchNotice').textContent};
+        }""")
+        expected=(3*(600+40)*200**2/(200**2+60)**1.5)**.5
+        self.assertAlmostEqual(result['distance'],200,places=6)
+        self.assertAlmostEqual(result['radial'],0,places=6)
+        self.assertAlmostEqual(result['speed'],expected,places=6)
+        self.assertIn('恒星',result['text'])
+        self.assertEqual(self.errors,[])
+
+    def test_auto_orbit_inherits_moving_center_velocity(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,1.5,-0.5,2,600,'star');sim.selectBody(sim.spawnBody(200,0,0,0,0,0,40,'planet'))")
+        self.page.locator('#btnAutoOrbit').click()
+        result=self.page.evaluate("""() => {
+          const [center,body]=sim.bodies, r=body.mesh.position.clone().sub(center.mesh.position);
+          return {radial:r.dot(body.vel.clone().sub(center.vel)),center:center.vel.toArray()};
+        }""")
+        self.assertAlmostEqual(result['radial'],0,places=6)
+        self.assertEqual(result['center'],[1.5,-.5,2])
+
+    def test_auto_orbit_remains_bound_under_simulated_gravity(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');sim.selectBody(sim.spawnBody(200,0,0,0,0,0,40,'planet'))")
+        self.page.locator('#btnAutoOrbit').click()
+        result=self.page.evaluate("""() => {
+          for(let i=0;i<500;i++)sim.step();
+          return {count:sim.bodies.length,distance:sim.bodies[0].mesh.position.distanceTo(sim.bodies[1].mesh.position)};
+        }""")
+        self.assertEqual(result['count'],2,result)
+        self.assertGreater(result['distance'],190,result)
+        self.assertLess(result['distance'],210,result)
+
+    def test_auto_orbit_requires_selected_body_and_valid_center(self):
+        self.open_sim();self.page.evaluate('sim.clear()')
+        self.page.locator('#btnAutoOrbit').click(timeout=5000)
+        self.assertIn('选择',self.page.locator('#launchNotice').inner_text())
+        self.page.evaluate("sim.selectBody(sim.spawnBody(0,0,0,0,0,0,40,'planet'))")
+        self.page.locator('#btnAutoOrbit').click()
+        self.assertIn('更大',self.page.locator('#launchNotice').inner_text())
+        self.page.evaluate("sim.spawnBody(0,0,0,0,0,0,600,'star')")
+        self.page.locator('#btnAutoOrbit').click()
+        self.assertIn('重叠',self.page.locator('#launchNotice').inner_text())
+        self.assertEqual(self.errors,[])
+
     def test_deformation_preserves_body_volume(self):
         self.open_sim()
         result=self.page.evaluate('''() => {
