@@ -106,6 +106,8 @@
     <div class="btn" id="btnDemo">💥 演示碰撞</div>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
+    <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
+    <button class="btn" id="btnRingCompare" type="button" hidden>对比原始光环</button>
     <div class="btn" id="btnSystem">✨ 随机星系</div>
     <div class="btn" id="btnPause">⏸ 暂停</div>
     <div class="btn" id="btnSpeed">⏩ ×1</div>
@@ -887,8 +889,13 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     const mapTex = gasTexes[(Math.random() * gasTexes.length) | 0];
     mesh = new THREE.Mesh(sphereGeoHi, new THREE.MeshStandardMaterial({ map: mapTex, roughness: 1 }));
     // 行星环：随机倾角，法向混合呈现固体环面
-    const ring = new THREE.Mesh(pringGeo, new THREE.MeshBasicMaterial({ map: pringTex,
+    const ringGeometry = pringGeo.clone();
+    const ringPositions = ringGeometry.attributes.position;
+    ringGeometry.userData.originalPositions = new Float32Array(ringPositions.array);
+    ringPositions.setUsage(THREE.DynamicDrawUsage);
+    const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ map: pringTex,
       transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    ring.frustumCulled = false;
     ring.rotation.x = 0.45 + Math.random() * 0.35;
     mesh.add(ring);
     extra.ring = ring;
@@ -1011,6 +1018,7 @@ function removeBody(b) {
   });
   for (const material of materials) material.dispose();
   if (b.impactTexture) b.impactTexture.dispose();
+  if (b.ring) b.ring.geometry.dispose();
   const i = bodies.indexOf(b);
   if (i >= 0) bodies.splice(i, 1);
 }
@@ -1164,6 +1172,8 @@ function createNebula(type, position, sourceRadius) {
   nebulae.push({type,group,points,glow,ring,age:0,duration:type === 'planetary' ? 60 : 45,initialRadius});
 }
 function clearScene() {
+  ringDemoPreview = false; ringDemoCompare = false;
+  document.getElementById('btnRingCompare').hidden = true;
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
   selectBody(null);
@@ -1371,7 +1381,7 @@ function boom(strength) {
 }
 
 /* ================= 物理 ================= */
-let G = 3, paused = false, timeScale = 1;
+let G = 3, paused = false, timeScale = 1, ringDemoPreview = false, ringDemoCompare = false;
 const _tpOff = new THREE.Vector3();
 const _portalStart = new THREE.Vector3(), _portalEnd = new THREE.Vector3(), _portalTravel = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
@@ -1938,6 +1948,26 @@ function demoStellarEvolution(type) {
   controls.target.set(0, 0, 0);
   showNotice(type === 'planetary' ? '红巨星抛出气体，形成行星状星云与白矮星。' : '恒星爆发超新星，留下扩散的残骸和黑洞。');
 }
+function demoRingTides() {
+  clearScene(); paused = true; ringDemoPreview = true; ringDemoCompare = false; timeScale = 1;
+  const compare = document.getElementById('btnRingCompare');
+  compare.hidden = false; compare.textContent = '对比原始光环';
+  document.getElementById('btnPause').textContent = '▶ 继续';
+  document.getElementById('btnSpeed').textContent = '⏩ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const star = spawnBody(0, 0, 0, 0, 0, 0, 600, 'star');
+  const ringRadius = radiusFor('ringplanet', 55);
+  // Outside the body-stripping zone, so the ring distortion can be watched in orbit.
+  const distance = (star.r + ringRadius) * 1.6;
+  const speed = Math.sqrt(G * (star.mass + 55) * distance * distance /
+    Math.pow(distance * distance + 60, 1.5));
+  const planet = spawnBody(distance, 0, 0, 0, 0, speed, 55, 'ringplanet');
+  camera.position.set(distance, ringRadius * 6, ringRadius * 15);
+  controls.target.copy(planet.mesh.position);
+  selectBody(planet);
+  selRing.visible = false;
+  showNotice('星环潮汐演示：已暂停轨道以便观察变形；点击继续可运行。');
+}
 function demoShockwave() {
   clearScene();
   paused = false;
@@ -2162,6 +2192,10 @@ document.getElementById('trails').addEventListener('change', e => showTrails = e
 const btnPause = document.getElementById('btnPause');
 btnPause.addEventListener('click', () => {
   paused = !paused;
+  if (!paused) {
+    ringDemoPreview = false;
+    document.getElementById('btnRingCompare').hidden = true;
+  }
   btnPause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
 });
 /* 时间加速：×1 → ×2 → ×4 → ×8 循环，也可按 T 键 */
@@ -2182,6 +2216,13 @@ document.getElementById('btnReset').addEventListener('click', () => {
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
+document.getElementById('btnRingTides').addEventListener('click', () => { ensureAudio(); demoRingTides(); });
+document.getElementById('btnRingCompare').addEventListener('click', event => {
+  if (!ringDemoPreview) return;
+  ringDemoCompare = !ringDemoCompare;
+  event.currentTarget.textContent = ringDemoCompare ? '显示潮汐变形' : '对比原始光环';
+  showNotice(ringDemoCompare ? '对比：显示没有潮汐拉伸的原始光环。' : '对比：显示受潮汐拉伸的光环。');
+});
 document.getElementById('btnShockwave').addEventListener('click', () => { ensureAudio(); demoShockwave(); });
 document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
 /* 恒星系统预设：单星 / 双星 / 三星 */
@@ -2285,10 +2326,22 @@ function updatePlanetaryRings() {
       if (influence > strongest) { strongest = influence; source = other; }
     }
     // Tuned for gameplay: a dimensionless relative tidal strength, not a particle simulation.
-    const target = Math.max(0, Math.min(.75, (strongest - .0003) / .015));
+    const target = ringDemoPreview && ringDemoCompare ? 0 :
+      Math.max(0, Math.min(.75, (strongest - .0002) / .002));
     body.ringTide += (target - body.ringTide) * (1 - Math.pow(.9, timeScale));
     body.ring.scale.set(1 + body.ringTide * .75, 1 - body.ringTide * .35, 1);
     body.ring.material.opacity = .9 - body.ringTide * .22;
+    const positions = body.ring.geometry.attributes.position;
+    const original = body.ring.geometry.userData.originalPositions;
+    for (let i = 0; i < positions.count; i++) {
+      const x = original[i*3], y = original[i*3+1];
+      const radius = Math.hypot(x, y), angle = Math.atan2(y, x);
+      const outer = Math.max(0, radius - 1.5);
+      // Differential stretch shifts the outer ring and lifts it into a shallow wave.
+      positions.setXYZ(i, x + body.ringTide * .42 * outer,
+        y, body.ringTide * .32 * outer * Math.sin(2 * angle));
+    }
+    positions.needsUpdate = true;
     if (source && body.ringTide > .001) {
       _ringDirection.subVectors(source.mesh.position, body.mesh.position);
       body.mesh.getWorldQuaternion(_ringQuaternion).invert();
@@ -2403,6 +2456,10 @@ function loop() {
     }
     updatePlanetaryRings();
     updateLights();
+  } else if (ringDemoPreview) {
+    // Animate the ring while the demo holds the bodies still for inspection.
+    updatePlanetaryRings();
+    updateLights();
   }
   controls.update();
   // 跟随观察：相机锁定选中天体 + 选中环 + 温度读数
@@ -2413,7 +2470,7 @@ function loop() {
     selRing.position.copy(selected.mesh.position);
     selRing.scale.setScalar(selected.r * 2.5 * (1 + 0.07 * Math.sin(simT * 6)));
     selRing.lookAt(camera.position);
-    if (frameNo % 12 === 0) updateFocusLabel();
+    if (ringDemoPreview || frameNo % 12 === 0) updateFocusLabel();
   } else if (selected) selectBody(null);
 
   if (performance.now() - lastAssessmentAt > 200) {

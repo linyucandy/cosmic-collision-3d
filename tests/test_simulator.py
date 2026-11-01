@@ -329,6 +329,36 @@ loop();''')
         self.assertIn('重叠',self.page.locator('#launchNotice').inner_text())
         self.assertEqual(self.errors,[])
 
+    def test_ring_tide_demo_visibly_deforms_during_real_simulation(self):
+        self.open_sim()
+        self.page.locator('#btnRingTides').click(timeout=5000)
+        self.page.wait_for_function("""() => {
+          const p=sim.bodies.find(b=>b.type==='ringplanet');
+          return p && p.ringTide>.45 && p.ring.scale.x>1.3 && p.ring.scale.y<.85;
+        }""",timeout=20000)
+        result=self.page.evaluate("""() => {
+          const p=sim.bodies.find(b=>b.type==='ringplanet');
+          const positions=p.ring.geometry.attributes.position.array;
+          const original=p.ring.geometry.userData.originalPositions;
+          return {count:sim.bodies.length,selected:sim.selected===p,tidal:p.ringTide,
+            warped:original && positions.some((v,i)=>Math.abs(v-original[i])>.01),
+            mass:p.mass,radius:p.r,notice:document.querySelector('#launchNotice').textContent};
+        }""")
+        self.assertEqual(result['count'],2,result)
+        self.assertTrue(result['selected'],result)
+        self.assertTrue(result['warped'],result)
+        self.assertEqual(result['mass'],55,result)
+        self.assertGreater(result['radius'],0,result)
+        self.assertIn('环潮汐',self.page.evaluate('sim.focusChip.textContent'))
+        self.page.locator('#btnRingCompare').click()
+        self.page.wait_for_function("sim.bodies.find(b=>b.type==='ringplanet').ringTide < .01",timeout=20000)
+        self.assertEqual(self.page.locator('#btnRingCompare').inner_text(),'显示潮汐变形')
+        self.page.locator('#btnRingCompare').click()
+        self.page.wait_for_function("sim.bodies.find(b=>b.type==='ringplanet').ringTide > .45",timeout=20000)
+        self.page.locator('#btnPause').click()
+        self.assertTrue(self.page.locator('#btnRingCompare').is_hidden())
+        self.assertEqual(self.errors,[])
+
     def test_planetary_ring_distorts_near_massive_body_and_recovers(self):
         self.open_sim()
         result=self.page.evaluate("""() => {
@@ -340,15 +370,30 @@ loop();''')
           const near={x:planet.ring.scale.x,y:planet.ring.scale.y, angle:planet.ring.rotation.z};
           planet.mesh.position.set(500,0,0);
           for(let i=0;i<150;i++)sim.updatePlanetaryRings();
-          return {near,far:{x:planet.ring.scale.x,y:planet.ring.scale.y},before,after:{radius:planet.r,mass:planet.mass}};
+          const position=planet.ring.geometry.attributes.position.array;
+          const original=planet.ring.geometry.userData.originalPositions;
+          const geometryError=Math.max(...position.map((v,i)=>Math.abs(v-original[i])));
+          return {near,far:{x:planet.ring.scale.x,y:planet.ring.scale.y},geometryError,before,after:{radius:planet.r,mass:planet.mass}};
         }""")
         self.assertIsNotNone(result)
         self.assertGreater(result['near']['x'],1.05,result)
         self.assertLess(result['near']['y'],.98,result)
         self.assertAlmostEqual(result['far']['x'],1,places=4)
         self.assertAlmostEqual(result['far']['y'],1,places=4)
+        self.assertLess(result['geometryError'],.0001,result)
         self.assertEqual(result['before'],result['after'])
         self.assertEqual(self.errors,[])
+
+    def test_ring_geometry_is_independent_and_disposed_on_removal(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,55,'ringplanet');
+          const b=sim.spawnBody(100,0,0,0,0,0,55,'ringplanet');
+          let disposed=false;a.ring.geometry.addEventListener('dispose',()=>disposed=true);
+          const independent=a.ring.geometry!==b.ring.geometry;
+          sim.removeBody(a);return {independent,disposed,otherPresent:sim.bodies.includes(b)};
+        }""")
+        self.assertEqual(result,{'independent':True,'disposed':True,'otherPresent':True})
 
     def test_ring_stretches_toward_strongest_tidal_source(self):
         self.open_sim()
