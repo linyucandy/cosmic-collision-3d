@@ -81,7 +81,7 @@ python community_server.py
 浏览器回归测试（需要安装本机 Google Chrome）：
 
 ```sh
-python -m pip install playwright
+python -m pip install playwright Pillow
 python -m unittest discover -s tests -v
 ```
 

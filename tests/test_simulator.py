@@ -1,5 +1,7 @@
-"""Browser regressions. Requires: pip install playwright; local Chrome."""
+"""Browser regressions. Requires: pip install playwright Pillow; local Chrome."""
 import functools
+import io
+from PIL import Image, ImageChops
 import http.server
 import pathlib
 import threading
@@ -43,6 +45,8 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
   get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
+  get lensPass() { return typeof lensPass === "undefined" ? null : lensPass; },
+  get lensDemoGrid() { return typeof lensDemoGrid === "undefined" ? null : lensDemoGrid; },
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get selected() { return selected; },
@@ -412,6 +416,48 @@ loop();''')
         self.assertGreater(result['strength'],.1,result)
         self.assertGreater(abs(result['first']-result['second']),.5,result)
         self.assertLess(result['recovered'],.00001,result)
+        self.assertEqual(self.errors,[])
+
+    def test_black_hole_lensing_demo_distorts_canvas_and_can_be_disabled(self):
+        self.open_sim()
+        self.page.locator('#btnLensDemo').click(timeout=5000)
+        self.page.wait_for_function("sim.lensPass && sim.lensPass.enabled && sim.lensPass.uniforms.lenses.value[0].w > 0",timeout=15000)
+        before=self.page.evaluate("sim.bodies.map(b=>({mass:b.mass,r:b.r,position:b.mesh.position.toArray()}))")
+        on=Image.open(io.BytesIO(self.page.screenshot())).convert('RGB').crop((500,200,1000,700))
+        self.page.locator('#lensToggle').uncheck()
+        self.page.wait_for_function('!sim.lensPass.enabled')
+        off=Image.open(io.BytesIO(self.page.screenshot())).convert('RGB').crop((500,200,1000,700))
+        diff=ImageChops.difference(on,off)
+        changed=sum(1 for pixel in diff.getdata() if max(pixel)>8)
+        self.assertGreater(changed,100,'lensing should visibly warp the rendered canvas')
+        self.assertEqual(self.page.evaluate("sim.bodies.map(b=>({mass:b.mass,r:b.r,position:b.mesh.position.toArray()}))"),before)
+        self.page.locator('#lensToggle').check()
+        self.page.select_option('#sizeMode','display')
+        self.page.wait_for_function('sim.lensPass.enabled')
+        self.assertGreater(self.page.evaluate('sim.camera.position.distanceTo(sim.controls.target) / sim.bodies[0].r'),20)
+        disposed=self.page.evaluate("""() => {let done=false;
+          sim.lensDemoGrid.geometry.addEventListener('dispose',()=>done=true);
+          sim.clearScene();return done && !sim.lensDemoGrid;}""")
+        self.assertTrue(disposed)
+        self.assertEqual(self.errors,[])
+
+    def test_black_hole_lens_demo_is_available_on_mobile(self):
+        self.open_sim();self.page.set_viewport_size({'width':390,'height':844})
+        self.page.wait_for_function("document.getElementById('panelControls').hidden")
+        self.page.locator('#toggleControls').click()
+        self.page.locator('#btnLensDemo').click()
+        self.page.wait_for_function('sim.lensPass && sim.lensPass.enabled',timeout=15000)
+        self.assertEqual(self.errors,[])
+
+    def test_lensing_ignores_black_holes_behind_camera_and_caps_sources(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clear();sim.camera.position.set(0,0,100);sim.controls.target.set(0,0,0);sim.controls.update();
+          for(let i=0;i<6;i++)sim.spawnBody((i-3)*2,0,0,0,0,0,2500,'blackhole');
+        }""")
+        self.page.wait_for_function("sim.lensPass && sim.lensPass.uniforms.lenses.value.filter(v=>v.w>0).length===4",timeout=15000)
+        self.page.evaluate("""() => {sim.clear();sim.spawnBody(0,0,200,0,0,0,2500,'blackhole');}""")
+        self.page.wait_for_function('!sim.lensPass.enabled',timeout=15000)
         self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):
