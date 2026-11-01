@@ -108,7 +108,7 @@
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
   <div class="row"><label for="sizeMode">天体大小 </label><select id="sizeMode"><option value="reference">参考大小</option><option value="display">易观察（旧比例）</option></select></div>
-  <div style="font-size:11px;color:#abc;line-height:1.4">基准地球、木星、太阳直径约 1:11:109。小天体的圆圈是定位标记；光晕和星环不是本体。质量和距离使用游戏单位。切换比例会改变碰撞半径。</div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">基准地球、木星、太阳直径约 1:11:109。小天体的圆圈是定位标记；光晕和星环不是本体。质量和距离使用游戏单位。两个虫洞自动配对传送天体。切换比例会改变碰撞半径。</div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
     <span>碰撞 <b id="statCollisions">0</b></span>
@@ -118,7 +118,7 @@
 
 <div class="hint">左键按住拖动发射天体 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=1"></script>
+<script src="celestial-size.js?v=2"></script>
 <script src="planet-assessment.js?v=2"></script>
 
 <script type="module">
@@ -1273,6 +1273,7 @@ function boom(strength) {
 /* ================= 物理 ================= */
 let G = 3, paused = false, timeScale = 1;
 const _tpOff = new THREE.Vector3();
+const _portalStart = new THREE.Vector3(), _portalEnd = new THREE.Vector3(), _portalTravel = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _tv = new THREE.Vector3();
 const _xAxis = new THREE.Vector3(1, 0, 0), _yAxis = new THREE.Vector3(0, 1, 0);
@@ -1304,14 +1305,20 @@ function step() {
       b.mesh.position.addScaledVector(b.vel, dt);
     }
   }
-  handleCollisions(true);
   /* 虫洞配对传送：坠入一个洞，从最近的另一个洞吐出（2s 冷却防乒乓） */
   const holes = bodies.filter(b => b.type === 'wormhole');
   if (holes.length >= 2) {
     for (const b of bodies) {
       if (b.type === 'wormhole' || b.tpCd > 0) continue;
       for (const h of holes) {
-        if (b.mesh.position.distanceToSquared(h.mesh.position) < h.r * h.r * 0.8) {
+        // Test the whole relative path so fast objects cannot pass through the portal.
+        const start = _portalStart.subVectors(b.previousPosition, h.previousPosition);
+        const end = _portalEnd.subVectors(b.mesh.position, h.mesh.position);
+        const travel = _portalTravel.subVectors(end, start);
+        const lengthSq = travel.lengthSq();
+        const t = lengthSq ? THREE.MathUtils.clamp(-start.dot(travel) / lengthSq, 0, 1) : 0;
+        const radius = h.r + b.r;
+        if (start.addScaledVector(travel, t).lengthSq() <= radius * radius) {
           let exit = null, best = Infinity;
           for (const h2 of holes) {
             if (h2 === h) continue;
@@ -1319,9 +1326,15 @@ function step() {
             if (d < best) { best = d; exit = h2; }
           }
           if (exit) {
-            _tpOff.randomDirection().multiplyScalar(exit.r * 2.4);
+            if (b.vel.lengthSq() > 1e-12) _tpOff.copy(b.vel).normalize();
+            else _tpOff.randomDirection();
+            _tpOff.multiplyScalar(exit.r + b.r + Math.max(0.1, exit.r * 0.1));
             b.mesh.position.copy(exit.mesh.position).add(_tpOff);
+            b.previousPosition.copy(b.mesh.position);
+            b.trail.pts.length = 0;
+            b.trail.line.geometry.setDrawRange(0, 0);
             b.tpCd = 2;
+            spark(h.mesh.position, 0x59ffd8);
             spark(exit.mesh.position, 0x59ffd8);
           }
           break;
@@ -1329,6 +1342,7 @@ function step() {
       }
     }
   }
+  handleCollisions(true);
   for (const b of bodies) if (b.tpCd > 0) b.tpCd -= timeScale / 60;
   for (let i = bodies.length - 1; i >= 0; i--) {
     if (bodies[i].mesh.position.length() > 3500) removeBody(bodies[i]);
@@ -1345,6 +1359,8 @@ function handleCollisions(swept = false) {
       if (dead.has(a)) break;
       const b = bodies[j];
       if (dead.has(b)) continue;
+      // Wormholes are gateways, not solid bodies that merge on contact.
+      if (a.type === 'wormhole' || b.type === 'wormhole') continue;
       const rr = a.r + b.r;
       const pa = a.mesh.position, pb = b.mesh.position;
       const _dx = pb.x - pa.x, _dy = pb.y - pa.y, _dz = pb.z - pa.z;

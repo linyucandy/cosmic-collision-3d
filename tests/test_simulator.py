@@ -108,6 +108,36 @@ loop();''')
         self.assertAlmostEqual(self.page.evaluate('sim.bodies[0].r'), radii[0])
         self.assertEqual(self.errors, [])
 
+    def test_wormhole_pair_transports_fast_bodies_without_absorbing_them(self):
+        self.open_sim()
+        result = self.page.evaluate("""() => {
+          sim.clear();
+          const entrance=sim.spawnBody(0,0,0,0,0,0,1500,'wormhole');
+          const exit=sim.spawnBody(100,0,0,0,0,0,1500,'wormhole');
+          entrance.stable=exit.stable=true;
+          const planet=sim.spawnBody(-30,0,0,60,0,0,40,'planet');
+          sim.step();
+          return {count:sim.bodies.length, type:planet.type, mass:planet.mass,
+            distance:planet.mesh.position.distanceTo(exit.mesh.position),
+            minimum:exit.r+planet.r, cooldown:planet.tpCd, entranceRadius:entrance.r};
+        }""")
+        self.assertEqual(result['count'],3,result)
+        self.assertEqual(result['type'],'planet',result)
+        self.assertEqual(result['mass'],40,result)
+        self.assertGreaterEqual(result['distance'],result['minimum'],result)
+        self.assertLess(result['distance'],result['minimum']+10,result)
+        self.assertGreater(result['cooldown'],0,result)
+        self.assertGreater(result['entranceRadius'],1,result)
+
+    def test_single_wormhole_does_not_absorb_body(self):
+        self.open_sim()
+        result = self.page.evaluate("""() => {
+          sim.clear();sim.spawnBody(0,0,0,0,0,0,1500,'wormhole');
+          sim.spawnBody(0,0,0,0,0,0,40,'planet');sim.step();
+          return sim.bodies.map(b=>b.type).sort();
+        }""")
+        self.assertEqual(result,['planet','wormhole'])
+
     def test_deformation_preserves_body_volume(self):
         self.open_sim()
         result=self.page.evaluate('''() => {
