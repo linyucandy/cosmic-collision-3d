@@ -41,7 +41,8 @@ paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode,
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
-  frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip,
+  frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
+  get selected() { return selected; },
   get shapeScale() { return typeof shapeScale === 'function' ? shapeScale : null; },
   get updateFocusLabel() { return typeof updateFocusLabel === 'function' ? updateFocusLabel : null; } };
 loop();''')
@@ -137,6 +138,29 @@ loop();''')
           return sim.bodies.map(b=>b.type).sort();
         }""")
         self.assertEqual(result,['planet','wormhole'])
+
+    def test_escaping_body_is_not_deleted_after_crossing_old_boundary(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();const body=sim.spawnBody(3499,0,0,20,0,0,40,'planet');
+          sim.step();return {present:sim.bodies.includes(body),x:body.mesh.position.x};
+        }""")
+        self.assertGreater(result['x'],3500)
+        self.assertTrue(result['present'],result)
+
+    def test_find_body_follows_distant_body_and_camera_can_render_it(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.spawnBody(50000,0,0,0,0,0,40,'planet')")
+        self.page.wait_for_function('sim.camera.far > 50000')
+        self.page.locator('#btnFindBody').click()
+        self.page.wait_for_function('sim.selected && sim.controls.target.distanceTo(sim.selected.mesh.position) < 0.01')
+        self.assertEqual(self.page.evaluate('sim.selected.type'),'planet')
+        self.page.locator('#tools [data-type="star"]').click()
+        self.page.mouse.move(900,450);self.page.mouse.down()
+        self.page.mouse.move(960,450,steps=4);self.page.mouse.up()
+        distance=self.page.evaluate('sim.bodies[1].mesh.position.distanceTo(sim.controls.target)')
+        self.assertLess(distance,1000, 'new bodies should launch near the current view')
+        self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):
         self.open_sim()

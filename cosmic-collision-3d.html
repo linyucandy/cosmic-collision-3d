@@ -104,6 +104,7 @@
     <div class="btn" id="btnSystem">✨ 随机星系</div>
     <div class="btn" id="btnPause">⏸ 暂停</div>
     <div class="btn" id="btnSpeed">⏩ ×1</div>
+    <div class="btn" id="btnFindBody" role="button" tabindex="0" title="逐个寻找并跟随天体">🔭 寻找天体</div>
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
@@ -154,7 +155,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.minDistance = 0.005;
-controls.maxDistance = 3000;
+controls.maxDistance = Infinity;
 controls.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.touches = { ONE: -1, TWO: THREE.TOUCH.DOLLY_ROTATE };
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
@@ -1344,9 +1345,6 @@ function step() {
   }
   handleCollisions(true);
   for (const b of bodies) if (b.tpCd > 0) b.tpCd -= timeScale / 60;
-  for (let i = bodies.length - 1; i >= 0; i--) {
-    if (bodies[i].mesh.position.length() > 3500) removeBody(bodies[i]);
-  }
 }
 
 function handleCollisions(swept = false) {
@@ -1661,6 +1659,16 @@ function selectBody(b) {
   if (!b) focusChip.textContent = '';
   else updateFocusLabel();
 }
+function findNextBody() {
+  if (!bodies.length) return;
+  const index = selected ? (bodies.indexOf(selected) + 1) % bodies.length : 0;
+  selectBody(bodies[index]);
+}
+const findBodyButton = document.getElementById('btnFindBody');
+findBodyButton.addEventListener('click', findNextBody);
+findBodyButton.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); findNextBody(); }
+});
 window.addEventListener('keydown', e => { if (e.key === 'Escape') selectBody(null); });
 let downX = -9999, downY = -9999;              // 点击判定基准点
 
@@ -1676,10 +1684,10 @@ canvas.addEventListener('pointerdown', e => {
   ensureAudio();
   if (e.button !== 0) return;
   downX = e.clientX; downY = e.clientY;
-  // 过原点、垂直于视线的平面
+  // 过当前观察中心、垂直于视线的发射平面
   const n = new THREE.Vector3();
   camera.getWorldDirection(n);
-  spawnPlane.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(0, 0, 0));
+  spawnPlane.setFromNormalAndCoplanarPoint(n, controls.target);
   const p = planePoint(e, new THREE.Vector3());
   if (!p) return;
   dragA = p;
@@ -2019,6 +2027,16 @@ document.getElementById('sizeMode').addEventListener('change', event => {
   updateSizeMarkers();
   updateFocusLabel();
 });
+function updateCameraFarPlane() {
+  let required = 12000;
+  for (const b of bodies) {
+    required = Math.max(required, (camera.position.distanceTo(b.mesh.position) + b.r * 4) * 1.2);
+  }
+  if (required > camera.far || required < camera.far * 0.5) {
+    camera.far = required;
+    camera.updateProjectionMatrix();
+  }
+}
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
@@ -2132,6 +2150,7 @@ function loop() {
     renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
     lastAssessmentAt = performance.now();
   }
+  updateCameraFarPlane();
   updateSizeMarkers();
   if (composer) composer.render(); else renderer.render(scene, camera);
   statBodies.textContent = bodies.length;
