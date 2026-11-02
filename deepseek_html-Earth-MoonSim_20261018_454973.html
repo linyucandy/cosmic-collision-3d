@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>地月模拟器 · Earth–Moon Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; }
+
+  #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+  #title {
+    position: absolute; left: 32px; top: 28px;
+    color: #dce9f7; transition: opacity .5s;
+  }
+  #title h1 {
+    font-size: 20px; font-weight: 600; letter-spacing: 3px;
+    text-shadow: 0 0 20px rgba(120,180,255,.6);
+  }
+  #title p {
+    margin-top: 6px; font-size: 12px; letter-spacing: 1.5px;
+    color: #7f9ec0;
+  }
+  #title.hidden { opacity: 0; }
+
+  #backBtn {
+    position: absolute; left: 50%; bottom: 34px; transform: translate(-50%, 20px);
+    padding: 11px 30px; border-radius: 40px;
+    background: rgba(20, 40, 70, .55);
+    border: 1px solid rgba(120, 180, 255, .4);
+    color: #cfe4ff; font-size: 14px; letter-spacing: 2px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    cursor: pointer; opacity: 0; pointer-events: none;
+    transition: opacity .45s, transform .45s, background .2s, border-color .2s;
+    box-shadow: 0 0 30px rgba(80, 150, 255, .18);
+  }
+  #backBtn.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  #backBtn:hover { background: rgba(40, 80, 130, .75); border-color: rgba(150, 200, 255, .8); }
+
+  #panel {
+    position: absolute; right: 32px; top: 50%; transform: translate(40px, -50%);
+    width: 260px; padding: 24px 22px 20px;
+    border-radius: 18px;
+    background: linear-gradient(160deg, rgba(18,32,54,.82), rgba(10,18,32,.86));
+    border: 1px solid rgba(110, 165, 240, .28);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07);
+    opacity: 0; pointer-events: none;
+    transition: opacity .55s .15s, transform .55s .15s;
+  }
+  #panel.show { opacity: 1; transform: translate(0, -50%); }
+  #panel .tag {
+    display: inline-block; font-size: 10px; letter-spacing: 2px;
+    color: #6fd3ff; border: 1px solid rgba(111,211,255,.4);
+    padding: 3px 9px; border-radius: 20px; margin-bottom: 14px;
+  }
+  #panel h2 { font-size: 26px; font-weight: 600; color: #eaf4ff; letter-spacing: 2px; }
+  #panel .sub { font-size: 11px; color: #6d8dad; letter-spacing: 3px; margin-top: 3px; }
+  #panel ul { list-style: none; margin-top: 18px; border-top: 1px solid rgba(110,165,240,.18); padding-top: 14px; }
+  #panel li {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; color: #9fb8d4; padding: 6px 0;
+  }
+  #panel li b { color: #dbe9fa; font-weight: 500; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 100; background: #04070d;
+    display: flex; align-items: center; justify-content: center;
+    color: #6f9ac9; font-size: 13px; letter-spacing: 4px;
+    transition: opacity .6s;
+  }
+  #loading.done { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<script src="experience-nav.js" data-graphics="webgl"></script>
+
+<div id="loading">正在生成行星…</div>
+
+<div id="ui">
+  <div id="title">
+    <h1>地月模拟器</h1>
+    <p>点击星球即可登录</p>
+  </div>
+  <div id="panel">
+    <span class="tag">已登录</span>
+    <h2 id="pName">地球</h2>
+    <div class="sub" id="pSub">EARTH</div>
+    <ul id="pFacts"></ul>
+  </div>
+  <button id="backBtn">↩ 返回轨道</button>
+</div>
+
+<script>
+  // 全局错误捕获：如果有报错直接显示，防止卡死
+  window.addEventListener('error', function(e) {
+    const loading = document.getElementById('loading');
+    if (loading && !loading.classList.contains('done')) {
+      loading.innerText = '加载失败: ' + (e.message || '请检查网络或刷新重试');
+      loading.style.color = '#ff6b6b';
+    }
+  }, true);
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three-r160/three.module.js",
+    "three/addons/": "./vendor/three-r160/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/three-r160/OrbitControls.js';
+
+/* ============================================================
+   工具函数
+============================================================ */
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smoothstep = (e0, e1, x) => {
+  const t = clamp((x - e0) / (e1 - e0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+function hash2(x, y, seed) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed | 0, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967295;
+}
+
+function vnoise(x, y, period, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const x0 = ((xi % period) + period) % period;
+  const x1 = (x0 + 1) % period;
+  const a = hash2(x0, yi, seed);
+  const b = hash2(x1, yi, seed);
+  const c = hash2(x0, yi + 1, seed);
+  const d = hash2(x1, yi + 1, seed);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+function fbm(x, y, period, seed, oct = 5) {
+  let sum = 0, amp = 0.5, norm = 0, f = 1, p = period;
+  for (let i = 0; i < oct; i++) {
+    sum += amp * vnoise(x * f, y * f, p, seed + i * 131);
+    norm += amp;
+    f *= 2; p *= 2; amp *= 0.5;
+  }
+  return sum / norm;
+}
+
+/* ============================================================
+   程序化贴图
+============================================================ */
+function makeEarthTexture() {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  const P = 6, SEA = 0.50;
+  let i = 0;
+
+  for (let y = 0; y < H; y++) {
+    const v = y / (H - 1);
+    const latAbs = Math.abs(0.5 - v) * 2;
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const nx = u * P, ny = v * P * 0.55;
+
+      let h = fbm(nx, ny, P, 1337, 5);
+      h = clamp((h - 0.5) * 1.55 + 0.5, 0, 1);
+
+      let r, g, b;
+      if (h < SEA) {
+        const dd = h / SEA;
+        r = 5 + 22 * dd * dd;
+        g = 28 + 88 * dd * dd;
+        b = 84 + 108 * dd * dd;
+      } else {
+        const t = (h - SEA) / (1 - SEA);
+        if (t < 0.07) {
+          r = 202; g = 188; b = 148;
+        } else {
+          const k = Math.min(1, (t - 0.07) / 0.45);
+          r = 52 + 108 * k;
+          g = 104 + 46 * k;
+          b = 52 + 26 * k;
+          if (t > 0.66) {
+            const s = Math.min(1, (t - 0.66) / 0.24);
+            r += (242 - r) * s; g += (244 - g) * s; b += (248 - b) * s;
+          }
+        }
+      }
+
+      const ice = smoothstep(0.78, 0.93, latAbs + (fbm(nx * 3, ny * 3, P, 55, 3) - 0.5) * 0.18);
+      r += (246 - r) * ice;
+      g += (249 - g) * ice;
+      b += (255 - b) * ice;
+
+      d[i++] = r; d[i++] = g; d[i++] = b; d[i++] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeCloudTexture() {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  const P = 6;
+  let i = 0;
+
+  for (let y = 0; y < H; y++) {
+    const v = y / (H - 1);
+    const latAbs = Math.abs(0.5 - v) * 2;
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const nx = u * P * 1.6, ny = v * P * 0.9;
+
+      let c = fbm(nx, ny, P * 1.6, 7777, 5);
+      let a = smoothstep(0.52, 0.74, c);
+
+      a *= 0.65 + 0.35 * Math.cos((v - 0.5) * Math.PI * 2);
+      a = clamp(a * 1.5, 0, 1);
+      a *= 1 - smoothstep(0.85, 1.0, latAbs);
+
+      d[i++] = 255; d[i++] = 255; d[i++] = 255;
+      d[i++] = a * 235;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeMoonTexture() {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  const P = 5;
+  let i = 0;
+
+  for (let y = 0; y < H; y++) {
+    const v = y / (H - 1);
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const nx = u * P, ny = v * P * 0.55;
+
+      const n = fbm(nx, ny, P, 2024, 5);
+      const m = fbm(nx * 0.55, ny * 0.55, P, 808, 3);
+      let base = 118 + n * 52 - smoothstep(0.42, 0.30, m) * 40;
+      base = clamp(base, 62, 205);
+
+      d[i++] = base;
+      d[i++] = base * 0.99;
+      d[i++] = base * 0.965;
+      d[i++] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  for (let k = 0; k < 300; k++) {
+    const cx = Math.random() * W;
+    const cy = H * 0.05 + Math.random() * H * 0.90;
+    const rad = 3 + Math.pow(Math.random(), 3) * 55;
+
+    for (const ox of [-W, 0, W]) {
+      const g = ctx.createRadialGradient(cx + ox, cy, 0, cx + ox, cy, rad);
+      g.addColorStop(0.00, 'rgba(58,58,62,0.42)');
+      g.addColorStop(0.62, 'rgba(96,96,101,0.28)');
+      g.addColorStop(0.88, 'rgba(226,226,232,0.42)');
+      g.addColorStop(1.00, 'rgba(150,150,155,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx + ox, cy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeSkyTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 8; cv.height = 256;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createLinearGradient(0, 256, 0, 0);
+  g.addColorStop(0.00, '#2f5c8c');
+  g.addColorStop(0.46, '#5b9bd5');
+  g.addColorStop(0.52, '#b8dcf7');
+  g.addColorStop(0.62, '#8ec4ec');
+  g.addColorStop(1.00, '#17417e');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 8, 256);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ============================================================
+   场景
+============================================================ */
+const EARTH_R    = 2;
+const MOON_R     = 0.55;
+const MOON_ORBIT = 11;
+
+let renderer, scene, camera, controls;
+let earth, clouds, atmosphere, moon, sky;
+let clock;
+let moonAngle = 0;
+let state = 'orbit';
+let trans = null;
+let landedOn = null;
+
+const raycaster = new THREE.Raycaster();
+const pointerNDC = new THREE.Vector2();
+
+function overviewPosition() {
+  const halfFov = Math.atan(Math.tan(THREE.MathUtils.degToRad(25)) * Math.min(1, innerWidth / innerHeight));
+  const distance = (MOON_ORBIT + MOON_R) / Math.sin(halfFov) * 1.12;
+  return new THREE.Vector3(0, 5, 13).normalize().multiplyScalar(distance);
+}
+
+function init() {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  document.body.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 6000);
+  camera.position.copy(overviewPosition());
+  camera.up.set(0, 1, 0);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+  controls.enablePan = false;
+  controls.minDistance = 2.6;
+  controls.maxDistance = Math.max(55, overviewPosition().length() * 1.5);
+  controls.rotateSpeed = 0.6;
+  controls.zoomSpeed = 0.8;
+
+  clock = new THREE.Clock();
+
+  const sun = new THREE.DirectionalLight(0xfff4e6, 3.0);
+  sun.position.set(9, 5, 8);
+  scene.add(sun);
+
+  scene.add(new THREE.AmbientLight(0x335577, 0.55));
+
+  const rim = new THREE.DirectionalLight(0x4477cc, 0.35);
+  rim.position.set(-8, -3, -6);
+  scene.add(rim);
+
+  // 星空
+  const starCount = 3500;
+  const pos = new Float32Array(starCount * 3);
+  const col = new Float32Array(starCount * 3);
+  const tmp = new THREE.Vector3();
+  for (let i = 0; i < starCount; i++) {
+    // 修复：Vector3 没有 randomDirection 方法，改用标准随机方向
+    tmp.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    tmp.multiplyScalar(1300 + Math.random() * 900);
+
+    pos[i * 3] = tmp.x; pos[i * 3 + 1] = tmp.y; pos[i * 3 + 2] = tmp.z;
+    const tint = 0.75 + Math.random() * 0.25;
+    col[i * 3] = tint * (0.85 + Math.random() * 0.15);
+    col[i * 3 + 1] = tint * (0.88 + Math.random() * 0.12);
+    col[i * 3 + 2] = tint;
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  starGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+    size: 2.2, vertexColors: true, transparent: true, opacity: 0.9,
+    sizeAttenuation: true, depthWrite: false
+  }));
+  scene.add(stars);
+
+  const earthTex  = makeEarthTexture();
+  const cloudTex  = makeCloudTexture();
+
+  earth = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_R, 96, 64),
+    new THREE.MeshStandardMaterial({ map: earthTex, roughness: 0.92, metalness: 0.02 })
+  );
+  scene.add(earth);
+
+  clouds = new THREE.Mesh(
+    new THREE.SphereGeometry(EARTH_R * 1.012, 96, 64),
+    new THREE.MeshStandardMaterial({
+      map: cloudTex, transparent: true, opacity: 0.85,
+      roughness: 1, metalness: 0, depthWrite: false
+    })
+  );
+  scene.add(clouds);
+
+  const atmoMat = new THREE.ShaderMaterial({
+    uniforms: { glowColor: { value: new THREE.Color(0x5aa9ff) } },
+    vertexShader: `
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        vN = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 glowColor;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        float rim = 1.0 - abs(dot(vN, vV));
+        float a = pow(rim, 3.2) * 0.9;
+        gl_FragColor = vec4(glowColor, a);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  atmosphere = new THREE.Mesh(new THREE.SphereGeometry(EARTH_R * 1.09, 64, 48), atmoMat);
+  scene.add(atmosphere);
+
+  moon = new THREE.Mesh(
+    new THREE.SphereGeometry(MOON_R, 64, 48),
+    new THREE.MeshStandardMaterial({ map: makeMoonTexture(), roughness: 1.0, metalness: 0.0 })
+  );
+  scene.add(moon);
+
+  const orbitPts = [];
+  for (let i = 0; i <= 160; i++) {
+    const a = (i / 160) * Math.PI * 2;
+    orbitPts.push(new THREE.Vector3(Math.cos(a) * MOON_ORBIT, 0, Math.sin(a) * MOON_ORBIT));
+  }
+  const orbitLine = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(orbitPts),
+    new THREE.LineBasicMaterial({ color: 0x3d6fa8, transparent: true, opacity: 0.3 })
+  );
+  scene.add(orbitLine);
+
+  sky = new THREE.Mesh(
+    new THREE.SphereGeometry(800, 32, 24),
+    new THREE.MeshBasicMaterial({
+      map: makeSkyTexture(), side: THREE.BackSide,
+      depthWrite: false
+    })
+  );
+  sky.renderOrder = -1;
+  sky.visible = false;
+  scene.add(sky);
+
+  window.addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  renderer.domElement.addEventListener('pointerup', onPointerUp);
+  renderer.domElement.addEventListener('pointermove', onPointerMove);
+  document.getElementById('backBtn').addEventListener('click', returnToOrbit);
+
+  animate();
+}
+
+let downX = 0, downY = 0;
+
+function onPointerDown(e) {
+  downX = e.clientX; downY = e.clientY;
+}
+
+function onPointerMove(e) {
+  if (state !== 'orbit') return;
+  const hit = pickPlanet(e.clientX, e.clientY);
+  renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
+}
+
+function onPointerUp(e) {
+  if (state !== 'orbit') return;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 7) return;
+  const hit = pickPlanet(e.clientX, e.clientY);
+  if (hit === earth) landOn('earth');
+  else if (hit === moon) landOn('moon');
+}
+
+function pickPlanet(clientX, clientY) {
+  pointerNDC.x = (clientX / window.innerWidth) * 2 - 1;
+  pointerNDC.y = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointerNDC, camera);
+  const hits = raycaster.intersectObjects([earth, moon], false);
+  return hits.length ? hits[0].object : null;
+}
+
+const PLANET_DATA = {
+  earth: {
+    name: '地球', sub: 'EARTH',
+    facts: [
+      ['半径', '6,371 km'],
+      ['表面积', '5.10 亿 km²'],
+      ['海洋覆盖', '71%'],
+      ['自转周期', '23h 56m'],
+      ['公转周期', '365.26 天'],
+      ['天然卫星', '1 颗']
+    ]
+  },
+  moon: {
+    name: '月球', sub: 'THE MOON',
+    facts: [
+      ['半径', '1,737 km'],
+      ['地月距离', '384,400 km'],
+      ['表面重力', '1.62 m/s²'],
+      ['公转周期', '27.32 天'],
+      ['昼间温度', '127 °C'],
+      ['夜间温度', '−173 °C']
+    ]
+  }
+};
+
+function getLandingPose(center, R, nDir) {
+  const n = nDir.clone().normalize();
+
+  let t = new THREE.Vector3(0, 1, 0).cross(n);
+  if (t.lengthSq() < 0.01) t = new THREE.Vector3(1, 0, 0).cross(n);
+  t.normalize().applyAxisAngle(n, Math.random() * Math.PI * 2);
+
+  const pos    = center.clone().addScaledVector(n, R * 1.085);
+  const target = center.clone().addScaledVector(n, R * 0.99).addScaledVector(t, R * 2.2);
+
+  return { pos, target, up: n.clone() };
+}
+
+function landOn(which) {
+  state = 'landing';
+  landedOn = which;
+  controls.enabled = false;
+  document.getElementById('title').classList.add('hidden');
+  renderer.domElement.style.cursor = 'default';
+
+  const isEarth = which === 'earth';
+  const center = isEarth ? new THREE.Vector3(0, 0, 0) : moon.position.clone();
+  const R = isEarth ? EARTH_R : MOON_R;
+
+  const camDir = camera.position.clone().sub(center).normalize();
+  const axis = new THREE.Vector3(
+    Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5
+  ).normalize();
+  const n = camDir.applyAxisAngle(axis, 0.35 + Math.random() * 0.65).normalize();
+
+  const pose = getLandingPose(center, R, n);
+
+  startTransition(pose.pos, pose.target, pose.up, center, 2.2, () => {
+    state = 'landed';
+    sky.visible = isEarth;
+    showPanel(which);
+    document.getElementById('backBtn').classList.add('show');
+  });
+}
+
+function returnToOrbit() {
+  if (state !== 'landed') return;
+  state = 'returning';
+  sky.visible = false;
+  hidePanel();
+  document.getElementById('backBtn').classList.remove('show');
+
+  const center = landedOn === 'earth' ? new THREE.Vector3(0, 0, 0) : moon.position.clone();
+
+  startTransition(
+    overviewPosition(),
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 1, 0),
+    center,
+    2.0,
+    () => {
+      state = 'orbit';
+      landedOn = null;
+      controls.enabled = true;
+      controls.target.set(0, 0, 0);
+      camera.up.set(0, 1, 0);
+      controls.update();
+      document.getElementById('title').classList.remove('hidden');
+    }
+  );
+}
+
+function startTransition(toPos, toTarget, toUp, center, dur, cb) {
+  trans = {
+    t: 0, dur,
+    center: center.clone(),
+    fromPos: camera.position.clone(),
+    toPos: toPos.clone(),
+    fromTarget: controls.target.clone(),
+    toTarget: toTarget.clone(),
+    fromUp: camera.up.clone(),
+    toUp: toUp.clone(),
+    cb
+  };
+}
+
+function slerpDir(a, b, t) {
+  const dot = clamp(a.dot(b), -1, 1);
+  const theta = Math.acos(dot) * t;
+  let perp = b.clone().addScaledVector(a, -dot);
+  if (perp.lengthSq() < 1e-8) {
+    perp = Math.abs(a.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    perp.addScaledVector(a, -perp.dot(a));
+  }
+  perp.normalize();
+  return a.clone().multiplyScalar(Math.cos(theta)).addScaledVector(perp, Math.sin(theta));
+}
+
+function updateTransition(dt) {
+  const tr = trans;
+  tr.t += dt;
+  const raw = clamp(tr.t / tr.dur, 0, 1);
+  const e = easeInOutCubic(raw);
+
+  const fromRel = tr.fromPos.clone().sub(tr.center);
+  const toRel = tr.toPos.clone().sub(tr.center);
+  const fromLen = fromRel.length();
+  const toLen = toRel.length();
+  const dir = slerpDir(fromRel.normalize(), toRel.normalize(), e);
+  const len = fromLen + (toLen - fromLen) * e;
+  camera.position.copy(tr.center).addScaledVector(dir, len);
+
+  camera.up.copy(tr.fromUp).lerp(tr.toUp, e).normalize();
+
+  const tgt = tr.fromTarget.clone().lerp(tr.toTarget, e);
+  camera.lookAt(tgt);
+
+  if (raw >= 1) {
+    trans = null;
+    tr.cb && tr.cb();
+  }
+}
+
+function showPanel(which) {
+  const data = PLANET_DATA[which];
+  document.getElementById('pName').textContent = data.name;
+  document.getElementById('pSub').textContent = data.sub;
+  const ul = document.getElementById('pFacts');
+  ul.innerHTML = '';
+  for (const [k, v] of data.facts) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${k}</span><b>${v}</b>`;
+    ul.appendChild(li);
+  }
+  document.getElementById('panel').classList.add('show');
+}
+
+function hidePanel() {
+  document.getElementById('panel').classList.remove('show');
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (state === 'orbit') {
+    moonAngle += dt * 0.09;
+
+    earth.rotation.y += dt * 0.05;
+    clouds.rotation.y += dt * 0.065;
+    clouds.rotation.x = 0.02;
+
+    moon.position.set(
+      Math.cos(moonAngle) * MOON_ORBIT, 0,
+      Math.sin(moonAngle) * MOON_ORBIT
+    );
+    moon.rotation.y = -moonAngle + Math.PI;
+
+    controls.update();
+  }
+
+  if (trans) updateTransition(dt);
+
+  sky.position.copy(camera.position);
+
+  renderer.render(scene, camera);
+  if (!window.experienceRendered) { window.experienceRendered=true; window.dispatchEvent(new Event('experience-ready')); }
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  controls.maxDistance = Math.max(55, overviewPosition().length() * 1.5);
+  if (state === 'orbit') {
+    camera.position.copy(overviewPosition());
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+}
+
+// 启动
+setTimeout(() => {
+  try {
+    init();
+    const el = document.getElementById('loading');
+    if (el) {
+      el.classList.add('done');
+      setTimeout(() => el.remove(), 700);
+    }
+  } catch (err) {
+    console.error(err);
+    const el = document.getElementById('loading');
+    if (el) {
+      el.innerText = '初始化错误: ' + err.message;
+      el.style.color = '#ff6b6b';
+    }
+  }
+}, 100);
+</script>
+</body>
+</html>

@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>3D 城市毁灭模拟器 · 行星撞击终极版</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{
+    width:100%;height:100%;overflow:hidden;background:#020408;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
+  }
+  canvas{display:block;touch-action:none;}
+  #loading{
+    position:fixed;inset:0;background:#020408;display:flex;
+    flex-direction:column;align-items:center;justify-content:center;
+    color:#88aadd;font-size:18px;letter-spacing:2px;z-index:100;
+    transition:opacity .6s; text-align:center; padding: 20px;
+  }
+  #loading.hide{opacity:0;pointer-events:none;}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6;}
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:4;
+    background:radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 45%, rgba(0,0,0,.6) 100%);
+  }
+  #hud{position:fixed;top:18px;left:20px;z-index:10;pointer-events:none;}
+  .stat{color:#8ba0c5;font-size:12px;letter-spacing:1px;margin-bottom:2px;}
+  .stat b{
+    color:#fff;font-size:26px;font-weight:800;margin-right:6px;
+    font-variant-numeric:tabular-nums;letter-spacing:0;
+    text-shadow:0 0 20px rgba(120,170,255,.5);
+  }
+  #bar{width:170px;height:4px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;margin-top:10px;}
+  #barFill{height:100%;width:0%;border-radius:3px;
+    background:linear-gradient(90deg,#ffb03a,#ff4d3d);
+    transition:width .25s ease;box-shadow:0 0 14px rgba(255,110,60,.85);}
+  #minimapWrap{
+    position:fixed;top:18px;right:20px;z-index:10;
+    width:140px;height:140px;border-radius:50%;
+    background:rgba(11,16,26,.8);
+    border:1px solid rgba(100,150,255,.3);
+    box-shadow:0 0 20px rgba(0,0,0,.8), inset 0 0 20px rgba(0,0,0,.6);
+    overflow:hidden;
+  }
+  #minimap{width:100%;height:100%;}
+  #weapons{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    width:min(920px,calc(100% - 24px));
+    display:flex;flex-wrap:wrap;justify-content:center;gap:5px;
+    padding:6px;z-index:10;
+    background:rgba(11,16,26,.85);
+    border:1px solid rgba(120,160,255,.14);
+    border-radius:14px;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:0 12px 44px rgba(0,0,0,.7);
+    max-width:calc(100vw - 24px);
+  }
+  #weapons button{
+    border:none;cursor:pointer;font-family:inherit;
+    background:rgba(255,255,255,.055);color:#c3d0e8;
+    padding:7px 9px;border-radius:9px;
+    font-size:12px;font-weight:600;white-space:nowrap;
+    transition:all .16s ease;
+    display:flex;align-items:center;gap:4px;
+  }
+  #weapons button span{font-size:14px;line-height:1;}
+  #weapons button:hover{background:rgba(255,255,255,.14);color:#fff;transform:translateY(-2px);}
+  #weapons button.active{
+    background:linear-gradient(160deg,#ff6a3d,#c81f2e);color:#fff;
+    box-shadow:0 4px 22px rgba(255,90,50,.55);
+  }
+  #weapons button.danger{color:#ff9a86;}
+  #weapons button.danger:hover{background:rgba(255,90,60,.2);color:#fff;}
+  #tip{
+    position:fixed;top:46%;left:50%;transform:translate(-50%,-50%);
+    color:rgba(190,210,240,.5);font-size:15px;letter-spacing:4px;
+    z-index:5;pointer-events:none;transition:opacity 1.2s ease;text-align:center;
+  }
+  #tip small{display:block;font-size:11px;letter-spacing:2px;margin-top:10px;opacity:.6;}
+</style>
+</head>
+<body>
+<script src="experience-nav.js" data-graphics="webgl"></script>
+
+<div id="loading">正在初始化纯离线引擎...</div>
+
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<div id="hud">
+  <div class="stat"><b id="pct">0%</b>城市已毁</div>
+  <div class="stat"><b id="frag">0</b>块碎片</div>
+  <div id="bar"><div id="barFill"></div></div>
+</div>
+
+<div id="minimapWrap">
+  <canvas id="minimap" width="280" height="280"></canvas>
+</div>
+
+<div id="weapons">
+  <button data-w="bomb" class="active"><span>💣</span>炸弹</button>
+  <button data-w="nuke"><span>☢️</span>核弹</button>
+  <button data-w="comet"><span>☄️</span>彗星</button>
+  <button data-w="planet"><span>🪐</span>行星撞击</button>
+  <button data-w="volcano"><span>🌋</span>火山爆发</button>
+  <button data-w="ice"><span>❄️</span>冰霜</button>
+  <button data-w="orbital"><span>🛰️</span>轨道炮</button>
+  <button data-w="acid"><span>🧪</span>酸雨</button>
+  <button data-w="tsunami"><span>🌊</span>海啸</button>
+  <button data-w="meteor"><span>☄️</span>陨石</button>
+  <button data-w="laser"><span>🔥</span>激光</button>
+  <button data-w="quake"><span>🌋</span>地震</button>
+  <button data-w="tornado"><span>🌪️</span>龙卷风</button>
+  <button data-w="lightning"><span>⚡</span>闪电</button>
+  <button data-w="blackhole"><span>🕳️</span>黑洞</button>
+  <button data-w="reset" class="danger"><span>🔄</span>重建</button>
+</div>
+
+<div id="tip">点击城市，开始破坏<small>拖拽旋转视角 · 滚轮缩放</small></div>
+
+<script type="module">
+import * as THREE from './vendor/three-r160/three.module.js';
+setTimeout(function init() {
+  'use strict';
+
+  try {
+    // Every delayed hazard belongs to the current city generation.
+    const pendingTimeouts = new Set(), pendingIntervals = new Set();
+    const transientMeshes = new Set();
+    const setTimeout = (callback, delay) => {
+      const id = window.setTimeout(() => { pendingTimeouts.delete(id); callback(); }, delay);
+      pendingTimeouts.add(id); return id;
+    };
+    const setInterval = (callback, delay) => {
+      const id = window.setInterval(callback, delay); pendingIntervals.add(id); return id;
+    };
+    const clearInterval = id => { window.clearInterval(id); pendingIntervals.delete(id); };
+    function disposeMesh(mesh, sharedGeometry = false) {
+      scene.remove(mesh);
+      mesh.traverse(node => {
+        if (!sharedGeometry && node.geometry) node.geometry.dispose();
+        if (node.material) for (const mat of [node.material].flat()) mat.dispose();
+      });
+    }
+    /* ============================================================
+       常量配置
+       ============================================================ */
+    const GRAVITY        = 42;
+    const MAX_BLOCKS     = 150000;
+    const MAX_FRAGS      = 10000;
+    const MAX_FIRE_PARTS = 5000;
+    const MAX_SMOKE_PARTS= 3000;
+    const MAX_TREES      = 1000;
+    const MAX_PEDS       = 800;
+
+    const GRID_N         = 40;
+    const CELL           = 8.5;
+    const BLOCK          = 1.0;
+
+    const rnd    = (a, b) => a + Math.random() * (b - a);
+    const rndInt = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+
+    /* ============================================================
+       渲染器与场景
+       ============================================================ */
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d1020);
+    scene.fog = new THREE.FogExp2(0x0d1020, 0.0007);
+    scene.add(new THREE.AmbientLight(0xaec8ff, 1.5));
+    const sun = new THREE.DirectionalLight(0xffe0bb, 3);
+    sun.position.set(180, 450, 240); scene.add(sun);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const camera = new THREE.PerspectiveCamera(50, aspect, 0.5, 15000);
+
+    let camTheta = Math.PI / 4;
+    let camPhi = Math.PI / 3.2;
+    let camDist = 450;
+    let camTarget = new THREE.Vector3(0, 0, 0);
+
+    function updateCamera() {
+      camPhi = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, camPhi));
+      const sp = Math.sin(camPhi);
+      const px = camTarget.x + camDist * sp * Math.sin(camTheta);
+      const py = camTarget.y + camDist * Math.cos(camPhi);
+      const pz = camTarget.z + camDist * sp * Math.cos(camTheta);
+
+      camera.position.set(px, py, pz);
+      camera.lookAt(camTarget);
+      camera.updateMatrixWorld();
+    }
+    updateCamera();
+
+    /* ============================================================
+       地形
+       ============================================================ */
+    function makeGrassTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const g = c.getContext('2d');
+      g.fillStyle = '#1b2e1c';
+      g.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 4000; i++) {
+        const x = Math.random() * 256, y = Math.random() * 256;
+        g.fillStyle = `rgba(${30+Math.random()*30},${50+Math.random()*50},${30+Math.random()*30},0.5)`;
+        g.beginPath();
+        g.arc(x, y, Math.random() * 2 + 0.5, 0, Math.PI * 2);
+        g.fill();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(60, 60);
+      return tex;
+    }
+
+    const MAP_RADIUS = 700;
+    const islandGeo = new THREE.CircleGeometry(MAP_RADIUS, 96);
+    const islandMat = new THREE.MeshLambertMaterial({ map: makeGrassTexture(), color: 0xaaccaa });
+    const island = new THREE.Mesh(islandGeo, islandMat);
+    island.rotation.x = -Math.PI / 2;
+    scene.add(island);
+
+    const beachGeo = new THREE.RingGeometry(MAP_RADIUS - 20, MAP_RADIUS, 96);
+    beachGeo.rotateX(-Math.PI / 2);
+    const beach = new THREE.Mesh(beachGeo, new THREE.MeshLambertMaterial({ color: 0x8a7a55 }));
+    beach.position.y = -0.1;
+    scene.add(beach);
+
+    const oceanGeo = new THREE.PlaneGeometry(8000, 8000, 64, 64);
+    oceanGeo.rotateX(-Math.PI / 2);
+    const oceanBasePos = oceanGeo.attributes.position.array.slice();
+    let waterTime = 0;
+    function updateWater(dt) {
+      waterTime += dt;
+      const pos = oceanGeo.attributes.position;
+      for (let i=0; i<pos.count; i++) {
+        const x=oceanBasePos[i*3], z=oceanBasePos[i*3+2];
+        pos.setY(i, Math.sin(x*.012+waterTime)*.25 + Math.cos(z*.009+waterTime*.7)*.2);
+      }
+      pos.needsUpdate=true;
+    }
+    const oceanMat = new THREE.MeshStandardMaterial({ color: 0x0a2a4a, roughness: 0.15, metalness: 0.6, transparent: true, opacity: 0.95 });
+    const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+    ocean.position.y = -0.8;
+    scene.add(ocean);
+
+    const mountainCenters = [
+      {x: -550, z: 350, r: 200}, {x: -450, z: 550, r: 150}, {x: -650, z: 150, r: 180},
+      {x: 550, z: -500, r: 250}, {x: 650, z: -350, r: 180}, {x: -500, z: -600, r: 180},
+      {x: 500, z: 500, r: 140}
+    ];
+
+    function inMountain(x, z) {
+      for (let m of mountainCenters) {
+        if ((x - m.x)**2 + (z - m.z)**2 < m.r * m.r) return true;
+      }
+      return false;
+    }
+
+    const mountainMat = new THREE.MeshLambertMaterial({ color: 0x334433, flatShading: true });
+    const snowMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, flatShading: true });
+
+    function createMountain(x, z, radius, height) {
+      const geo = new THREE.ConeGeometry(radius, height, 6);
+      geo.translate(0, height/2, 0);
+      const mesh = new THREE.Mesh(geo, mountainMat);
+      mesh.position.set(x, 0, z);
+      mesh.rotation.y = Math.random() * Math.PI;
+      scene.add(mesh);
+
+      if (height > 60) {
+        const snowGeo = new THREE.ConeGeometry(radius * 0.45, height * 0.35, 6);
+        snowGeo.translate(0, height * 0.83, 0);
+        const snowMesh = new THREE.Mesh(snowGeo, snowMat);
+        mesh.add(snowMesh);
+      }
+    }
+
+    createMountain(-550, 350, 160, 180);
+    createMountain(-450, 550, 120, 140);
+    createMountain(-650, 150, 140, 200);
+    createMountain(550, -500, 200, 250);
+    createMountain(650, -350, 130, 150);
+    createMountain(-500, -600, 130, 120);
+
+    let volcanoMesh;
+    const VOLCANO_X = 500;
+    const VOLCANO_Z = 500;
+    const VOLCANO_H = 200;
+
+    function createVolcano(x, z) {
+      const radius = 100;
+      const geo = new THREE.ConeGeometry(radius, VOLCANO_H, 8);
+      geo.translate(0, VOLCANO_H/2, 0);
+      volcanoMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x2a2218, flatShading: true }));
+      volcanoMesh.position.set(x, 0, z);
+      scene.add(volcanoMesh);
+    }
+    createVolcano(VOLCANO_X, VOLCANO_Z);
+
+    /* ============================================================
+       河流
+       ============================================================ */
+    const riverCurve1 = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-650, 0, -450), new THREE.Vector3(-350, 0, -250),
+      new THREE.Vector3(-50, 0, -300), new THREE.Vector3(150, 0, -150),
+      new THREE.Vector3(350, 0, -200), new THREE.Vector3(500, 0, 150),
+      new THREE.Vector3(650, 0, 500)
+    ]);
+
+    const riverCurve2 = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-550, 0, 450), new THREE.Vector3(-250, 0, 300),
+      new THREE.Vector3(0, 0, 400), new THREE.Vector3(250, 0, 250),
+      new THREE.Vector3(450, 0, 320), new THREE.Vector3(600, 0, 150)
+    ]);
+
+    const riverSamples1 = riverCurve1.getSpacedPoints(150);
+    const riverSamples2 = riverCurve2.getSpacedPoints(150);
+
+    function distToRiver(x, z) {
+      let minD = Infinity;
+      for (let i = 0; i < riverSamples1.length; i++) {
+        const d = (x - riverSamples1[i].x)**2 + (z - riverSamples1[i].z)**2;
+        if (d < minD) minD = d;
+      }
+      for (let i = 0; i < riverSamples2.length; i++) {
+        const d = (x - riverSamples2[i].x)**2 + (z - riverSamples2[i].z)**2;
+        if (d < minD) minD = d;
+      }
+      return Math.sqrt(minD);
+    }
+
+    /* ============================================================
+       对象池
+       ============================================================ */
+    const trees = [], pedestrians = [];
+    let treeCount = 0, pedCount = 0;
+
+    const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 5), new THREE.MeshLambertMaterial({ color: 0x3a2818 }), MAX_TREES);
+    trunkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); trunkMesh.count = 0; scene.add(trunkMesh);
+    const crownMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true }), MAX_TREES);
+    crownMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    crownMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TREES * 3), 3);
+    crownMesh.count = 0; scene.add(crownMesh);
+
+    const pedHeadMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 6, 6), new THREE.MeshLambertMaterial({ color: 0xffccaa }), MAX_PEDS);
+    pedHeadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); pedHeadMesh.count = 0; scene.add(pedHeadMesh);
+
+    const pedBodyMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), new THREE.MeshLambertMaterial({ flatShading: true }), MAX_PEDS);
+    pedBodyMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    pedBodyMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PEDS * 3), 3);
+    pedBodyMesh.count = 0; scene.add(pedBodyMesh);
+
+    const pedLegMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.4, 0.5, 0.25), new THREE.MeshLambertMaterial({ color: 0x222233 }), MAX_PEDS);
+    pedLegMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); pedLegMesh.count = 0; scene.add(pedLegMesh);
+
+    const blocks = [], buildings = [];
+    let blocksDirty = false, supportCheckNeeded = false;
+    let totalBlocks = 0, destroyedBlocks = 0;
+
+    const blockMat = new THREE.MeshLambertMaterial();
+    const blockMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(BLOCK * 0.97, BLOCK * 0.97, BLOCK * 0.97), blockMat, MAX_BLOCKS);
+    blockMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    blockMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS * 3), 3);
+    blockMesh.count = 0; scene.add(blockMesh);
+
+    const frags = [];
+    const fragMat = new THREE.MeshLambertMaterial();
+    const fragMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), fragMat, MAX_FRAGS);
+    fragMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    fragMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_FRAGS * 3), 3);
+    fragMesh.count = 0; scene.add(fragMesh);
+
+    const fireParticles = [], smokeParticles = [];
+    const sphereGeo = new THREE.SphereGeometry(1, 6, 4);
+
+    const fireMesh = new THREE.InstancedMesh(sphereGeo, new THREE.MeshBasicMaterial({ blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }), MAX_FIRE_PARTS);
+    fireMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    fireMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_FIRE_PARTS * 3), 3);
+    fireMesh.count = 0; fireMesh.renderOrder = 3; scene.add(fireMesh);
+
+    const smokeMesh = new THREE.InstancedMesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false, fog: false }), MAX_SMOKE_PARTS);
+    smokeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    smokeMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_SMOKE_PARTS * 3), 3);
+    smokeMesh.count = 0; smokeMesh.renderOrder = 2; scene.add(smokeMesh);
+
+    const decalGeo = new THREE.CircleGeometry(1, 16); decalGeo.rotateX(-Math.PI / 2);
+    const decalPool = [];
+    for (let i = 0; i < 60; i++) {
+      const m = new THREE.Mesh(decalGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a0a, transparent: true, opacity: 0, depthWrite: false }));
+      m.visible = false; m.renderOrder = 1; scene.add(m); decalPool.push(m);
+    }
+    let decalIdx = 0;
+
+    function addDecal(x, z, radius) {
+      const m = decalPool[decalIdx]; decalIdx = (decalIdx + 1) % decalPool.length;
+      m.position.set(x, 0.08, z); m.scale.setScalar(radius); m.material.opacity = 0.85; m.visible = true;
+    }
+
+    const _dummy = new THREE.Object3D();
+    const _color = new THREE.Color();
+    const FIRE_COLORS = [new THREE.Color(1.00, 0.48, 0.08), new THREE.Color(1.00, 0.70, 0.22), new THREE.Color(1.00, 0.92, 0.62), new THREE.Color(0.92, 0.22, 0.04)];
+
+    /* ============================================================
+       生态生成与销毁
+       ============================================================ */
+    function updateTreeInstanceAt(i) {
+      const t = trees[i];
+      _dummy.position.set(t.x, t.trunkH * 0.5, t.z); _dummy.rotation.set(0, t.rotY, 0);
+      _dummy.scale.set(t.trunkR, t.trunkH, t.trunkR); _dummy.updateMatrix(); trunkMesh.setMatrixAt(i, _dummy.matrix);
+      _dummy.position.set(t.x, t.trunkH + t.crownR * 0.55, t.z); _dummy.scale.set(t.crownR, t.crownR * t.crownStretch, t.crownR);
+      _dummy.updateMatrix(); crownMesh.setMatrixAt(i, _dummy.matrix); crownMesh.setColorAt(i, t.crownColor);
+    }
+
+    function removeTreeAt(idx) {
+      const t = trees[idx];
+      for (let k = 0; k < 2; k++) spawnDebrisFragment(t.x + rnd(-1, 1), rnd(t.trunkH * 0.5, t.trunkH + t.crownR), t.z + rnd(-1, 1), t.crownColor);
+      treeCount--;
+      if (idx < treeCount) { trees[idx] = trees[treeCount]; trees.length = treeCount; updateTreeInstanceAt(idx); }
+      else trees.length = treeCount;
+      trunkMesh.count = treeCount; crownMesh.count = treeCount;
+      trunkMesh.instanceMatrix.needsUpdate = true; crownMesh.instanceMatrix.needsUpdate = true; crownMesh.instanceColor.needsUpdate = true;
+    }
+
+    function removePedAt(idx) {
+      const p = pedestrians[idx];
+      const c = p.color;
+      for (let k = 0; k < 4; k++) addFire(p.x, 1, p.z, rnd(-12,12), rnd(5,18), rnd(-12,12), rnd(0.5, 1.2), rnd(0.3, 0.6), c, 2.0);
+      pedCount--;
+      if (idx < pedCount) { pedestrians[idx] = pedestrians[pedCount]; pedestrians.length = pedCount; }
+      else pedestrians.length = pedCount;
+      pedHeadMesh.count = pedCount; pedBodyMesh.count = pedCount; pedLegMesh.count = pedCount;
+      pedHeadMesh.instanceMatrix.needsUpdate = true;
+      pedBodyMesh.instanceMatrix.needsUpdate = true; pedBodyMesh.instanceColor.needsUpdate = true;
+      pedLegMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    function spawnDebrisFragment(x, y, z, color) {
+      if (frags.length >= MAX_FRAGS) frags.shift();
+      frags.push({
+        pos: new THREE.Vector3(x, y, z), vel: new THREE.Vector3(rnd(-8, 8), rnd(5, 15), rnd(-8, 8)),
+        rot: { x: rnd(0, 6.28), y: rnd(0, 6.28), z: rnd(0, 6.28) }, angVel: { x: rnd(-10, 10), y: rnd(-10, 10), z: rnd(-10, 10) },
+        size: rnd(0.3, 0.7), color: color.clone(), resting: false, cachedMatrix: null
+      });
+    }
+
+    // 修复：准确击杀范围内的行人
+    function destroyNature(x, z, radius) {
+      const R2 = radius * radius;
+      for (let i = treeCount - 1; i >= 0; i--) { const t = trees[i]; if ((t.x - x)**2 + (t.z - z)**2 <= R2) removeTreeAt(i); }
+      for (let i = pedCount - 1; i >= 0; i--) { const p = pedestrians[i]; if ((p.x - x)**2 + (p.z - z)**2 <= R2) removePedAt(i); }
+    }
+
+    /* ============================================================
+       生成世界
+       ============================================================ */
+    function generateNature() {
+      treeCount = 0; trees.length = 0;
+
+      let attempts = 0;
+      while (treeCount < 800 && attempts < 10000) {
+        attempts++; const angle = Math.random() * Math.PI * 2; const dist = 150 + Math.random() * 450;
+        const x = Math.cos(angle) * dist, z = Math.sin(angle) * dist;
+        if (distToRiver(x, z) < 25 || inMountain(x, z)) continue;
+        trees.push({ x, z, trunkH: rnd(1.5, 3.5), trunkR: rnd(0.15, 0.25), crownR: rnd(1.2, 2.5), crownStretch: rnd(0.8, 1.4), rotY: Math.random() * Math.PI * 2, crownColor: new THREE.Color().setHSL(0.27 + rnd(-0.05, 0.05), rnd(0.4, 0.7), rnd(0.18, 0.28)) });
+        updateTreeInstanceAt(treeCount); treeCount++;
+      }
+      trunkMesh.count = treeCount; crownMesh.count = treeCount;
+      trunkMesh.instanceMatrix.needsUpdate = true;
+      crownMesh.instanceMatrix.needsUpdate = true; crownMesh.instanceColor.needsUpdate = true;
+    }
+
+    function generateCity() {
+      blocks.length = 0; buildings.length = 0; frags.length = 0; fireParticles.length = 0; smokeParticles.length = 0;
+      destroyedBlocks = 0; for (let i = 0; i < decalPool.length; i++) decalPool[i].visible = false;
+
+      const half = (GRID_N - 1) / 2;
+      for (let i = 0; i < GRID_N; i++) {
+        for (let j = 0; j < GRID_N; j++) {
+          const bx = (i - half) * CELL; const bz = (j - half) * CELL;
+          if (distToRiver(bx, bz) < 25 || Math.hypot(bx, bz) > 350 || inMountain(bx, bz)) continue;
+
+          const cols = Math.random() < 0.3 ? 3 : 2; const depth = 2;
+          const height = 3 + Math.floor(Math.pow(Math.random(), 0.75) * 18);
+          const hue = 0.57 + Math.random() * 0.1; const baseLig = 0.16 + Math.random() * 0.1;
+          const bd = { x: bx, z: bz, cols, depth, height, grid: [] };
+
+          for (let c = 0; c < cols; c++) {
+            bd.grid[c] = [];
+            for (let d = 0; d < depth; d++) {
+              bd.grid[c][d] = [];
+              for (let h = 0; h < height; h++) {
+                const x = bx + (c - (cols - 1) / 2) * BLOCK; const y = (h + 0.5) * BLOCK; const z = bz + (d - (depth - 1) / 2) * BLOCK;
+                const isWin = h > 0 && (h % 2 === 0) && Math.random() > 0.4;
+                const color = new THREE.Color();
+                if (isWin) color.setHSL(0.105, 0.9, 0.65); else color.setHSL(hue, 0.15, baseLig + Math.random() * 0.05);
+                const blk = { pos: new THREE.Vector3(x, y, z), matrix: new THREE.Matrix4().makeTranslation(x, y, z), color, alive: true };
+                blocks.push(blk); bd.grid[c][d][h] = blk;
+              }
+            }
+          }
+          buildings.push(bd);
+        }
+      }
+      totalBlocks = blocks.length; blocksDirty = true;
+      generateNature();
+
+      pedCount = 0; pedestrians.length = 0;
+      let pedAttempts = 0;
+      while (pedCount < 600 && pedAttempts < 4000) {
+        pedAttempts++;
+        const x = rnd(-320, 320), z = rnd(-320, 320);
+        if (distToRiver(x, z) < 12 || inMountain(x, z)) continue;
+        let inside = false;
+        for (const bd of buildings) {
+          if (Math.abs(x - bd.x) < 6 && Math.abs(z - bd.z) < 6) { inside = true; break; }
+        }
+        if (inside) continue;
+
+        const c = new THREE.Color().setHSL(Math.random(), 0.6, 0.5);
+        pedestrians.push({
+          x, z,
+          vx: rnd(-2, 2), vz: rnd(-2, 2),
+          color: c, phase: Math.random() * 10,
+          isPanic: false
+        });
+        pedCount++;
+      }
+      pedHeadMesh.count = pedCount; pedBodyMesh.count = pedCount; pedLegMesh.count = pedCount;
+      for (let i = 0; i < pedCount; i++) pedBodyMesh.setColorAt(i, pedestrians[i].color);
+    }
+
+    function rebuildBlocks() {
+      let n = 0;
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i]; if (!b.alive) continue;
+        if (n >= MAX_BLOCKS) break;
+        blockMesh.setMatrixAt(n, b.matrix); blockMesh.setColorAt(n, b.color); n++;
+      }
+      blockMesh.count = n; blockMesh.instanceMatrix.needsUpdate = true; blockMesh.instanceColor.needsUpdate = true;
+    }
+
+    function spawnFragment(blk, vel) {
+      if (frags.length >= MAX_FRAGS) frags.shift();
+      frags.push({
+        pos: blk.pos.clone(), vel: vel.clone(), rot: { x: rnd(0, 6.28), y: rnd(0, 6.28), z: rnd(0, 6.28) },
+        angVel: { x: rnd(-8, 8), y: rnd(-8, 8), z: rnd(-8, 8) }, size: BLOCK * rnd(0.7, 0.95), color: blk.color.clone(), resting: false, cachedMatrix: null
+      });
+    }
+
+    function checkSupport(bd) {
+      for (let c = 0; c < bd.cols; c++) for (let d = 0; d < bd.depth; d++) {
+        let gap = false;
+        for (let h = 0; h < bd.height; h++) {
+          const blk = bd.grid[c][d][h];
+          if (!blk.alive) gap = true;
+          else if (gap) { blk.alive = false; destroyedBlocks++; spawnFragment(blk, new THREE.Vector3(rnd(-3, 3), rnd(-1, 2), rnd(-3, 3))); }
+        }
+      }
+    }
+
+    function flushSupportCheck() {
+      if (!supportCheckNeeded) return; supportCheckNeeded = false;
+      for (let i = 0; i < buildings.length; i++) checkSupport(buildings[i]); blocksDirty = true;
+    }
+
+    function addFire(x, y, z, vx, vy, vz, life, size, color, drag) {
+      if (fireParticles.length >= MAX_FIRE_PARTS) fireParticles.shift();
+      fireParticles.push({ x, y, z, vx, vy, vz, life, maxLife: life, size, r: color.r, g: color.g, b: color.b, drag: drag || 2.2 });
+    }
+    function addSmoke(x, y, z, vx, vy, vz, life, size, shade, drag, grow) {
+      if (smokeParticles.length >= MAX_SMOKE_PARTS) smokeParticles.shift();
+      smokeParticles.push({ x, y, z, vx, vy, vz, life, maxLife: life, size, shade, drag: drag || 1.6, grow: grow || 2.5 });
+    }
+
+    function explode(x, y, z, radius, isNuke, isIce) {
+      const R = radius * 1.8; const R2 = R * R;
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i]; if (!b.alive) continue;
+        const dx = b.pos.x - x, dy = b.pos.y - y, dz = b.pos.z - z;
+        const d2 = dx * dx + dy * dy + dz * dz; if (d2 > R2) continue;
+        const d = Math.sqrt(d2);
+        if (d < radius * 0.5) { b.alive = false; destroyedBlocks++; }
+        else { b.alive = false; destroyedBlocks++; const inv = 1 / Math.max(d, 0.01); const sp = (1 - d / R) * 80 + 15; spawnFragment(b, new THREE.Vector3(dx * inv * sp, dy * inv * sp + 15, dz * inv * sp)); }
+      }
+      supportCheckNeeded = true; blocksDirty = true;
+      destroyNature(x, z, radius * 1.2); addDecal(x, z, radius * 1.1);
+
+      for (let i = 0; i < (isNuke ? 150 : 60); i++) {
+        const theta = Math.random() * Math.PI * 2, phi = Math.acos(rnd(-1, 1)); const sp = rnd(15, radius * 3);
+        let c = FIRE_COLORS[rndInt(0, 3)]; if (isIce) c = new THREE.Color(0.4, 0.8, 1.0);
+        addFire(x + Math.sin(phi)*Math.cos(theta)*rnd(0, radius*0.4), y + Math.cos(phi)*rnd(0, radius*0.4), z + Math.sin(phi)*Math.sin(theta)*rnd(0, radius*0.4),
+                Math.sin(phi)*Math.cos(theta)*sp, Math.cos(phi)*sp + rnd(5, 15), Math.sin(phi)*Math.sin(theta)*sp, rnd(0.4, 1.5), rnd(1.0, 3.0), c, 2.0);
+      }
+
+      for (let i = 0; i < pedCount; i++) {
+        const p = pedestrians[i];
+        const dx = p.x - x, dz = p.z - z;
+        if (dx*dx + dz*dz < radius * radius * 4) {
+          p.isPanic = true;
+          p.vx = Math.sign(dx) * rnd(15, 30);
+          p.vz = Math.sign(dz) * rnd(15, 30);
+        }
+      }
+
+      shakeAmt = Math.min(12, shakeAmt + radius * 0.15); flashAmt = Math.min(1, flashAmt + (isNuke ? 1.0 : 0.5));
+    }
+
+    /* ============================================================
+       行星撞击
+       ============================================================ */
+    const planets = [];
+    function spawnPlanet(tx, ty, tz) {
+      const startPos = new THREE.Vector3(tx - 600, 3000, tz - 400);
+      const targetPos = new THREE.Vector3(tx, 0, tz);
+
+      const pGeo = new THREE.SphereGeometry(180, 32, 32);
+      const pMat = new THREE.MeshStandardMaterial({ color: 0xaa7744, roughness: 0.8, metalness: 0.2 });
+      const pMesh = new THREE.Mesh(pGeo, pMat);
+
+      const ringGeo = new THREE.RingGeometry(200, 280, 64);
+      ringGeo.rotateX(Math.PI / 2.5);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xddccaa, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      pMesh.add(ringMesh);
+
+      const glowGeo = new THREE.SphereGeometry(210, 32, 32);
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+      pMesh.add(glowMesh);
+
+      pMesh.position.copy(startPos);
+      scene.add(pMesh);
+
+      const dir = targetPos.clone().sub(startPos).normalize();
+
+      planets.push({ mesh: pMesh, startPos, targetPos, dir, dist: startPos.distanceTo(targetPos), t: 0, speed: 250 });
+      flashAmt = 1.0;
+
+      for (let i = 0; i < pedCount; i++) {
+        pedestrians[i].isPanic = true;
+        pedestrians[i].vx = rnd(-25, 25);
+        pedestrians[i].vz = rnd(-25, 25);
+      }
+    }
+
+    function updatePlanets(dt) {
+      for (let i = planets.length - 1; i >= 0; i--) {
+        const p = planets[i];
+        p.t += dt;
+        const currentDist = p.t * p.speed;
+
+        if (currentDist >= p.dist) {
+          const hitX = p.targetPos.x, hitZ = p.targetPos.z;
+
+          explode(hitX, 0, hitZ, 400, true, false);
+          for(let k=0; k<8; k++) {
+            setTimeout(() => explode(hitX + rnd(-150, 150), 0, hitZ + rnd(-150, 150), 100, true, false), k * 200);
+          }
+
+          spawnShockwave(hitX, 0.5, hitZ, 600);
+          shakeAmt = 25; flashAmt = 1.0;
+
+          scene.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          p.mesh.material.dispose();
+          p.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
+
+          planets.splice(i, 1);
+          continue;
+        }
+
+        const pos = p.startPos.clone().addScaledVector(p.dir, currentDist);
+        p.mesh.position.copy(pos);
+        p.mesh.rotation.y += dt * 0.5;
+
+        for(let k=0; k<10; k++) {
+          addFire(
+            pos.x + rnd(-100, 100), pos.y + rnd(-100, 100), pos.z + rnd(-100, 100),
+            rnd(-50, 50) - p.dir.x * 100, rnd(-50, 50) - p.dir.y * 100, rnd(-50, 50) - p.dir.z * 100,
+            rnd(1.0, 2.0), rnd(20, 40), FIRE_COLORS[rndInt(0, 3)], 1.0
+          );
+        }
+
+        shakeAmt = Math.max(shakeAmt, 2 + (currentDist / p.dist) * 10);
+        if (Math.random() < 0.5) flashAmt = 0.2;
+      }
+    }
+
+    const ringGeo = new THREE.RingGeometry(0.78, 1, 72);
+    ringGeo.rotateX(-Math.PI / 2);
+    const shockwaves = [];
+    function spawnShockwave(x, y, z, radius) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffcc88, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(ringGeo, mat);
+      mesh.position.set(x, y, z); mesh.scale.setScalar(radius * 0.1); scene.add(mesh);
+      shockwaves.push({ mesh, mat, life: 1, maxR: radius });
+    }
+    function updateShockwaves(dt) {
+      for(let i=shockwaves.length-1; i>=0; i--) {
+        const s = shockwaves[i]; s.life -= dt * 0.5;
+        if(s.life <= 0) { scene.remove(s.mesh); s.mat.dispose(); shockwaves.splice(i, 1); continue; }
+        const cur = s.mesh.scale.x; s.mesh.scale.setScalar(cur + (s.maxR - cur) * Math.min(1, dt * 3)); s.mat.opacity = s.life;
+      }
+    }
+
+    /* ============================================================
+       真实行人系统更新
+       ============================================================ */
+    function updatePedestrians(dt) {
+      for (let i = 0; i < pedCount; i++) {
+        const p = pedestrians[i];
+
+        const speedMult = p.isPanic ? 4.0 : 1.0;
+
+        p.x += p.vx * dt * speedMult;
+        p.z += p.vz * dt * speedMult;
+
+        p.phase += dt * (p.isPanic ? 25 : 10);
+
+        if (Math.abs(p.x) > 340 || Math.abs(p.z) > 340 || distToRiver(p.x, p.z) < 8 || inMountain(p.x, p.z)) {
+          p.vx *= -1; p.vz *= -1;
+          p.x += p.vx * dt * speedMult * 2; p.z += p.vz * dt * speedMult * 2;
+        } else {
+          for (const bd of buildings) {
+            if (Math.abs(p.x - bd.x) < 5.5 && Math.abs(p.z - bd.z) < 5.5) {
+              p.vx = (p.isPanic ? rnd(-20, 20) : rnd(-2, 2));
+              p.vz = (p.isPanic ? rnd(-20, 20) : rnd(-2, 2));
+              p.x += p.vx * dt * 5; p.z += p.vz * dt * 5;
+              break;
+            }
+          }
+        }
+
+        if (p.isPanic && Math.random() < 0.005) {
+          p.isPanic = false;
+          p.vx = rnd(-2, 2); p.vz = rnd(-2, 2);
+        }
+
+        const dir = Math.atan2(p.vx, p.vz);
+        const bob = Math.abs(Math.sin(p.phase)) * 0.15;
+
+        _dummy.position.set(p.x, 1.1 + bob, p.z);
+        _dummy.rotation.set(0, dir, 0);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        pedHeadMesh.setMatrixAt(i, _dummy.matrix);
+
+        _dummy.position.set(p.x, 0.6 + bob, p.z);
+        _dummy.rotation.set(0, dir, 0);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        pedBodyMesh.setMatrixAt(i, _dummy.matrix);
+
+        _dummy.position.set(p.x, 0.25, p.z);
+        _dummy.rotation.set(Math.sin(p.phase) * 0.5, dir, 0);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        pedLegMesh.setMatrixAt(i, _dummy.matrix);
+      }
+
+      pedHeadMesh.instanceMatrix.needsUpdate = true;
+      pedBodyMesh.instanceMatrix.needsUpdate = true;
+      pedLegMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    /* ============================================================
+       武器逻辑
+       ============================================================ */
+    let currentWeapon = 'bomb';
+    const WEAPONS = {
+      bomb: { fire(x, y, z) { explode(x, y, z, 25, false, false); } },
+      nuke: { fire(x, y, z) { explode(x, y, z, 80, true, false); } },
+      comet: { fire(x, y, z) { spawnComet(x, y, z); } },
+      planet: { fire(x, y, z) { spawnPlanet(x, y, z); } },
+      volcano: { fire() { eruptVolcano(); } },
+      ice: { fire(x, y, z) { explode(x, y, z, 45, false, true); } },
+      orbital: { fire(x, y, z) { let time = 0; const interval = setInterval(() => { time += 0.1; if (time > 1.5) { clearInterval(interval); return; }
+          for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b.alive && (b.pos.x - x)**2 + (b.pos.z - z)**2 < 64) { b.alive = false; destroyedBlocks++; spawnFragment(b, new THREE.Vector3(rnd(-10,10), rnd(10,30), rnd(-10,10))); } }
+          destroyNature(x, z, 15); blocksDirty = true; supportCheckNeeded = true; shakeAmt = Math.max(shakeAmt, 2); flashAmt = 0.4;
+      }, 100); }},
+      acid: { fire(x, y, z) { let time = 0; const interval = setInterval(() => { time += 0.2; if (time > 3) { clearInterval(interval); return; }
+          for (let i = 0; i < 6; i++) { const rx = x + rnd(-50, 50), rz = z + rnd(-50, 50);
+            for (let j = 0; j < blocks.length; j++) { const b = blocks[j]; if (b.alive && (b.pos.x - rx)**2 + (b.pos.z - rz)**2 < 25) { b.alive = false; destroyedBlocks++; spawnFragment(b, new THREE.Vector3(rnd(-5,5), rnd(2,8), rnd(-5,5))); } }
+            addSmoke(rx, rnd(1, 5), rz, rnd(-2,2), rnd(1,5), rnd(-2,2), 2.0, 3.5, 0.1, 1.0, 2.5); addFire(rx, rnd(1, 5), rz, rnd(-5,5), rnd(2,8), rnd(-5,5), 1.0, 1.8, new THREE.Color(0.2, 1.0, 0.2), 1.5); }
+          destroyNature(x, z, 50); blocksDirty = true; supportCheckNeeded = true;
+      }, 200); }},
+      tsunami: { fire(x, y, z) { const dirX = x > 0 ? -1 : 1; const startX = x + dirX * 350; let currentX = startX;
+        const waveGeo = new THREE.BoxGeometry(20, 40, 200); const waveMat = new THREE.MeshPhongMaterial({ color: 0x2266aa, transparent: true, opacity: 0.7 }); const wave = new THREE.Mesh(waveGeo, waveMat);
+        wave.position.set(currentX, 20, z); scene.add(wave); transientMeshes.add(wave);
+        const interval = setInterval(() => { currentX -= dirX * 12; wave.position.x = currentX;
+          for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (!b.alive) continue; if (Math.abs(b.pos.x - currentX) < 20 && Math.abs(b.pos.z - z) < 100 && b.pos.y < 40) { b.alive = false; destroyedBlocks++; spawnFragment(b, new THREE.Vector3(dirX * rnd(10, 30), rnd(5, 15), rnd(-5, 5))); } }
+          blocksDirty = true; supportCheckNeeded = true; destroyNature(currentX, z, 80);
+          if (Math.abs(currentX - startX) > 350 || (dirX > 0 ? currentX > 450 : currentX < -450)) { clearInterval(interval); scene.remove(wave); transientMeshes.delete(wave); waveGeo.dispose(); waveMat.dispose(); }
+          shakeAmt = Math.max(shakeAmt, 1.5);
+        }, 50); }},
+      meteor: { fire(x, y, z) { explode(x, y, z, 50, false, false); flashAmt = 0.8; } },
+      laser: { fire(x, y, z) { for(let i=0; i<10; i++) setTimeout(() => { explode(x + rnd(-50, 50), y, z + rnd(-50, 50), 20, false, false); flashAmt = 0.4; }, i * 80); }},
+      quake: { fire() { for(let i=0; i<80; i++) setTimeout(() => {
+          const blk = blocks[Math.floor(Math.random() * blocks.length)];
+          if (blk && blk.alive) { blk.alive = false; destroyedBlocks++; spawnFragment(blk, new THREE.Vector3(rnd(-5,5), rnd(2,8), rnd(-5,5))); if (Math.random() < 0.1 && treeCount > 0) removeTreeAt(Math.floor(Math.random() * treeCount)); blocksDirty = true; supportCheckNeeded = true; }
+          if (Math.random() < 0.1 && pedCount > 0) removePedAt(Math.floor(Math.random() * pedCount));
+          shakeAmt = Math.max(shakeAmt, 3.5);
+      }, i * 40); }},
+      tornado: { fire(x, y, z) { let count = 0; const interval = setInterval(() => { if (count++ > 50) { clearInterval(interval); return; }
+          const cx = x + rnd(-45, 45), cz = z + rnd(-45, 45);
+          for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b.alive && (b.pos.x - cx)**2 + (b.pos.z - cz)**2 < 400) { b.alive = false; destroyedBlocks++; spawnFragment(b, new THREE.Vector3(rnd(-20,20), rnd(20,50), rnd(-20,20))); blocksDirty = true; supportCheckNeeded = true; } }
+          destroyNature(cx, cz, 40); shakeAmt = Math.max(shakeAmt, 2.0);
+      }, 100); }},
+      lightning: { fire(x, y, z) { for(let i=0; i<8; i++) setTimeout(() => { explode(x + rnd(-60, 60), y, z + rnd(-60, 60), 25, false, false); flashAmt = 0.9; }, i * 120); }},
+      blackhole: { fire(x, y, z) { let time = 0; const interval = setInterval(() => { time += 0.1; if (time > 3.5) { clearInterval(interval); explode(x, y, z, 80, true, false); return; }
+          for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (!b.alive) continue; const dx = x - b.pos.x, dz = z - b.pos.z; const d = Math.hypot(dx, dz); if (d < 60) { if (d < 8) { b.alive = false; destroyedBlocks++; } else { b.pos.x += dx / d * 2.0; b.pos.z += dz / d * 2.0; b.matrix.makeTranslation(b.pos.x, b.pos.y, b.pos.z); } } }
+          for (let i = pedCount - 1; i >= 0; i--) { const p = pedestrians[i]; const dx = x - p.x, dz = z - p.z; const d = Math.hypot(dx, dz); if (d < 40) { if (d < 6) removePedAt(i); else { p.x += dx/d * 2; p.z += dz/d * 2; } } }
+          blocksDirty = true; shakeAmt = Math.max(shakeAmt, 1.5);
+      }, 50); }}
+    };
+
+    const comets = [];
+    function spawnComet(tx, ty, tz) {
+      const startPos = new THREE.Vector3(tx + 400, 900, tz + 200);
+      const targetPos = new THREE.Vector3(tx, 0, tz);
+      const coreGeo = new THREE.SphereGeometry(22, 16, 16);
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff5dd });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      const glowGeo = new THREE.SphereGeometry(45, 16, 16);
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      core.add(glow); core.position.copy(startPos); scene.add(core);
+      const tailGeo = new THREE.ConeGeometry(40, 300, 8);
+      tailGeo.translate(0, -150, 0); tailGeo.rotateX(Math.PI / 2);
+      const tailMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const tail = new THREE.Mesh(tailGeo, tailMat);
+      const dir = targetPos.clone().sub(startPos).normalize();
+      core.lookAt(targetPos); core.add(tail);
+      comets.push({ core, glow, tail, startPos, targetPos, dir, dist: startPos.distanceTo(targetPos), t: 0, speed: 600 });
+      flashAmt = 0.5;
+    }
+
+    function updateComets(dt) {
+      for (let i = comets.length - 1; i >= 0; i--) {
+        const c = comets[i];
+        c.t += dt;
+        const currentDist = c.t * c.speed;
+        if (currentDist >= c.dist) {
+          const hitX = c.targetPos.x, hitZ = c.targetPos.z;
+          explode(hitX, 0, hitZ, 220, true, false);
+          for(let k=0; k<5; k++) setTimeout(() => explode(hitX + rnd(-80, 80), 0, hitZ + rnd(-80, 80), 60, true, false), k * 150);
+          spawnShockwave(hitX, 0.5, hitZ, 300);
+          shakeAmt = 15; flashAmt = 1.0;
+          scene.remove(c.core); c.core.geometry.dispose(); c.core.material.dispose(); c.glow.geometry.dispose(); c.glow.material.dispose(); c.tail.geometry.dispose(); c.tail.material.dispose();
+          comets.splice(i, 1); continue;
+        }
+        const pos = c.startPos.clone().addScaledVector(c.dir, currentDist);
+        c.core.position.copy(pos);
+        for(let k=0; k<8; k++) addFire(pos.x + rnd(-15, 15), pos.y + rnd(-15, 15), pos.z + rnd(-15, 15), rnd(-50, 50) - c.dir.x * 100, rnd(-50, 50) - c.dir.y * 100, rnd(-50, 50) - c.dir.z * 100, rnd(0.8, 2.0), rnd(8, 20), Math.random()>0.5?FIRE_COLORS[0]:FIRE_COLORS[1], 0.8);
+        for(let k=0; k<4; k++) addSmoke(pos.x + rnd(-20, 20), pos.y + rnd(-20, 20), pos.z + rnd(-20, 20), rnd(-20, 20), rnd(-20, 20), rnd(-20, 20), rnd(2.0, 4.0), rnd(20, 40), 0.2, 1.0, 3);
+        shakeAmt = Math.max(shakeAmt, 2 + (currentDist / c.dist) * 6);
+        if (Math.random() < 0.3) flashAmt = 0.2;
+      }
+    }
+
+    const lavaBombs = [];
+    function eruptVolcano() {
+      if (!volcanoMesh) return;
+      const startX = volcanoMesh.position.x, startY = VOLCANO_H, startZ = volcanoMesh.position.z;
+      shakeAmt = 8; flashAmt = 0.9;
+      for (let i = 0; i < 120; i++) {
+        const angle = Math.random() * Math.PI * 2, speed = rnd(40, 120);
+        const vx = Math.cos(angle) * speed, vz = Math.sin(angle) * speed, vy = rnd(150, 350);
+        const size = rnd(2.5, 7);
+        const geo = new THREE.SphereGeometry(size, 4, 4);
+        const mat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xff4400 : 0xffaa00 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(startX + rnd(-30,30), startY, startZ + rnd(-30,30));
+        scene.add(mesh); lavaBombs.push({ mesh, vx, vy, vz, size });
+      }
+      for (let i = 0; i < 150; i++) {
+        addSmoke(startX + rnd(-40, 40), startY, startZ + rnd(-40, 40), rnd(-15, 15), rnd(30, 80), rnd(-15, 15), rnd(3, 6), rnd(15, 35), 0.15, 0.8, 8);
+        if(i < 50) addFire(startX + rnd(-20,20), startY, startZ + rnd(-20,20), rnd(-10,10), rnd(20,50), rnd(-10,10), rnd(1, 2), rnd(4, 8), FIRE_COLORS[0], 1.0);
+      }
+    }
+    function updateLavaBombs(dt) {
+      for (let i = lavaBombs.length - 1; i >= 0; i--) {
+        const b = lavaBombs[i]; b.vy -= GRAVITY * dt;
+        b.mesh.position.x += b.vx * dt; b.mesh.position.y += b.vy * dt; b.mesh.position.z += b.vz * dt;
+        if (Math.random() < 0.3) addFire(b.mesh.position.x, b.mesh.position.y, b.mesh.position.z, rnd(-5,5), rnd(-5,5), rnd(-5,5), 0.5, 1.5, FIRE_COLORS[0], 1.0);
+        if (b.mesh.position.y <= 0) { explode(b.mesh.position.x, 0, b.mesh.position.z, 18, false, false); scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); lavaBombs.splice(i, 1); }
+      }
+    }
+
+    let flashAmt = 0, shakeAmt = 0, lastFlashShown = -1; const flashEl = document.getElementById('flash');
+    function fire(x, y, z) { const w = WEAPONS[currentWeapon]; if (w) w.fire(x, Math.max(y, 3), z); const tip = document.getElementById('tip'); if (tip) { tip.style.opacity = '0'; setTimeout(() => tip.remove(), 1000); } }
+
+    document.getElementById('weapons').addEventListener('click', e => {
+      const btn = e.target.closest('button'); if (!btn) return; const w = btn.dataset.w;
+      if (w === 'reset') {
+        for (const id of pendingTimeouts) window.clearTimeout(id);
+        for (const id of pendingIntervals) window.clearInterval(id);
+        pendingTimeouts.clear(); pendingIntervals.clear();
+        for (const mesh of transientMeshes) disposeMesh(mesh);
+        transientMeshes.clear();
+        supportCheckNeeded = false;
+        generateCity();
+        lavaBombs.forEach(b => disposeMesh(b.mesh)); lavaBombs.length = 0;
+        comets.forEach(c => { disposeMesh(c.core); }); comets.length = 0;
+        planets.forEach(p => { disposeMesh(p.mesh); }); planets.length = 0;
+        shockwaves.forEach(s => disposeMesh(s.mesh, true)); shockwaves.length = 0;
+        shakeAmt = 0; flashAmt = 0; camTheta = Math.PI / 4; camPhi = Math.PI / 3.2; camDist = 450; camTarget.set(0, 0, 0); updateCamera(); return;
+      }
+      if (!WEAPONS[w]) return; currentWeapon = w; const all = e.currentTarget.querySelectorAll('button[data-w]'); for (let i = 0; i < all.length; i++) all[i].classList.toggle('active', all[i] === btn);
+    });
+
+    const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    let gesture = null;
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('pointerdown', e => {
+      if (gesture || (e.button !== 0 && e.button !== 2)) return;
+      gesture = { id:e.pointerId, x:e.clientX, y:e.clientY, lastX:e.clientX, lastY:e.clientY, moved:false, button:e.button };
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX-gesture.x, e.clientY-gesture.y)>7) gesture.moved=true;
+      if (gesture.moved) {
+        camTheta -= (e.clientX-gesture.lastX)*.006;
+        camPhi += (e.clientY-gesture.lastY)*.006;
+        updateCamera();
+      }
+      gesture.lastX=e.clientX; gesture.lastY=e.clientY;
+    });
+    canvas.addEventListener('pointerup', e => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      const click = !gesture.moved && gesture.button === 0;
+      gesture=null;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (!click) return;
+      ndc.set(e.clientX/innerWidth*2-1, 1-e.clientY/innerHeight*2);
+      raycaster.setFromCamera(ndc,camera);
+      const hit = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(groundPlane,hit) && Math.hypot(hit.x,hit.z)<=MAP_RADIUS) fire(hit.x,0,hit.z);
+    });
+    canvas.addEventListener('pointercancel', () => { gesture=null; });
+    canvas.addEventListener('lostpointercapture', () => { gesture=null; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault(); camDist=Math.max(100,Math.min(1800,camDist*Math.exp(e.deltaY*.001))); updateCamera();
+    }, {passive:false});
+
+    const minimap = document.getElementById('minimap').getContext('2d');
+    function drawMinimap() {
+      minimap.clearRect(0,0,280,280);
+      minimap.fillStyle='#1b342b'; minimap.beginPath(); minimap.arc(140,140,135,0,Math.PI*2); minimap.fill();
+      minimap.fillStyle='#9eb4cf';
+      for (const bd of buildings) {
+        if (bd.grid.some(col=>col.some(stack=>stack.some(block=>block.alive)))) {
+          minimap.fillRect(140+bd.x*.19,140+bd.z*.19,2,2);
+        }
+      }
+      minimap.fillStyle='#ffbf76'; minimap.beginPath();
+      minimap.arc(140+camTarget.x*.19,140+camTarget.z*.19,4,0,Math.PI*2); minimap.fill();
+    }
+    const pctEl = document.getElementById('pct'), fragEl = document.getElementById('frag'), barEl = document.getElementById('barFill');
+    let hudTick = 0;
+    function updateHUD() {
+      if (++hudTick % 5 !== 0) return; const pct = totalBlocks > 0 ? Math.min(100, (destroyedBlocks / totalBlocks) * 100) : 0;
+      pctEl.textContent = Math.round(pct) + '%'; barEl.style.width = pct + '%'; fragEl.textContent = frags.length;
+    }
+
+    let lastTime = performance.now();
+    function animate(now) {
+      requestAnimationFrame(animate); let dt = (now - lastTime) / 1000; lastTime = now;
+      if (dt > 0.05) dt = 0.05; if (dt <= 0) return;
+
+      updateWater(dt);
+      updatePedestrians(dt);
+      updateLavaBombs(dt);
+      updateComets(dt);
+      updatePlanets(dt);
+      updateShockwaves(dt);
+
+      for (let i = frags.length - 1; i >= 0; i--) {
+        const f = frags[i]; if (f.resting) continue;
+        f.vel.y -= GRAVITY * dt; f.pos.x += f.vel.x * dt; f.pos.y += f.vel.y * dt; f.pos.z += f.vel.z * dt;
+        f.rot.x += f.angVel.x * dt; f.rot.y += f.angVel.y * dt; f.rot.z += f.angVel.z * dt;
+        if (f.pos.y <= f.size/2) { f.pos.y = f.size/2; f.vel.y *= -0.3; f.vel.x *= 0.6; f.vel.z *= 0.6; if (Math.abs(f.vel.y) < 2) f.resting = true; }
+        if (Math.abs(f.pos.x) > 600 || Math.abs(f.pos.z) > 600 || f.pos.y > 500) frags.splice(i, 1);
+      }
+
+      for (let i = fireParticles.length - 1; i >= 0; i--) {
+        const p = fireParticles[i]; p.life -= dt; if (p.life <= 0) { fireParticles.splice(i, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy -= 5 * dt;
+      }
+      for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const p = smokeParticles[i]; p.life -= dt; if (p.life <= 0) { smokeParticles.splice(i, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.size += p.grow * dt;
+      }
+
+      flushSupportCheck();
+      if (blocksDirty) { rebuildBlocks(); blocksDirty = false; }
+
+      let n = 0;
+      for (let i = 0; i < frags.length; i++) {
+        const f = frags[i]; _dummy.position.copy(f.pos); _dummy.rotation.set(f.rot.x, f.rot.y, f.rot.z); _dummy.scale.setScalar(f.size); _dummy.updateMatrix();
+        fragMesh.setMatrixAt(n, _dummy.matrix); fragMesh.setColorAt(n, f.color); n++;
+      }
+      fragMesh.count = n; fragMesh.instanceMatrix.needsUpdate = true; fragMesh.instanceColor.needsUpdate = true;
+
+      let nf = 0;
+      for (let i = 0; i < Math.min(fireParticles.length, MAX_FIRE_PARTS); i++) {
+        const p = fireParticles[i]; const t = Math.max(0, p.life / p.maxLife);
+        _dummy.position.set(p.x, p.y, p.z); _dummy.scale.setScalar(p.size * t); _dummy.updateMatrix();
+        fireMesh.setMatrixAt(nf, _dummy.matrix); fireMesh.setColorAt(nf, _color.setRGB(p.r * t, p.g * t, p.b * t)); nf++;
+      }
+      fireMesh.count = nf; fireMesh.instanceMatrix.needsUpdate = true; fireMesh.instanceColor.needsUpdate = true;
+
+      let ns = 0;
+      for (let i = 0; i < Math.min(smokeParticles.length, MAX_SMOKE_PARTS); i++) {
+        const p = smokeParticles[i]; const t = Math.max(0, p.life / p.maxLife);
+        _dummy.position.set(p.x, p.y, p.z); _dummy.scale.setScalar(p.size); _dummy.updateMatrix();
+        smokeMesh.setMatrixAt(ns, _dummy.matrix); smokeMesh.setColorAt(ns, _color.setRGB(0.2 * t, 0.2 * t, 0.2 * t)); ns++;
+      }
+      smokeMesh.count = ns; smokeMesh.instanceMatrix.needsUpdate = true; smokeMesh.instanceColor.needsUpdate = true;
+
+      updateCamera();
+      if (shakeAmt > 0) { shakeAmt *= Math.exp(-dt * 5); if (shakeAmt < 0.1) shakeAmt = 0; const s = shakeAmt; camera.position.x += (Math.random() - 0.5) * s * 2; camera.position.y += (Math.random() - 0.5) * s * 2; camera.position.z += (Math.random() - 0.5) * s * 2; }
+      renderer.render(scene, camera);
+  if (!window.experienceRendered) { window.experienceRendered=true; window.dispatchEvent(new Event('experience-ready')); } drawMinimap();
+      flashAmt *= Math.exp(-dt * 6); if (flashAmt < 0.01) flashAmt = 0;
+      if (Math.abs(flashAmt - lastFlashShown) > 0.01) { flashEl.style.opacity = flashAmt.toFixed(3); lastFlashShown = flashAmt; }
+      updateHUD();
+    }
+
+    window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    for (const mesh of [blockMesh, fragMesh, fireMesh, smokeMesh, trunkMesh, crownMesh,
+      pedHeadMesh, pedBodyMesh, pedLegMesh]) mesh.frustumCulled = false;
+    generateCity(); rebuildBlocks(); updateCamera();
+    const loadingEl = document.getElementById('loading'); if (loadingEl) { loadingEl.classList.add('hide'); setTimeout(() => loadingEl.remove(), 600); }
+    requestAnimationFrame(t => { lastTime = t; animate(t); });
+
+  } catch (err) {
+    document.getElementById('loading').innerHTML = '初始化发生错误<br><span style="font-size:14px;color:#ff8888">' + err.message + '</span>';
+  }
+}, 50);
+</script>
+</body>
+</html>
