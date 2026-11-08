@@ -42,6 +42,7 @@ class SimulatorTests(unittest.TestCase):
 paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody, checkEvolution,
+  get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
   get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
@@ -60,6 +61,54 @@ loop();''')
         self.page.route('**/cosmic-collision-3d.html*', lambda route: route.fulfill(body=source, content_type='text/html'))
         self.page.goto(self.url + '/cosmic-collision-3d.html?scene=bh')
         self.page.wait_for_function('window.sim', timeout=60000)
+
+    def test_new_stars_and_nova_accretion(self):
+        self.open_sim()
+        for kind in ['redDwarf', 'orangeDwarf', 'hotSubdwarf', 'wolfRayet']:
+            self.assertEqual(self.page.locator(f'#tools [data-type="{kind}"]').count(), 1)
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const wd=sim.spawnBody(0,0,0,0,0,0,3000,'whiteDwarf');
+          const donor=sim.spawnBody(50,0,0,0,0,0,180,'redDwarf');
+          sim.updateNovaAccretion(1);
+          const stream=wd.novaStream; let disposed=false;
+          stream.geometry.addEventListener('dispose',()=>disposed=true);
+          sim.updateNovaAccretion(1); sim.updateNovaAccretion(1);
+          const erupted=wd.novaCount===1 && sim.nebulae.some(n=>n.type==='nova');
+          sim.removeBody(donor); sim.updateNovaAccretion(1);
+          return {erupted, alive:sim.bodies.includes(wd), mass:wd.mass, disposed, streamGone:!stream.parent};
+        }''')
+        self.assertTrue(result['erupted'], result)
+        self.assertTrue(result['alive'], result)
+        self.assertGreater(result['mass'], 3000, result)
+        self.assertTrue(result['disposed'] and result['streamGone'], result)
+        self.assertEqual(self.errors, [])
+
+    def test_nova_demo_runs(self):
+        self.open_sim()
+        self.page.locator('#btnNovaDemo').click()
+        self.page.wait_for_function("sim.bodies.some(b => b.type === 'whiteDwarf' && b.novaCount >= 1)", timeout=30000)
+        self.assertTrue(self.page.evaluate("sim.bodies.some(b => b.type === 'redDwarf')"))
+        self.assertEqual(self.errors, [])
+
+    def test_nova_distant_donor_and_chandrasekhar_limit(self):
+        self.open_sim()
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const dwarf=sim.spawnBody(0,0,0,0,0,0,4195,'whiteDwarf');
+          const donor=sim.spawnBody(500,0,0,0,0,0,180,'redDwarf');
+          sim.updateNovaAccretion(1);
+          const distant=dwarf.mass===4195 && !dwarf.novaStream;
+          donor.mesh.position.x=50;
+          sim.updateNovaAccretion(1);
+          const reached=dwarf.mass>=4200 && !dwarf.novaCount;
+          sim.checkEvolution(dwarf);
+          return {distant,reached,removed:!sim.bodies.includes(dwarf),
+            supernova:sim.nebulae.some(n=>n.type==='supernova'), nova:sim.nebulae.some(n=>n.type==='nova')};
+        }''')
+        self.assertTrue(result['distant'] and result['reached'] and result['removed'] and result['supernova'], result)
+        self.assertFalse(result['nova'], result)
+        self.assertEqual(self.errors, [])
 
     def test_random_system_replaces_existing_bodies_and_stays_bounded(self):
         self.open_sim()

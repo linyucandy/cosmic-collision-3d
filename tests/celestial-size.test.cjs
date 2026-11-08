@@ -23,3 +23,10 @@ test('quasar and black hole use the same horizon radius at equal game mass',()=>
   const models={blackhole:{base:2500,rk:.85},quasar:{base:12000,rk:1.2}};
   assert.ok(Math.abs(size.radiusFor('quasar',12000,models,'reference')-size.radiusFor('blackhole',12000,models,'reference'))<1e-12);
 });
+
+test('new stellar classes have representative relative sizes',()=>{
+  const t={star:{base:600,rk:2.2},redDwarf:{base:180,rk:1.3},orangeDwarf:{base:450,rk:1.8},hotSubdwarf:{base:300,rk:1.6},wolfRayet:{base:2200,rk:3}};
+  const r=k=>size.radiusFor(k,t[k].base,t,'reference');
+  assert.ok(r('hotSubdwarf')<r('redDwarf')); assert.ok(r('redDwarf')<r('orangeDwarf'));
+  assert.ok(r('orangeDwarf')<r('star')); assert.ok(r('wolfRayet')>r('star'));
+});
