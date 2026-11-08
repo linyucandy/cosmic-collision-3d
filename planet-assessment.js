@@ -10,7 +10,7 @@
     const radius = body.r ? body.r / (body.earthReferenceRadius || (1.7 * Math.cbrt(40))) : Math.cbrt(mass);
     const heat = Math.max(0, body.heat || 0);
     const flux = sources.reduce((sum, source) => {
-      const intensity = {star:1, redDwarf:.04, orangeDwarf:.3, hotSubdwarf:.1, wolfRayet:4, blueGiant:2, redGiant:1.5, whiteDwarf:0.2, cepheid:2, quasar:3, sakurai:0.7}[source.type] || 0;
+      const intensity = {star:1, redDwarf:.04, orangeDwarf:.3, hotSubdwarf:.1, wolfRayet:4, blueGiant:2, redGiant:1.5, redSupergiant:3, redHypergiant:5, whiteDwarf:0.2, cepheid:2, quasar:3, sakurai:0.7}[source.type] || 0;
       return sum + intensity * Math.max(0, source.mass / 800) *
         Math.pow(390 / Math.max(10, source.distance), 2);
     }, 0);

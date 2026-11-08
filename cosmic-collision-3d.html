@@ -91,6 +91,8 @@
     <div class="btn" data-type="brownDwarf">🟤 褐矮星</div>
     <div class="btn" data-type="whiteDwarf">⚪ 白矮星</div>
     <div class="btn" data-type="redGiant">🔴 红巨星</div>
+    <div class="btn" data-type="redSupergiant">🌟 红超巨星</div>
+    <div class="btn" data-type="redHypergiant">🌟 红特超巨星</div>
     <div class="btn" data-type="blueGiant">🔵 蓝巨星</div>
     <div class="btn" data-type="quarkStar">🟣 夸克星</div>
     <div class="btn" data-type="redDwarf">🔴 红矮星</div>
@@ -194,8 +196,8 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=6"></script>
-<script src="planet-assessment.js?v=4"></script>
+<script src="celestial-size.js?v=7"></script>
+<script src="planet-assessment.js?v=5"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -835,6 +837,8 @@ const TYPES = {
   brownDwarf:{ base: 90,   rk: 1.15,color: 0xc96a3a },
   whiteDwarf:{ base: 3000, rk: 0.30,color: 0xdfeeff },
   redGiant:  { base: 350,  rk: 4.6, color: 0xff7a55 },
+  redSupergiant: { base: 1800, rk: 6, color: 0xff7946 },
+  redHypergiant: { base: 2600, rk: 8, color: 0xf65b39 },
   blueGiant: { base: 1500, rk: 2.6, color: 0x86b8ff },
   quarkStar: { base: 9000, rk: 0.16,color: 0xd18aff },
   wormhole:  { base: 1500, rk: 0.95,color: 0x59ffd8 },
@@ -867,6 +871,8 @@ const WHITE_DWARF_VARIANTS = {
   j2356:{name:'WD J2356−2054', spectrum:'DZ', temp:4040, color:0x68b4f5, note:'虽较冷，但强烈吸收可使计算颜色偏蓝。'}
 };
 const EXOTIC_INFO = {
+  redSupergiant:['已观测','红超巨星是演化膨胀的大质量恒星，例如参宿四；半径与最终命运因恒星而异。默认约为太阳半径的 700 倍。'],
+  redHypergiant:['已观测','红特超巨星是极大、光度高且常有强烈失质量的恒星，例如大犬座 VY；默认约为太阳半径的 1400 倍，尺寸仅为代表值。'],
   whitehole:['理论概念','白洞可视为某些时空解中黑洞的时间反演，目前没有确认的观测证据。近距离排斥、碰撞反弹和亮环是游戏示意。'],
   redDwarf:['已观测','低质量 M 型主序星，较冷且寿命很长；颜色和大小为示意。'],
   orangeDwarf:['已观测','K 型主序星，通常比太阳更冷、更小；尺度为示意。'],
@@ -1093,7 +1099,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     glow.scale.setScalar(2.6);
     mesh.add(glow);
     extra.glow = glow;
-  } else if (type === 'redGiant') {
+  } else if (type === 'redGiant' || type === 'redSupergiant' || type === 'redHypergiant') {
     // 红巨星：膨胀稀薄的外层包层
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({
       color, roughness: 1, emissive: color, emissiveIntensity: 0.6 }));
@@ -1102,6 +1108,11 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     glow.scale.setScalar(4);
     mesh.add(glow);
     extra.glow = glow;
+    if (type === 'redHypergiant') {
+      const envelope = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({color:0xff8a48,
+        transparent:true,opacity:.12,side:THREE.BackSide,depthWrite:false,blending:THREE.AdditiveBlending}));
+      envelope.scale.setScalar(1.15); mesh.add(envelope); extra.envelope = envelope;
+    }
   } else if (type === 'sakurai') {
     mesh = new THREE.Mesh(sphereGeo,new THREE.MeshStandardMaterial({color:0xd68b5a,
       roughness:1,emissive:0x5a2414,emissiveIntensity:.6}));
@@ -1278,12 +1289,12 @@ for (let i = 0; i < 3; i++) {
   const l = new THREE.PointLight(0xffddaa, 0, 0, 2);
   scene.add(l); starLights.push(l);
 }
-const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant', 'quarkStar','sakurai','cepheid','quasar','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet']);
+const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant','redSupergiant','redHypergiant', 'quarkStar','sakurai','cepheid','quasar','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet']);
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
   comet: '彗星', blackhole: '黑洞', whitehole:'白洞', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
-  redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
+  redGiant: '红巨星', redSupergiant:'红超巨星', redHypergiant:'红特超巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
   sakurai:'樱井天体',cepheid:'造父变星',quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',
   preonStar:'先子星',bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星' };
 function updateLights() {
@@ -1917,7 +1928,7 @@ function tidalStrip(v, attractor, inten) {
 function checkEvolution(b) {
   if (b.stable) return false;
   const M = b.mass;
-  if ((b.type === 'star' && M >= 3500) || (b.type === 'blueGiant' && M >= 3500) || (b.type === 'wolfRayet' && M >= 3500)) {
+  if (['star','blueGiant','wolfRayet','redSupergiant','redHypergiant'].includes(b.type) && M >= 3500) {
     // 核心坍缩超新星 → 黑洞与膨胀中的残骸
     createNebula('supernova', b.mesh.position, b.r);
     explode(b.mesh.position, b);
@@ -2208,6 +2219,13 @@ function placeLaunch(velocity) {
     return;
   }
   if (body.type === 'whiteDwarf') applyWhiteDwarfVariant(body, document.getElementById('whiteDwarfVariant').value);
+  if (['redSupergiant','redHypergiant'].includes(body.type) && camera.position.distanceTo(body.mesh.position) < body.r * 2.5) {
+    const direction = camera.position.clone().sub(body.mesh.position);
+    if (direction.lengthSq() < 1e-12) direction.set(0,0,1);
+    camera.position.copy(body.mesh.position).addScaledVector(direction.normalize(), body.r * 3);
+    controls.target.copy(body.mesh.position);
+    selectBody(body);
+  }
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
   showNotice(curType === 'whitehole' ? '已创建白洞；近处的排斥和碰撞反弹为游戏示意。' : `已创建${TYPE_NAMES[curType] || curType}；碰撞时可能合并。`);
@@ -3065,7 +3083,10 @@ function loop() {
         b.mat.emissiveIntensity = b.heatBaseEI;
       }
       if (checkEvolution(b)) continue;             // 质量上限 → 演化/超新星
-      if (b.type === 'whitehole' && b.whiteRing) {
+      if ((b.type === 'redSupergiant' || b.type === 'redHypergiant') && b.glow) {
+        b.glow.scale.setScalar(4 + .2 * Math.sin(simT * 1.5 + b.spin));
+        if (b.envelope) b.envelope.scale.setScalar(1.15 + .02 * Math.sin(simT * 1.2));
+      } else if (b.type === 'whitehole' && b.whiteRing) {
         b.whiteRing.rotation.z += .025 * timeScale;
         b.glow.scale.setScalar(7 + .7 * Math.sin(simT * 3));
       } else if (b.type === 'wolfRayet' && b.wrWind) {

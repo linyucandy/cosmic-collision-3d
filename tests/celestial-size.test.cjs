@@ -36,3 +36,10 @@ test('new stellar classes have representative relative sizes',()=>{
   assert.ok(r('hotSubdwarf')<r('redDwarf')); assert.ok(r('redDwarf')<r('orangeDwarf'));
   assert.ok(r('orangeDwarf')<r('star')); assert.ok(r('wolfRayet')>r('star'));
 });
+
+test('red supergiant examples are hundreds to over a thousand times the Sun radius',()=>{
+  const t={star:{base:600,rk:2.2},redSupergiant:{base:1800,rk:6},redHypergiant:{base:2600,rk:8}};
+  const r=k=>size.radiusFor(k,t[k].base,t,'reference');
+  assert.equal(r('redSupergiant')/r('star'),700);
+  assert.equal(r('redHypergiant')/r('star'),1400);
+});

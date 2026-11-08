@@ -86,6 +86,36 @@ loop();''')
         self.assertTrue(result['disposed'] and result['streamGone'], result)
         self.assertEqual(self.errors, [])
 
+    def test_red_supergiants_create_and_follow_massive_star_evolution(self):
+        self.open_sim()
+        for kind in ['redSupergiant','redHypergiant']:
+            self.page.locator(f'#tools [data-type="{kind}"]').click()
+            self.assertIn('已观测', self.page.locator('#objectInfo').inner_text())
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const red=sim.spawnBody(0,0,0,0,0,0,1800,'redSupergiant');
+          const hyper=sim.spawnBody(100000,0,0,0,0,0,2600,'redHypergiant');
+          const larger=hyper.r>red.r && red.r>10000;
+          const stable=!sim.checkEvolution(red) && !sim.checkEvolution(hyper);
+          hyper.mass=3500; const evolved=sim.checkEvolution(hyper);
+          return {larger,stable,evolved,blackhole:sim.bodies.some(b=>b.type==='blackhole'),shell:sim.nebulae.some(n=>n.type==='supernova')};
+        }''')
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_red_hypergiant_placement_moves_camera_outside_star(self):
+        self.open_sim()
+        self.page.evaluate('sim.clear()')
+        self.page.locator('#tools [data-type="redHypergiant"]').click()
+        self.page.mouse.click(900, 450)
+        result = self.page.evaluate('''() => {
+          const b=sim.bodies.find(b=>b.type==='redHypergiant');
+          return {exists:!!b, selected:sim.selected===b, distance:b && sim.camera.position.distanceTo(b.mesh.position), radius:b && b.r};
+        }''')
+        self.assertTrue(result['exists'] and result['selected'], result)
+        self.assertGreater(result['distance'], result['radius'] * 2, result)
+        self.assertEqual(self.errors, [])
+
     def test_nova_demo_runs(self):
         self.open_sim()
         self.page.locator('#btnNovaDemo').click()
