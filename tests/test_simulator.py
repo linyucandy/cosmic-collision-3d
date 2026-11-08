@@ -1038,6 +1038,57 @@ loop();''')
         self.assertFalse(self.page.evaluate('!!sim.selected.tidalLockTarget'))
         self.assertEqual(self.errors, [])
 
+    def test_oort_cloud_attaches_to_star_and_releases_real_comet(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#btnOortCloud').count(), 1)
+        self.page.evaluate("sim.clear(); sim.selectBody(sim.spawnBody(0,0,0,0,0,0,600,'star'))")
+        self.page.locator('#btnOortCloud').click()
+        result=self.page.evaluate('''() => {
+          const star=sim.selected, cloud=star.oortCloud;
+          return {attached:!!cloud, points:cloud && cloud.points.geometry.attributes.position.count,
+            noBodies:sim.bodies.length===1};
+        }''')
+        self.assertTrue(result['attached'] and result['noBodies'], result)
+        self.assertGreaterEqual(result['points'], 300, result)
+        self.page.locator('#btnOortComet').click()
+        result=self.page.evaluate('''() => {
+          const star=sim.selected, comet=sim.bodies.find(b=>b.type==='comet');
+          if (!comet) return {exists:false};
+          const toStar=star.mesh.position.clone().sub(comet.mesh.position);
+          const inward=comet.vel.clone().sub(star.vel).dot(toStar)>0;
+          const geo=star.oortCloud.points.geometry; let disposed=false;
+          geo.addEventListener('dispose',()=>disposed=true); sim.removeBody(star);
+          return {exists:true,inward,disposed,cometAlive:sim.bodies.includes(comet)};
+        }''')
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_oort_cloud_demo_and_host_motion(self):
+        self.open_sim()
+        self.page.locator('#btnOortDemo').click()
+        result=self.page.evaluate('''() => {
+          const star=sim.bodies.find(b=>b.type==='star'), cloud=star && star.oortCloud;
+          if (!cloud) return {ready:false};
+          star.mesh.position.set(40,10,30); sim.step();
+          return {ready:true,follow:cloud.group.position.distanceTo(star.mesh.position)<1e-8,
+            hasPlanets:sim.bodies.some(b=>b.type==='planet')};
+        }''')
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_oort_cloud_scales_with_host_and_camera_far_plane(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.selectBody(sim.spawnBody(0,0,0,0,0,0,1800,'redSupergiant'))")
+        self.page.locator('#btnOortCloud').click()
+        self.page.wait_for_function('sim.camera.far > sim.camera.position.distanceTo(sim.selected.mesh.position) + sim.selected.oortCloud.outerRadius')
+        old=self.page.evaluate('sim.selected.oortCloud.outerRadius')
+        self.page.select_option('#sizeMode','display')
+        new=self.page.evaluate('sim.selected.oortCloud.outerRadius')
+        self.assertGreater(old, new)
+        self.page.locator('#btnOortCloud').click()
+        self.assertFalse(self.page.evaluate('!!sim.selected.oortCloud'))
+        self.assertEqual(self.errors, [])
+
     def test_white_hole_repels_and_reflects_without_absorbing(self):
         self.open_sim()
         self.assertEqual(self.page.locator('#tools [data-type="whitehole"]').count(), 1)
