@@ -190,6 +190,50 @@ loop();''')
         self.assertTrue(all(n <= 110 for n in result['counts']), result)
         self.assertEqual(self.errors, [])
 
+    def test_galaxy_types_are_selectable_and_cleanup_visuals(self):
+        self.open_sim()
+        for kind in ['galaxySpiral','galaxyElliptical','galaxyIrregular']:
+            self.page.locator(f'#tools [data-type="{kind}"]').click()
+            self.assertIn('星系', self.page.locator('#objectInfo').inner_text())
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const galaxies=['galaxySpiral','galaxyElliptical','galaxyIrregular'].map((t,i)=>sim.spawnBody(i*3000,0,0,0,0,0,2400,t));
+          const created=galaxies.every(b=>b && b.galaxyStars && b.galaxyStars.geometry.attributes.position.count>=300);
+          const material=galaxies[0].galaxyStars.material, geometry=galaxies[0].galaxyStars.geometry;
+          let matDisposed=false, geoDisposed=false;
+          material.addEventListener('dispose',()=>matDisposed=true); geometry.addEventListener('dispose',()=>geoDisposed=true);
+          sim.removeBody(galaxies[0]);
+          return {created,matDisposed,geoDisposed,remaining:sim.bodies.length};
+        }''')
+        self.assertTrue(result['created'] and result['matDisposed'] and result['geoDisposed'], result)
+        self.assertEqual(result['remaining'], 2, result)
+        self.assertEqual(self.errors, [])
+
+    def test_galaxy_collision_demo_creates_two_interacting_galaxies(self):
+        self.open_sim()
+        self.page.locator('#btnGalaxyCollision').click()
+        result=self.page.evaluate('''() => ({types:sim.bodies.map(b=>b.type),
+          towards:sim.bodies[0].vel.x>0 && sim.bodies[1].vel.x<0})''')
+        self.assertEqual(result['types'], ['galaxySpiral','galaxySpiral'])
+        self.assertTrue(result['towards'], result)
+        merged=self.page.evaluate('''() => {
+          for(let i=0;i<200 && sim.bodies.length>1;i++) sim.step();
+          return sim.bodies.length===1 && sim.bodies[0].type==='galaxySpiral' && sim.bodies[0].mass===4800;
+        }''')
+        self.assertTrue(merged)
+        self.assertEqual(self.errors, [])
+
+    def test_galaxy_placement_moves_camera_to_show_it(self):
+        self.open_sim()
+        self.page.evaluate('sim.clear()')
+        self.page.locator('#tools [data-type="galaxySpiral"]').click()
+        self.page.mouse.click(900,450)
+        self.assertTrue(self.page.evaluate('''() => {
+          const b=sim.bodies.find(b=>b.type==='galaxySpiral');
+          return !!b && sim.selected===b && sim.camera.position.distanceTo(b.mesh.position)>b.r*2;
+        }'''))
+        self.assertEqual(self.errors, [])
+
     def test_impact_leaves_private_crater_texture_and_cleans_up(self):
         self.open_sim()
         result = self.page.evaluate('''() => {

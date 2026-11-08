@@ -43,3 +43,8 @@ test('red supergiant examples are hundreds to over a thousand times the Sun radi
   assert.equal(r('redSupergiant')/r('star'),700);
   assert.equal(r('redHypergiant')/r('star'),1400);
 });
+
+test('galaxy aggregate types have a finite sandbox size',()=>{
+  const t={galaxySpiral:{base:2400,rk:12},galaxyElliptical:{base:2400,rk:12},galaxyIrregular:{base:2400,rk:12}};
+  for(const k of Object.keys(t)) assert.ok(Number.isFinite(size.radiusFor(k,2400,t,'reference')) && size.radiusFor(k,2400,t,'reference')>0);
+});
