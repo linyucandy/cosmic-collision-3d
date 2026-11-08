@@ -50,7 +50,8 @@
   #measurementOverlay { position:fixed; inset:0; z-index:6; pointer-events:none; overflow:hidden; }
   .body-label, .grid-tick { position:absolute; left:0; top:0; white-space:nowrap; pointer-events:none;
     font:11px "Microsoft YaHei",sans-serif; color:#d9edff; text-shadow:0 1px 4px #000,0 0 6px #000; }
-  .body-label { padding:2px 5px; border-radius:5px; background:#101a30c9; border:1px solid #91bdff50; }
+  .body-label { padding:2px 5px; border-radius:5px; background:#101a30c9; border:1px solid #91bdff50;
+    max-width:calc(100vw - 16px); overflow:hidden; text-overflow:ellipsis; }
   .body-label.selected { border-color:#ffdf96; color:#fff0c2; }
   .grid-tick { color:#a9d8e7; font-size:10px; }
   #gridLegend { position:fixed; z-index:7; left:50%; top:12px; transform:translateX(-50%); max-width:46%;
@@ -94,6 +95,26 @@
     <div class="btn" data-type="wormhole">🌀 虫洞</div>
     <div class="btn" data-type="probe">🛰️ 探测器</div>
   </div>
+  <details id="exoticCatalog" style="margin:0 0 10px;font-size:12px;color:#bdd6ff">
+    <summary style="cursor:pointer;padding:6px 0">✨ 特殊与假想天体</summary>
+    <div class="row" id="exoticTools">
+      <button class="btn" type="button" data-type="sakurai">🌫️ 樱井天体</button>
+      <button class="btn" type="button" data-type="cepheid">💓 造父变星</button>
+      <button class="btn" type="button" data-type="quasar">🌌 类星体</button>
+      <button class="btn" type="button" data-type="strangeStar">🟣 奇异星</button>
+      <button class="btn" type="button" data-type="electroweakStar">⚡ 电弱星</button>
+      <button class="btn" type="button" data-type="preonStar">✦ 先子星</button>
+      <button class="btn" type="button" data-type="bosonStar">🔵 玻色子星</button>
+      <button class="btn" type="button" data-type="solitonStar">🔷 孤子星</button>
+      <button class="btn" type="button" data-type="qStar">🟪 Q 星</button>
+      <button class="btn" type="button" data-type="blackDwarf">⚫ 黑矮星</button>
+      <button class="btn" type="button" data-type="blackNeutron">🌑 黑中子星</button>
+    </div>
+    <button class="btn" id="btnChandraDemo" type="button" style="width:100%">⚖️ 钱德拉塞卡极限演示</button>
+    <a href="https://github.com/linyucandy/cosmic-collision-3d/blob/main/docs/exotic-objects.md" target="_blank" rel="noopener noreferrer" style="display:block;color:#a9cfff;margin-top:7px">科学状态与参考资料 ↗</a>
+  </details>
+  <div id="objectInfo" style="font-size:11px;color:#c3d9f5;line-height:1.5;margin-bottom:8px"></div>
+  <div id="limitInfo" hidden style="font-size:11px;color:#ffdfa5;line-height:1.5;margin-bottom:8px"></div>
   <div class="slider-row">
     <label><span>质量倍率</span><span id="massVal">×1.0</span></label>
     <input id="massSlider" type="range" min="0.2" max="5" step="0.1" value="1">
@@ -149,8 +170,8 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=3"></script>
-<script src="planet-assessment.js?v=2"></script>
+<script src="celestial-size.js?v=4"></script>
+<script src="planet-assessment.js?v=3"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -788,7 +809,35 @@ const TYPES = {
   blueGiant: { base: 1500, rk: 2.6, color: 0x86b8ff },
   quarkStar: { base: 9000, rk: 0.16,color: 0xd18aff },
   wormhole:  { base: 1500, rk: 0.95,color: 0x59ffd8 },
-  probe:     { base: 0.02, rk: 1, color: 0x9edcff }
+  probe:     { base: 0.02, rk: 1, color: 0x9edcff },
+  sakurai:   { base: 500, rk: 4.0, color: 0xe88c58 },
+  cepheid:   { base: 900, rk: 3.1, color: 0xffd582 },
+  quasar:    { base: 12000, rk: 1.2, color: 0x9edbff },
+  strangeStar: { base: 9000, rk: .16, color: 0xff68a4 },
+  electroweakStar: { base: 10000, rk: .15, color: 0x71edff },
+  preonStar: { base: 11000, rk: .12, color: 0xffe495 },
+  bosonStar: { base: 7000, rk: .25, color: 0x96a5ff },
+  solitonStar: { base: 7500, rk: .23, color: 0x77e7c5 },
+  qStar: { base: 8000, rk: .18, color: 0xd597ff },
+  blackDwarf: { base: 3000, rk: .30, color: 0x344250 },
+  blackNeutron: { base: 6000, rk: .18, color: 0x344564 }
+};
+// Only the white-dwarf demonstration maps its reference 3000 game units to one solar mass.
+const WHITE_DWARF_SOLAR_UNIT = 3000;
+const CHANDRASEKHAR_LIMIT = WHITE_DWARF_SOLAR_UNIT * 1.4;
+const EXOTIC_INFO = {
+  sakurai:['已观测','樱井天体（V4334 Sgr）是经历极晚期热脉冲的恒星残骸；周围尘埃遮蔽了星光。'],
+  cepheid:['已观测','造父变星会周期性膨胀和变亮；真实周期与光度相关，这里使用随质量变化的加快模拟周期。'],
+  quasar:['已观测','类星体是由超大质量黑洞吸积供能的明亮活动星系核，喷流和尺度为示意。'],
+  strangeStar:['假说','假想由奇异夸克物质构成的致密星，与夸克星概念相关，尚未确认。'],
+  electroweakStar:['假说','电弱星是有关极端高密度物质与电弱过程的理论模型，尚未观测确认。'],
+  preonStar:['假说','先子星假设夸克和轻子还有更小组成；先子本身尚无实验证据。'],
+  bosonStar:['假说','玻色子星由假设的玻色场引力束缚形成，目前没有确认观测。'],
+  solitonStar:['假说','孤子星是某些自相互作用场形成的理论致密天体，与部分玻色子星模型有关。'],
+  qStar:['假说','Q 星是基于特定物质或场模型提出的致密天体，不是已确认类别。'],
+  blackDwarf:['假说','黑矮星是白矮星极长时间冷却后的理论状态；宇宙目前尚不够古老。'],
+  blackNeutron:['游戏设定','“黑中子星”没有统一确认的标准分类；这里作为冷暗致密星的想象示意。'],
+  whiteDwarf:['已观测','这里用碳氧白矮星的简化模型演示钱德拉塞卡极限。']
 };
 const PLANET_COLORS = [0x5fb2ff, 0x7de0a3, 0xe0a35f, 0xc98bff, 0xff8b8b, 0x8be0dd];
 let sizeMode = 'reference';
@@ -834,6 +883,7 @@ let xrayEnabled = xrayToggle.checked;
 xrayToggle.addEventListener('change', () => { xrayEnabled = xrayToggle.checked; });
 const bodies = [];
 const measurementOverlay = document.getElementById('measurementOverlay');
+const labelMeasureContext = document.createElement('canvas').getContext('2d');
 let nextBodyLabelId = 1;
 let collisions = 0;
 let simT = 0;
@@ -867,7 +917,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
       panel.position.x = side * 1.65;
       mesh.add(panel);
     }
-  } else if (type === 'star' || type === 'blueGiant' || type === 'whiteDwarf') {
+  } else if (type === 'star' || type === 'blueGiant' || type === 'whiteDwarf' || type === 'cepheid') {
     // 发光恒星类：颜色可定制（星系核金黄、旋臂偏蓝）
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color }));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true,
@@ -875,7 +925,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     glow.scale.setScalar(4);  // 父级 scale=r
     mesh.add(glow);
     extra.glow = glow;
-  } else if (type === 'blackhole') {
+  } else if (type === 'blackhole' || type === 'quasar') {
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x000000 }));
     const pivot = new THREE.Group();
     pivot.rotation.x = 1.12;                  // 盘面倾角
@@ -911,6 +961,14 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
       opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
     glow.scale.setScalar(4.5);
     mesh.add(glow);
+    if (type === 'quasar') {
+      const jets = new THREE.Group();
+      const jetMat = new THREE.MeshBasicMaterial({color:0x9cdfff,transparent:true,opacity:.65,
+        side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false});
+      const up = new THREE.Mesh(beamGeo,jetMat), down = new THREE.Mesh(beamGeo,jetMat);
+      up.scale.set(.6,4,.6); down.scale.set(.6,4,.6); down.rotation.z = Math.PI;
+      jets.add(up,down); mesh.add(jets); extra.jets = jets;
+    }
     extra.disk = disk; extra.streaks = streaks; extra.innerRing = innerRing;
     extra.doppler = doppler; extra.glow = glow;
     extra.mats = [diskMat, streakMat, innerMat, photon.material, lens.material, doppler.material];
@@ -994,6 +1052,29 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     glow.scale.setScalar(4);
     mesh.add(glow);
     extra.glow = glow;
+  } else if (type === 'sakurai') {
+    mesh = new THREE.Mesh(sphereGeo,new THREE.MeshStandardMaterial({color:0xd68b5a,
+      roughness:1,emissive:0x5a2414,emissiveIntensity:.6}));
+    const dust = new THREE.Mesh(pringGeo,new THREE.MeshBasicMaterial({map:pringTex,color:0x966348,
+      transparent:true,opacity:.55,side:THREE.DoubleSide,depthWrite:false}));
+    dust.rotation.x = .8; mesh.add(dust); extra.dust = dust;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffaa70,
+      transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false}));
+    glow.scale.setScalar(4); mesh.add(glow); extra.glow = glow;
+  } else if (['strangeStar','electroweakStar','preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron'].includes(type)) {
+    const dark = type === 'blackDwarf' || type === 'blackNeutron';
+    mesh = new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({color,transparent:!dark,
+      opacity:dark ? 1 : .85}));
+    if (!dark) {
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color,
+        transparent:true,opacity:.6,blending:THREE.AdditiveBlending,depthWrite:false}));
+      glow.scale.setScalar(5); mesh.add(glow); extra.glow = glow;
+      if (['bosonStar','solitonStar','qStar'].includes(type)) {
+        const shell = new THREE.Mesh(pringGeo,new THREE.MeshBasicMaterial({color,
+          transparent:true,opacity:.48,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+        shell.rotation.x = .85; mesh.add(shell); extra.fieldRing = shell;
+      }
+    }
   } else if (type === 'quarkStar') {
     // 夸克星（理论天体）：比中子星更致密，奇异物质呈紫辉+青色边缘
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xf3e2ff }));
@@ -1061,9 +1142,10 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
-  if (type !== 'blackhole' && type !== 'probe') {
-    // 初始自转 = 滑块比例 × 解体角速度（≥1 出生即解体）
-    b.spinW = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
+  if (type !== 'blackhole' && type !== 'quasar' && type !== 'probe') {
+    // Extremely compact hypothetical models use a visual spin cap to avoid numeric instability.
+    const initialSpin = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
+    b.spinW = EXOTIC_INFO[type] && r < .01 ? Math.min(10,initialSpin) : initialSpin;
   }
   if (mesh.material && mesh.material.emissive) {
     b.mat = mesh.material;                       // 供潮汐加热改色
@@ -1136,12 +1218,14 @@ for (let i = 0; i < 3; i++) {
   const l = new THREE.PointLight(0xffddaa, 0, 0, 2);
   scene.add(l); starLights.push(l);
 }
-const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant', 'quarkStar']);
+const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant', 'quarkStar','sakurai','cepheid','quasar']);
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
   comet: '彗星', blackhole: '黑洞', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
-  redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器' };
+  redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
+  sakurai:'樱井天体',cepheid:'造父变星',quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',
+  preonStar:'先子星',bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星' };
 function updateLights() {
   const stars = bodies.filter(b => LIT_TYPES.has(b.type))
     .sort((a, b2) => b2.mass - a.mass).slice(0, 3);
@@ -1150,7 +1234,7 @@ function updateLights() {
       starLights[i].position.copy(stars[i].mesh.position);
       starLights[i].color.set(stars[i].color);
       // r160 物理光照：强度需随距离平方补偿
-      starLights[i].intensity = 18000 + Math.min(40000, stars[i].mass * 30);
+      starLights[i].intensity = (18000 + Math.min(40000, stars[i].mass * 30)) * (stars[i].luminosityFactor || 1);
     } else starLights[i].intensity = 0;
   }
 }
@@ -1574,7 +1658,8 @@ function handleCollisions(swept = false) {
         }
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
-        const survivor = small.type === 'blackhole' ? small : big;
+        const isHole = body => body.type === 'blackhole' || body.type === 'quasar';
+        const survivor = isHole(a) !== isHole(b) ? (isHole(a) ? a : b) : big;
         const other = survivor === big ? small : big;
         addImpactCrater(survivor, other);
         const M = survivor.mass + other.mass;
@@ -1604,7 +1689,7 @@ function handleCollisions(swept = false) {
         const small = big === a ? b : a;
         const tideR = rr * 1.45;
         if (d2 < tideR * tideR) {
-          if (small.mass > 8 && small.type !== 'blackhole' && small.type !== 'wormhole' && !dead.has(small)) {
+          if (small.mass > 8 && small.type !== 'blackhole' && small.type !== 'quasar' && small.type !== 'wormhole' && !dead.has(small)) {
             small.tideT = big; small.tideD = Math.sqrt(d2); small.tideR = tideR;
           }
         } else if (HEATABLE.has(small.type) && HEATERS.has(big.type)) {
@@ -1641,7 +1726,7 @@ function handleCollisions(swept = false) {
     v.tideCd -= timeScale / 60;
     if (v.tideCd <= 0 && bodies.length < 315) {
       tidalStrip(v, v.tideT, inten);
-      v.tideCd = v.tideT.type === 'blackhole' ? 0.14 : 0.28;   // 黑洞 TDE 撕扯更快
+      v.tideCd = (v.tideT.type === 'blackhole' || v.tideT.type === 'quasar') ? 0.14 : 0.28;   // 黑洞 TDE 撕扯更快
     }
     updateBridge(v);                             // 发光物质桥
   }
@@ -1666,7 +1751,7 @@ function updateBridge(v) {
 
 /* 潮汐撕裂：内侧物质坠向主星（L1 吸积流），外侧甩成潮汐尾（L2），侧向碎片入轨成盘；黑洞触发 TDE */
 function tidalStrip(v, attractor, inten) {
-  const tde = attractor.type === 'blackhole';
+  const tde = attractor.type === 'blackhole' || attractor.type === 'quasar';
   const dm = Math.max(0.8, v.mass * (0.02 + Math.random() * 0.02) * (0.5 + inten) * (tde ? 1.6 : 1));
   if (v.mass - dm < 6) return;
   const dir = attractor.mesh.position.clone().sub(v.mesh.position).normalize();
@@ -1724,12 +1809,12 @@ function checkEvolution(b) {
     transformBody(b, 'whiteDwarf');
     return true;
   }
-  if (b.type === 'whiteDwarf' && M >= 5000) {    // Ia 型超新星：完全炸碎，无残骸
+  if (b.type === 'whiteDwarf' && M >= CHANDRASEKHAR_LIMIT) { // Simplified carbon-oxygen Type Ia channel.
     createNebula('supernova', b.mesh.position, b.r);
     explode(b.mesh.position, b);
     explode(b.mesh.position, { mass: M * 0.8, color: 0xbfd8ff, r: b.r, mesh: b.mesh });
     scatterDebris(b);
-    if (selected === b) showNotice('白矮星发生超新星爆发，已碎裂为小天体。');
+    if (selected === b) showNotice('白矮星达到模拟钱德拉塞卡极限，触发简化 Ia 型超新星。');
     removeBody(b);
     return true;
   }
@@ -1766,14 +1851,21 @@ function transformBody(b, newType) {
 
 /* Ia 超新星高速碎屑 */
 function scatterDebris(b) {
-  for (let i = 0; i < 6; i++) {
-    const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-    const sp = 3 + Math.random() * 4;
-    spawnBody(b.mesh.position.x, b.mesh.position.y, b.mesh.position.z,
-      b.vel.x + Math.sin(ph) * Math.cos(th) * sp,
-      b.vel.y + Math.cos(ph) * sp,
-      b.vel.z + Math.sin(ph) * Math.sin(th) * sp,
-      b.mass * 0.06, 'asteroid', 0xcfe0ff);
+  const count = 6, phase = Math.random() * Math.PI * 2;
+  const fragmentMass = b.mass * .06;
+  const startRadius = Math.max(b.r * 1.5, radiusFor('asteroid', fragmentMass) * 4, .01);
+  // Use the simulation's softened gravity to give the fragments enough outward energy.
+  const escapeSpeed = Math.sqrt(2 * G * fragmentMass * (count - 1) / Math.sqrt(startRadius * startRadius + 60));
+  // Spread fragments over a sphere so same-event debris does not immediately merge.
+  for (let i = 0; i < count; i++) {
+    const y = 1 - 2 * (i + .5) / count, radial = Math.sqrt(1 - y*y);
+    const angle = phase + i * Math.PI * (3 - Math.sqrt(5));
+    const x = Math.cos(angle) * radial, z = Math.sin(angle) * radial;
+    const speed = Math.max(3, escapeSpeed * 1.5) * (.9 + Math.random() * .2);
+    if (!spawnBody(b.mesh.position.x + x * startRadius,
+      b.mesh.position.y + y * startRadius, b.mesh.position.z + z * startRadius,
+      b.vel.x + x * speed, b.vel.y + y * speed, b.vel.z + z * speed,
+      fragmentMass, 'asteroid', 0xcfe0ff)) break;
   }
 }
 
@@ -1805,6 +1897,9 @@ let dragA = null;
 const ghost = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({
   color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false }));
 ghost.visible = false;
+const ghostMarker = new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture,color:0x9edfff,
+  transparent:true,depthWrite:false,toneMapped:false}));
+ghostMarker.visible = false; ghostMarker.raycast = () => {}; ghost.add(ghostMarker);
 scene.add(ghost);
 const arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 10, 0x9db4ff);
 arrow.visible = false;
@@ -1846,6 +1941,22 @@ function pickBody(e) {
   }
   return best;
 }
+let infoBody = null;
+function updateObjectInfo(type, mass) {
+  const info = EXOTIC_INFO[type];
+  const text = document.getElementById('objectInfo');
+  text.textContent = info ? `${TYPE_NAMES[type]} · ${info[0]}：${info[1]}` :
+    `${TYPE_NAMES[type] || type} · 游戏沙盒模拟`;
+  if (['strangeStar','electroweakStar','preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron'].includes(type)) {
+    text.textContent += ' 参考大小下很小，可切换“易观察”查看外观。';
+  }
+  const limit = document.getElementById('limitInfo');
+  limit.hidden = type !== 'whiteDwarf';
+  if (type === 'whiteDwarf') {
+    const value = mass / WHITE_DWARF_SOLAR_UNIT;
+    limit.textContent = `钱德拉塞卡极限 ≈ 1.4 太阳质量；白矮星专用换算：${value.toFixed(2)} 太阳质量。模型达到极限时演示 Ia 型爆发；不同白矮星命运可能不同。`;
+  }
+}
 function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
@@ -1856,8 +1967,10 @@ function selectBody(b) {
   selected = b;
   selRing.visible = !!b;
   focusChip.style.display = b ? 'block' : 'none';
-  if (!b) focusChip.textContent = '';
-  else updateFocusLabel();
+  if (!b) {
+    infoBody = null; focusChip.textContent = '';
+    updateObjectInfo(curType, TYPES[curType].base * mMul);
+  } else { infoBody = b; updateFocusLabel(); updateObjectInfo(b.type, b.mass); }
 }
 function setAutomaticOrbit() {
   if (!selected || !bodies.includes(selected)) {
@@ -2025,6 +2138,18 @@ function demoStellarEvolution(type) {
   camera.position.set(0, radius * .9, radius * 3.7);
   controls.target.set(0, 0, 0);
   showNotice(type === 'planetary' ? '红巨星抛出气体，形成行星状星云与白矮星。' : '恒星爆发超新星，留下扩散的残骸和黑洞。');
+}
+function demoChandrasekhar() {
+  clearScene(); paused = true; timeScale = 1;
+  document.getElementById('btnPause').textContent = '▶ 继续';
+  document.getElementById('btnSpeed').textContent = '⏩ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const dwarf = spawnBody(0,0,0,0,0,0,CHANDRASEKHAR_LIMIT-20,'whiteDwarf');
+  // Start the accreting material at the surface so the very small reference-scale body cannot be skipped.
+  spawnBody(dwarf.r * .9,0,0,-.01,0,0,30,'asteroid');
+  camera.position.set(0,5,35); controls.target.set(0,0,0);
+  selectBody(dwarf); selRing.visible = false;
+  showNotice('白矮星接近钱德拉塞卡极限；点击继续，让吸积触发简化 Ia 型超新星。');
 }
 function demoBlackHoleLensing() {
   clearScene(); paused = true; timeScale = 1;
@@ -2270,16 +2395,18 @@ const massVal = document.getElementById('massVal');
 const gSlider = document.getElementById('gSlider');
 const gVal = document.getElementById('gVal');
 
-document.querySelectorAll('#tools .btn').forEach(btn => {
+document.querySelectorAll('#tools .btn, #exoticTools .btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('#tools .btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#tools .btn, #exoticTools .btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     curType = btn.dataset.type;
+    infoBody = null; updateObjectInfo(curType, TYPES[curType].base * mMul);
   });
 });
 massSlider.addEventListener('input', () => {
   mMul = parseFloat(massSlider.value);
   massVal.textContent = '×' + mMul.toFixed(1);
+  infoBody = null; updateObjectInfo(curType, TYPES[curType].base * mMul);
 });
 gSlider.addEventListener('input', () => {
   G = parseFloat(gSlider.value);
@@ -2319,6 +2446,7 @@ document.getElementById('btnReset').addEventListener('click', () => {
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
+document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
 document.getElementById('btnRingTides').addEventListener('click', () => { ensureAudio(); demoRingTides(); });
 document.getElementById('btnLensDemo').addEventListener('click', () => { ensureAudio(); demoBlackHoleLensing(); });
@@ -2388,8 +2516,13 @@ function updateSizeMarkers() {
   for (const b of bodies) {
     const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
     b.sizeMarker.visible = sizeMode === 'reference' && b.r * focal / distance < 3;
-    if (b.sizeMarker.visible) b.sizeMarker.scale.setScalar(distance * 16 / focal / Math.max(.000001, b.mesh.scale.x));
+    if (b.sizeMarker.visible) b.sizeMarker.scale.setScalar(distance * 16 / focal / Math.max(1e-12, b.mesh.scale.x));
   }
+  if (ghost.visible) {
+    const distance = Math.max(.001, camera.position.distanceTo(ghost.position));
+    ghostMarker.visible = ghost.scale.x * focal / distance < 3;
+    if (ghostMarker.visible) ghostMarker.scale.setScalar(distance * 18 / focal / Math.max(1e-12,ghost.scale.x));
+  } else ghostMarker.visible = false;
 }
 document.getElementById('sizeMode').addEventListener('change', event => {
   const demoHole = lensDemoGrid && lensDemoGrid.userData.hole;
@@ -2397,7 +2530,7 @@ document.getElementById('sizeMode').addEventListener('change', event => {
   sizeMode = event.target.value;
   for (const b of bodies) {
     const spinRatio = b.spinW / omegaBreak(b.mass, b.r);
-    b.r = radiusFor(b.type, b.mass);
+    b.r = radiusFor(b.type, b.mass) * (b.type === 'cepheid' ? 1 + .12 * cepheidWave(b.mass,simT) : 1);
     b.mesh.scale.setScalar(b.r);
     if (b.tail) b.tail.scale.set(b.r * 3.5, b.r * 18, 1);
     b.spinW = spinRatio * omegaBreak(b.mass, b.r);
@@ -2413,14 +2546,14 @@ document.getElementById('sizeMode').addEventListener('change', event => {
 });
 function updateXrayEffects() {
   const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-  const baseline = {blackhole:.85, neutron:1, quarkStar:1, whiteDwarf:.35, blueGiant:.4, star:.16, redGiant:.13};
+  const baseline = {blackhole:.85,quasar:1,neutron:1,quarkStar:1,strangeStar:.85,electroweakStar:1,preonStar:.7,bosonStar:.3,solitonStar:.35,qStar:.45,whiteDwarf:.35,blueGiant:.4,star:.16,redGiant:.13,cepheid:.25};
   for (const b of bodies) {
     const strength = Math.min(1, (baseline[b.type] || 0) + Math.max(0, b.heat || 0) * .6);
     b.xray.visible = xrayEnabled && strength > .12;
     if (!b.xray.visible) continue;
     const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
     const worldSize = Math.max(b.r * (3.2 + strength), distance * 24 / focal);
-    b.xray.scale.setScalar(worldSize / Math.max(.000001, b.mesh.scale.x));
+    b.xray.scale.setScalar(worldSize / Math.max(1e-12, b.mesh.scale.x));
     b.xray.material.opacity = Math.min(.85, .2 + strength * .65);
   }
 }
@@ -2474,7 +2607,7 @@ function updateBlackHoleLenses() {
   lensPass.uniforms.aspect.value = window.innerWidth / window.innerHeight;
   if (!document.getElementById('lensToggle').checked) { lensPass.enabled = false; return; }
   camera.updateMatrixWorld(); camera.getWorldDirection(_lensForward);
-  const holes = bodies.filter(b => b.type === 'blackhole')
+  const holes = bodies.filter(b => b.type === 'blackhole' || b.type === 'quasar')
     .sort((a, b) => camera.position.distanceToSquared(a.mesh.position) - camera.position.distanceToSquared(b.mesh.position));
   const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   let count = 0;
@@ -2592,17 +2725,19 @@ function updateMeasurements() {
   const occupied = [], shown = new Set();
   const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   const limit = window.innerWidth <= 640 ? 24 : 60;
+  labelMeasureContext.font = `${window.innerWidth <= 640 ? 10 : 11}px "Microsoft YaHei", sans-serif`;
   for (const item of candidates) {
     if (occupied.length >= limit) break;
     const body = item.body;
-    const x = Math.max(80, Math.min(window.innerWidth - 80, item.x));
-    const y = Math.max(24, Math.min(window.innerHeight - 4,
-      item.y - Math.max(13, Math.min(80, body.r * focal / Math.max(.001,item.distance) + 8))));
-    if (body !== reference && occupied.some(p => Math.abs(p.x-x)<105 && Math.abs(p.y-y)<24)) continue;
-    occupied.push({x,y});
     const distance = body.mesh.position.distanceTo(reference ? reference.mesh.position : controls.target);
     const text = `${TYPE_NAMES[body.type] || body.type} #${body.labelNumber} · ` +
       (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
+    const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(text).width) + 14);
+    const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
+    const y = Math.max(24, Math.min(window.innerHeight - 4,
+      item.y - Math.max(13, Math.min(80, body.r * focal / Math.max(.001,item.distance) + 8))));
+    if (body !== reference && occupied.some(p => Math.abs(p.x-x) < (p.width + width)/2 + 6 && Math.abs(p.y-y)<24)) continue;
+    occupied.push({x,y,width});
     if (body.labelEl.textContent !== text) body.labelEl.textContent = text;
     body.labelEl.classList.toggle('selected',body === reference);
     body.labelEl.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-100%)`;
@@ -2625,6 +2760,17 @@ function updateCameraFarPlane() {
     camera.updateProjectionMatrix();
   }
 }
+function cepheidWave(mass, time) {
+  // A mass-dependent game cycle; it is not a calibrated period-luminosity relation.
+  return Math.sin(time / Math.pow(Math.max(.05, mass / TYPES.cepheid.base), .25));
+}
+function updateVariableStars(time) {
+  for (const b of bodies) if (b.type === 'cepheid') {
+    const wave = cepheidWave(b.mass, time);
+    b.r = radiusFor('cepheid', b.mass) * (1 + .12 * wave);
+    b.luminosityFactor = 1 + .35 * wave;
+  }
+}
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
@@ -2632,6 +2778,7 @@ function loop() {
       explode(bodies[0].mesh.position, bodies[0]);
       nextShockwaveAt = performance.now() + 3000;
     }
+    updateVariableStars(simT);
     step();
     updateEffects();
     simT += timeScale / 60;
@@ -2640,7 +2787,7 @@ function loop() {
     // 恒星脉动 & 吸积盘旋转 & 小行星自转
     for (const b of bodies) {
       // 自转 · 扁化形变 · 潮汐定向拉扯 · 超过解体阈值甩出碎片（黑洞除外）
-      if (b.type !== 'blackhole') {
+      if (b.type !== 'blackhole' && b.type !== 'quasar') {
         const ratio = b.spinW / omegaBreak(b.mass, b.r);
         b.spin += b.spinW * timeScale / 60;
         const target = Math.max(0, Math.min(0.28, (ratio - 0.55) * 0.42));
@@ -2695,7 +2842,7 @@ function loop() {
       if (checkEvolution(b)) continue;             // 质量上限 → 演化/超新星
       if (b.type === 'star' && b.glow) {
         b.glow.scale.setScalar(4 * (1 + 0.05 * Math.sin(simT * 3 + b.spin)));
-      } else if (b.type === 'blackhole' && b.disk) {
+      } else if ((b.type === 'blackhole' || b.type === 'quasar') && b.disk) {
         b.disk.rotation.z += 0.02;             // 旋转几何体，不重采样贴图 → 无闪烁
         if (b.streaks) b.streaks.rotation.z += 0.05;   // 差速：流纹层更快 → 拖尾流动
         if (b.innerRing) {
@@ -2703,6 +2850,8 @@ function loop() {
           b.innerRing.material.opacity = 0.72 + 0.25 * Math.sin(simT * 6 + b.spin * 7);
         }
         if (b.doppler) b.doppler.material.opacity = 0.15 + 0.05 * Math.sin(simT * 2.3 + b.spin);
+      } else if (b.type === 'cepheid' && b.glow) {
+        b.glow.scale.setScalar(3.5 + .8 * (b.luminosityFactor || 1));
       } else if (b.type === 'comet' && b.tail) {
         updateCometTail(b);
       } else if (b.clouds) {
@@ -2743,6 +2892,7 @@ function loop() {
     })) : [];
     renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type] || observed.type} #${observed.labelNumber}` : '');
     updateProbeTelemetry();
+    if (infoBody && bodies.includes(infoBody) && infoBody.type === 'whiteDwarf') updateObjectInfo(infoBody.type,infoBody.mass);
     lastAssessmentAt = performance.now();
   }
   updateCameraFarPlane();
@@ -2800,6 +2950,7 @@ else if (sceneParam === 'zoo') {
   spawnBody(880, 30, 420, -0.3, 0, 0.18, TYPES.wormhole.base, 'wormhole');
 }
 else makeStarSystem(1);
+updateObjectInfo(curType, TYPES[curType].base * mMul);
 loop();
 </script>
 </body>

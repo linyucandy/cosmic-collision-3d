@@ -45,12 +45,14 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
   get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
+  get updateVariableStars() { return typeof updateVariableStars === "undefined" ? null : updateVariableStars; },
   get lensPass() { return typeof lensPass === "undefined" ? null : lensPass; },
   get lensDemoGrid() { return typeof lensDemoGrid === "undefined" ? null : lensDemoGrid; },
   get referenceGrid() { return typeof referenceGrid === "undefined" ? null : referenceGrid; },
   get gridSpacing() { return typeof gridSpacing === "undefined" ? null : gridSpacing; },
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
+  get ghostMarker() { return typeof ghostMarker === "undefined" ? null : ghostMarker; },
   get selected() { return selected; },
   get shapeScale() { return typeof shapeScale === 'function' ? shapeScale : null; },
   get updateFocusLabel() { return typeof updateFocusLabel === 'function' ? updateFocusLabel : null; } };
@@ -463,6 +465,23 @@ loop();''')
         self.page.wait_for_function('!sim.lensPass.enabled',timeout=15000)
         self.assertEqual(self.errors,[])
 
+    def test_crowded_labels_do_not_overlap(self):
+        self.open_sim()
+        self.page.evaluate("""() => {sim.clear();for(let i=0;i<5;i++)
+          sim.spawnBody(-150+i*75,0,0,0,0,0,600,'star');}""")
+        self.page.wait_for_function("document.querySelectorAll('.body-label:not([hidden])').length >= 2")
+        result=self.page.evaluate("""() => {
+          const rectangles=[...document.querySelectorAll('.body-label:not([hidden])')].map(e=>e.getBoundingClientRect());
+          let overlaps=0;
+          for(let i=0;i<rectangles.length;i++)for(let j=i+1;j<rectangles.length;j++){
+            const a=rectangles[i],b=rectangles[j];
+            if(a.left<b.right && b.left<a.right && a.top<b.bottom && b.top<a.bottom)overlaps++;
+          }
+          return {count:rectangles.length,overlaps};
+        }""")
+        self.assertGreaterEqual(result['count'],2,result)
+        self.assertEqual(result['overlaps'],0,result)
+
     def test_body_labels_show_type_and_three_dimensional_distance_and_can_be_toggled(self):
         self.open_sim()
         self.page.evaluate("""() => {
@@ -571,6 +590,128 @@ loop();''')
         self.page.evaluate('sim.selected.mesh.position.set(1200,130,650)')
         self.page.wait_for_function('sim.referenceGrid.position.distanceTo(sim.selected.mesh.position)<0.01')
         self.assertEqual(self.page.evaluate('sim.selected.mesh.position.toArray()'),[1200,130,650])
+        self.assertEqual(self.errors,[])
+
+    def test_exotic_catalog_creates_distinct_types_with_accurate_statuses(self):
+        self.open_sim()
+        self.page.locator('#exoticCatalog summary').click(timeout=5000)
+        types=['sakurai','cepheid','quasar','strangeStar','electroweakStar','preonStar',
+          'bosonStar','solitonStar','qStar','blackDwarf','blackNeutron']
+        self.page.evaluate('sim.clear()')
+        for i,kind in enumerate(types):
+            self.page.locator(f'#exoticCatalog [data-type="{kind}"]').click()
+            self.assertNotEqual(self.page.locator('#objectInfo').inner_text(),'')
+            result=self.page.evaluate("""([kind,x]) => {const b=sim.spawnBody(x,0,0,0,0,0,
+              ({sakurai:500,cepheid:900,quasar:12000,strangeStar:9000,electroweakStar:10000,preonStar:11000,
+              bosonStar:7000,solitonStar:7500,qStar:8000,blackDwarf:3000,blackNeutron:6000})[kind],kind);
+              return {type:b.type,r:b.r,info:document.querySelector('#objectInfo').textContent};}""",[kind,i*300])
+            self.assertEqual(result['type'],kind);self.assertGreater(result['r'],0)
+            if kind not in ['sakurai','cepheid','quasar']:
+                self.assertTrue('假说' in result['info'] or '设定' in result['info'],result)
+        self.page.select_option('#sizeMode','display')
+        self.assertTrue(self.page.evaluate('sim.bodies.every(b=>Number.isFinite(b.r)&&b.r>0)'))
+        self.assertEqual(self.errors,[])
+
+    def test_chandrasekhar_threshold_and_variable_star_pulsation(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          if(!sim.updateVariableStars)return null;
+          sim.clear();const star=sim.spawnBody(0,0,0,0,0,0,900,'cepheid');
+          sim.updateVariableStars(0);const r0=star.r,lum0=star.luminosityFactor;
+          const heavier=sim.spawnBody(1000,0,0,0,0,0,1800,'cepheid');
+          sim.updateVariableStars(Math.PI/2);const r1=star.r,lum1=star.luminosityFactor,heavyLum=heavier.luminosityFactor;
+          sim.clear();const below=sim.spawnBody(0,0,0,0,0,0,4199,'whiteDwarf');
+          const low=sim.checkEvolution(below),belowSurvives=sim.bodies.includes(below);
+          sim.clearScene();const at=sim.spawnBody(0,0,0,0,0,0,4200,'whiteDwarf');
+          const high=sim.checkEvolution(at);
+          return {r0,r1,lum0,lum1,heavyLum,low,belowSurvives,high,removed:!sim.bodies.includes(at),
+            supernova:sim.nebulae.some(n=>n.type==='supernova')};
+        }""")
+        self.assertIsNotNone(result);self.assertNotEqual(result['r0'],result['r1'])
+        self.assertNotEqual(result['lum0'],result['lum1']);self.assertNotEqual(result['lum1'],result['heavyLum'])
+        self.assertFalse(result['low']);self.assertTrue(result['belowSurvives'])
+        self.assertTrue(result['high']);self.assertTrue(result['removed']);self.assertTrue(result['supernova'])
+        self.assertEqual(self.errors,[])
+
+    def test_extremely_small_preon_star_has_visible_placement_marker(self):
+        self.open_sim();self.page.evaluate('sim.clear()')
+        self.page.locator('#exoticCatalog summary').click()
+        self.page.locator('#exoticTools [data-type="preonStar"]').click()
+        self.page.mouse.move(1100,450);self.page.mouse.down()
+        self.page.wait_for_function('sim.ghost.visible && sim.ghostMarker && sim.ghostMarker.visible',timeout=5000)
+        self.page.mouse.move(1150,450);self.page.mouse.up()
+        self.page.wait_for_function("sim.bodies.length===1 && sim.bodies[0].sizeMarker.visible")
+        self.assertEqual(self.page.evaluate('sim.bodies[0].type'),'preonStar')
+        self.assertEqual(self.errors,[])
+
+    def test_cepheid_pulsates_in_live_simulation(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,900,'cepheid')")
+        self.page.locator('#btnPause').click()
+        self.page.wait_for_function("sim.bodies[0].type==='cepheid' && Math.abs(sim.bodies[0].luminosityFactor-1)>.02",timeout=15000)
+        result=self.page.evaluate("({radius:sim.bodies[0].r,rendered:sim.bodies[0].mesh.scale.x})")
+        self.assertAlmostEqual(result['radius'],result['rendered'],places=5)
+        self.assertEqual(self.errors,[])
+
+    def test_exotic_catalog_is_usable_on_mobile(self):
+        self.open_sim();self.page.set_viewport_size({'width':390,'height':844})
+        self.page.wait_for_function("document.getElementById('panelControls').hidden")
+        self.page.locator('#toggleControls').click();self.page.locator('#exoticCatalog summary').click()
+        self.page.locator('#exoticTools [data-type="sakurai"]').click()
+        self.assertIn('樱井天体',self.page.locator('#objectInfo').inner_text())
+        self.assertIn('已观测',self.page.locator('#objectInfo').inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_type_ia_fragments_remain_separate_after_simulation_step(self):
+        self.open_sim()
+        for mode in ['reference','display']:
+            self.page.select_option('#sizeMode',mode)
+            for _ in range(3):
+                result=self.page.evaluate("""() => {
+                  sim.clear();const dwarf=sim.spawnBody(0,0,0,0,0,0,4200,'whiteDwarf');
+                  sim.checkEvolution(dwarf);const initial=sim.bodies.length;
+                  sim.step();sim.step();return {initial,after:sim.bodies.length,
+                    mass:sim.bodies.reduce((sum,b)=>sum+b.mass,0),types:sim.bodies.map(b=>b.type)};
+                }""")
+                self.assertEqual(result['initial'],6,result)
+                self.assertEqual(result['after'],6,result)
+                self.assertAlmostEqual(result['mass'],4200*.36)
+                self.assertTrue(all(t=='asteroid' for t in result['types']))
+        self.assertEqual(self.errors,[])
+
+    def test_chandrasekhar_demo_reaches_limit_through_collision(self):
+        self.open_sim();self.page.locator('#exoticCatalog summary').click()
+        self.page.locator('#btnChandraDemo').click()
+        self.assertEqual(self.page.evaluate('sim.selected.type'),'whiteDwarf')
+        self.assertIn('1.4',self.page.locator('#limitInfo').inner_text())
+        self.assertEqual(self.page.locator('#btnPause').inner_text(),'▶ 继续')
+        self.page.locator('#btnPause').click()
+        self.page.wait_for_function("sim.nebulae.some(n=>n.type==='supernova')",timeout=15000)
+        self.assertEqual(self.errors,[])
+
+    def test_white_dwarf_info_does_not_override_new_tool_selection(self):
+        self.open_sim();self.page.evaluate("sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,3000,'whiteDwarf'))")
+        self.page.locator('#exoticCatalog summary').click();self.page.locator('#exoticTools [data-type="preonStar"]').click()
+        self.page.wait_for_timeout(400)
+        self.assertIn('先子星',self.page.locator('#objectInfo').inner_text())
+        self.assertTrue(self.page.locator('#limitInfo').is_hidden())
+        self.assertEqual(self.errors,[])
+
+    def test_quasar_remains_black_hole_nucleus_when_merging_with_more_massive_body(self):
+        self.open_sim()
+        result=self.page.evaluate("""() => {
+          sim.clear();const q=sim.spawnBody(0,0,0,0,0,0,12000,'quasar');
+          sim.spawnBody(q.r,0,0,0,0,0,20000,'neutron');sim.handleCollisions();
+          return {count:sim.bodies.length,type:sim.bodies[0].type,mass:sim.bodies[0].mass};
+        }""")
+        self.assertEqual(result,{'count':1,'type':'quasar','mass':32000})
+        self.assertEqual(self.errors,[])
+
+    def test_quasar_is_a_lensing_high_energy_galactic_nucleus(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.spawnBody(0,0,0,0,0,0,12000,'quasar')")
+        self.page.wait_for_function('sim.bodies[0].xray.visible && sim.lensPass.enabled',timeout=15000)
+        self.assertTrue(self.page.evaluate('!!sim.bodies[0].disk && !!sim.bodies[0].jets'))
         self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):

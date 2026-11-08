@@ -18,3 +18,8 @@ test('shape deformation changes the axis lengths but preserves the physical volu
     const s=size.shapeScale(10,d,t,w);assert.ok(s.every(x=>x>0));assert.ok(Math.abs(s[0]*s[1]*s[2]-1000)<1e-8);
   }
 });
+
+test('quasar and black hole use the same horizon radius at equal game mass',()=>{
+  const models={blackhole:{base:2500,rk:.85},quasar:{base:12000,rk:1.2}};
+  assert.ok(Math.abs(size.radiusFor('quasar',12000,models,'reference')-size.radiusFor('blackhole',12000,models,'reference'))<1e-12);
+});
