@@ -877,6 +877,50 @@ loop();''')
         self.page.screenshot(path=str(ROOT / '.screenshots' / 'menu-mobile-verified.png'), full_page=True)
         self.assertEqual(self.errors, [])
 
+    def test_white_hole_repels_and_reflects_without_absorbing(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#tools [data-type="whitehole"]').count(), 1)
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const hole=sim.spawnBody(0,0,0,0,0,0,2500,'whitehole');
+          const planet=sim.spawnBody(20,0,0,0,0,0,40,'planet');
+          sim.step();
+          const repelled=planet.vel.x>0;
+          sim.clear();
+          const h=sim.spawnBody(0,0,0,0,0,0,2500,'whitehole');
+          const p=sim.spawnBody(-40,0,0,100,0,0,40,'planet');
+          sim.step();
+          return {repelled,alive:sim.bodies.includes(h)&&sim.bodies.includes(p),
+            reflected:p.vel.x<h.vel.x,finite:Number.isFinite(p.mesh.position.x), mass:h.mass};
+        }''')
+        self.assertTrue(result['repelled'] and result['alive'] and result['reflected'] and result['finite'], result)
+        self.assertEqual(result['mass'], 2500, result)
+        self.assertEqual(self.errors, [])
+
+    def test_white_hole_demo(self):
+        self.open_sim()
+        self.page.locator('#btnWhiteHoleDemo').click()
+        self.assertTrue(self.page.evaluate("sim.bodies.some(b=>b.type==='whitehole') && sim.bodies.some(b=>b.type==='planet')"))
+        self.assertEqual(self.errors, [])
+
+    def test_white_hole_collision_with_black_hole_and_distant_gravity(self):
+        self.open_sim()
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const w=sim.spawnBody(0,0,0,0,0,0,2500,'whitehole');
+          const p=sim.spawnBody(100,0,0,0,0,0,40,'planet');
+          sim.step(); const distantAttraction=p.vel.x<0;
+          sim.clear();
+          const white=sim.spawnBody(0,0,0,0,0,0,2500,'whitehole');
+          const black=sim.spawnBody(0,0,0,0,0,0,2500,'blackhole');
+          sim.handleCollisions();
+          return {distantAttraction, both:sim.bodies.includes(white)&&sim.bodies.includes(black),
+            separate:white.mesh.position.distanceTo(black.mesh.position)>0,
+            finite:Number.isFinite(white.vel.x)&&Number.isFinite(black.vel.x)};
+        }''')
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
     def test_planet_scores_respond_to_environment(self):
         self.open_sim()
         self.assertTrue(self.page.evaluate('typeof window.assessPlanet === "function"'))

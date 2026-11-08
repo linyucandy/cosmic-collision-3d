@@ -83,6 +83,7 @@
     <div class="btn" data-type="planet">🪐 行星</div>
     <div class="btn active" data-type="star">⭐ 恒星</div>
     <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
+    <div class="btn" data-type="whitehole">⚪ 白洞</div>
     <div class="btn" data-type="comet">💫 彗星</div>
     <div class="btn" data-type="ringplanet">💍 环行星</div>
     <div class="btn" data-type="gasGiant">🌪️ 气态巨行星</div>
@@ -163,6 +164,7 @@
     <div class="btn" id="btnDemo">💥 演示碰撞</div>
     <button class="btn" id="btnNovaDemo" type="button">💫 新星爆发演示</button>
     <button class="btn" id="btnIaxDemo" type="button">💥 Iax 型超新星演示</button>
+    <button class="btn" id="btnWhiteHoleDemo" type="button">⚪ 白洞排斥演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
@@ -192,7 +194,7 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=5"></script>
+<script src="celestial-size.js?v=6"></script>
 <script src="planet-assessment.js?v=4"></script>
 
 <script type="module">
@@ -825,6 +827,7 @@ const TYPES = {
   hotSubdwarf: { base: 300, rk: 1.6, color: 0xb5dbff },
   wolfRayet: { base: 2200, rk: 3, color: 0xb5eaff },
   blackhole: { base: 2500, rk: 0.85,color: 0x8a5cff },
+  whitehole: { base: 2500, rk: 0.85,color: 0xdffaff },
   comet:     { base: 2,    rk: 1.6, color: 0xaee6ff },
   neutron:   { base: 6000, rk: 0.18,color: 0x9fd8ff },
   ringplanet:{ base: 55,   rk: 1.7, color: 0xe8c98b },
@@ -864,6 +867,7 @@ const WHITE_DWARF_VARIANTS = {
   j2356:{name:'WD J2356−2054', spectrum:'DZ', temp:4040, color:0x68b4f5, note:'虽较冷，但强烈吸收可使计算颜色偏蓝。'}
 };
 const EXOTIC_INFO = {
+  whitehole:['理论概念','白洞可视为某些时空解中黑洞的时间反演，目前没有确认的观测证据。近距离排斥、碰撞反弹和亮环是游戏示意。'],
   redDwarf:['已观测','低质量 M 型主序星，较冷且寿命很长；颜色和大小为示意。'],
   orangeDwarf:['已观测','K 型主序星，通常比太阳更冷、更小；尺度为示意。'],
   hotSubdwarf:['已观测','此处以热亚矮星为例；亚矮星包含多种类别。'],
@@ -1133,6 +1137,14 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     rim.scale.setScalar(8);
     mesh.add(rim);
     extra.glow = glow;
+  } else if (type === 'whitehole') {
+    mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({color:0xffffff}));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xbceaff,transparent:true,
+      opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false}));
+    halo.scale.setScalar(7); mesh.add(halo);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color:0x97eaff,transparent:true,
+      opacity:.75,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+    ring.rotation.x = 1.1; mesh.add(ring); extra.whiteRing = ring; extra.glow = halo;
   } else if (type === 'wormhole') {
     // 虫洞（理论天体）：黑核 + 双层反向旋转青紫环，配对传送
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x000000 }));
@@ -1188,7 +1200,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
-  if (type !== 'blackhole' && type !== 'quasar' && type !== 'probe') {
+  if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe') {
     // Extremely compact hypothetical models use a visual spin cap to avoid numeric instability.
     const initialSpin = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
     b.spinW = EXOTIC_INFO[type] && r < .01 ? Math.min(10,initialSpin) : initialSpin;
@@ -1270,7 +1282,7 @@ const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant', 'quark
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
-  comet: '彗星', blackhole: '黑洞', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
+  comet: '彗星', blackhole: '黑洞', whitehole:'白洞', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
   redGiant: '红巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
   sakurai:'樱井天体',cepheid:'造父变星',quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',
   preonStar:'先子星',bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星' };
@@ -1656,7 +1668,10 @@ function step() {
         const dz = b.mesh.position.z - a.mesh.position.z;
         const d2 = dx*dx + dy*dy + dz*dz + 60;
         const d = Math.sqrt(d2);
-        const f = G * a.mass * b.mass / d2;
+        // Fictional near-field outflow; outside this range the ordinary gravity remains attractive.
+        const whiteOutflow = (a.type === 'whitehole' || b.type === 'whitehole') &&
+          dx*dx + dy*dy + dz*dz < Math.pow(30 + a.r + b.r, 2);
+        const f = (whiteOutflow ? -1 : 1) * G * a.mass * b.mass / d2;
         const fx = f * dx / d, fy = f * dy / d, fz = f * dz / d;
         a.acc.x += fx / a.mass; a.acc.y += fy / a.mass; a.acc.z += fz / a.mass;
         b.acc.x -= fx / b.mass; b.acc.y -= fy / b.mass; b.acc.z -= fz / b.mass;
@@ -1747,6 +1762,24 @@ function handleCollisions(swept = false) {
           pa.lerpVectors(a.previousPosition, pa, impactT);
           pb.lerpVectors(b.previousPosition, pb, impactT);
         }
+        if (a.type === 'whitehole' || b.type === 'whitehole') {
+          // Bounce at the swept contact instead of consuming either body.
+          const n = pb.clone().sub(pa);
+          if (n.lengthSq() < 1e-12) n.subVectors(b.previousPosition, a.previousPosition);
+          if (n.lengthSq() < 1e-12) n.set(1,0,0);
+          n.normalize();
+          const overlap = Math.max(0, rr - pa.distanceTo(pb)) + .01;
+          const total = a.mass + b.mass;
+          pa.addScaledVector(n, -overlap * b.mass / total);
+          pb.addScaledVector(n, overlap * a.mass / total);
+          const relative = b.vel.clone().sub(a.vel).dot(n);
+          if (relative < 1) {
+            const impulse = (1 - relative) / (1/a.mass + 1/b.mass);
+            a.vel.addScaledVector(n,-impulse/a.mass); b.vel.addScaledVector(n,impulse/b.mass);
+          }
+          a.previousPosition.copy(pa); b.previousPosition.copy(pb);
+          continue;
+        }
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
         const isHole = body => body.type === 'blackhole' || body.type === 'quasar';
@@ -1776,6 +1809,7 @@ function handleCollisions(swept = false) {
         dead.add(other);
         collisions++;
       } else {
+        if (a.type === 'whitehole' || b.type === 'whitehole') continue;
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
         const tideR = rr * 1.45;
@@ -2087,6 +2121,9 @@ function setAutomaticOrbit() {
   if (distance <= selected.r + center.r) {
     showNotice('两个天体正在重叠，请先拉开距离再建立轨道。'); return;
   }
+  if ((selected.type === 'whitehole' || center.type === 'whitehole') && distance < 30 + selected.r + center.r) {
+    showNotice('白洞附近的沙盒排斥作用下无法建立此圆轨道，请拉远距离。'); return;
+  }
   const normal = camera.getWorldDirection(new THREE.Vector3());
   const tangent = new THREE.Vector3().crossVectors(normal, radial);
   if (tangent.lengthSq() < 1e-12) {
@@ -2173,7 +2210,7 @@ function placeLaunch(velocity) {
   if (body.type === 'whiteDwarf') applyWhiteDwarfVariant(body, document.getElementById('whiteDwarfVariant').value);
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
-  showNotice(`已创建${TYPE_NAMES[curType] || curType}；碰撞时会合并。`);
+  showNotice(curType === 'whitehole' ? '已创建白洞；近处的排斥和碰撞反弹为游戏示意。' : `已创建${TYPE_NAMES[curType] || curType}；碰撞时可能合并。`);
 }
 canvas.addEventListener('pointerdown', e => {
   ensureAudio();
@@ -2256,6 +2293,21 @@ function demoIax() {
   applyWhiteDwarfVariant(dwarf, document.getElementById('whiteDwarfVariant').value);
   camera.position.set(0,7,40); controls.target.set(0,0,0);
   selectBody(dwarf); selRing.visible = false; triggerIax(dwarf);
+}
+function demoWhiteHole() {
+  clearScene(); paused = false; timeScale = 1;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('btnSpeed').textContent = '⏱ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const mode = document.getElementById('sizeMode'); mode.value = 'display';
+  mode.dispatchEvent(new Event('change'));
+  const hole = spawnBody(0,0,0,0,0,0,2500,'whitehole');
+  spawnBody(-40,0,0,2,0,0,12,'planet');
+  spawnBody(36,0,0,-2,0,0,12,'planet');
+  spawnBody(0,0,-36,0,0,2,12,'planet');
+  camera.position.set(0,32,100); controls.target.set(0,0,0);
+  selectBody(hole); selRing.visible = false;
+  showNotice('白洞为理论概念：近处推开与反弹是游戏示意。演示已切换易观察大小。');
 }
 function demoNova() {
   clearScene(); paused = false; timeScale = 1;
@@ -2617,6 +2669,7 @@ document.getElementById('btnReset').addEventListener('click', () => {
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnNovaDemo').addEventListener('click', () => { ensureAudio(); demoNova(); });
 document.getElementById('btnIaxDemo').addEventListener('click', () => { ensureAudio(); demoIax(); });
+document.getElementById('btnWhiteHoleDemo').addEventListener('click', () => { ensureAudio(); demoWhiteHole(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
@@ -2959,7 +3012,7 @@ function loop() {
     // 恒星脉动 & 吸积盘旋转 & 小行星自转
     for (const b of bodies) {
       // 自转 · 扁化形变 · 潮汐定向拉扯 · 超过解体阈值甩出碎片（黑洞除外）
-      if (b.type !== 'blackhole' && b.type !== 'quasar') {
+      if (b.type !== 'blackhole' && b.type !== 'whitehole' && b.type !== 'quasar') {
         const ratio = b.spinW / omegaBreak(b.mass, b.r);
         b.spin += b.spinW * timeScale / 60;
         const target = Math.max(0, Math.min(0.28, (ratio - 0.55) * 0.42));
@@ -3012,7 +3065,10 @@ function loop() {
         b.mat.emissiveIntensity = b.heatBaseEI;
       }
       if (checkEvolution(b)) continue;             // 质量上限 → 演化/超新星
-      if (b.type === 'wolfRayet' && b.wrWind) {
+      if (b.type === 'whitehole' && b.whiteRing) {
+        b.whiteRing.rotation.z += .025 * timeScale;
+        b.glow.scale.setScalar(7 + .7 * Math.sin(simT * 3));
+      } else if (b.type === 'wolfRayet' && b.wrWind) {
         b.wrWind.rotation.z += .015 * timeScale;
       } else if (b.type === 'star' && b.glow) {
         b.glow.scale.setScalar(4 * (1 + 0.05 * Math.sin(simT * 3 + b.spin)));
