@@ -42,6 +42,8 @@ class SimulatorTests(unittest.TestCase):
 paused = true;
 window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, renderer,
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody, checkEvolution,
+  get applyWhiteDwarfVariant() { return typeof applyWhiteDwarfVariant === 'undefined' ? null : applyWhiteDwarfVariant; },
+  get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
@@ -89,6 +91,42 @@ loop();''')
         self.page.locator('#btnNovaDemo').click()
         self.page.wait_for_function("sim.bodies.some(b => b.type === 'whiteDwarf' && b.novaCount >= 1)", timeout=30000)
         self.assertTrue(self.page.evaluate("sim.bodies.some(b => b.type === 'redDwarf')"))
+        self.assertEqual(self.errors, [])
+
+    def test_white_dwarf_spectrum_examples_and_iax_remnant(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#whiteDwarfVariant option').count(), 8)
+        self.page.locator('#tools [data-type="whiteDwarf"]').click()
+        self.page.select_option('#whiteDwarfVariant', 'j1330')
+        self.assertIn('WD J1330+6435', self.page.locator('#whiteDwarfInfo').inner_text())
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const dwarf=sim.spawnBody(0,0,0,0,0,0,3000,'whiteDwarf');
+          sim.applyWhiteDwarfVariant(dwarf, 'j1330');
+          const initial=dwarf.mass;
+          sim.selectBody(dwarf); sim.triggerIax(dwarf);
+          return {alive:sim.bodies.includes(dwarf), kind:dwarf.type, remnant:dwarf.iaxRemnant,
+            mass:dwarf.mass, initial, label:sim.focusChip.textContent,
+            shell:sim.nebulae.some(n=>n.type==='iax'), color:dwarf.mesh.material.color.getHex()};
+        }''')
+        self.assertTrue(result['alive'] and result['remnant'] and result['shell'], result)
+        self.assertEqual(result['kind'], 'whiteDwarf')
+        self.assertGreater(result['mass'], 0)
+        self.assertLess(result['mass'], result['initial'])
+        self.assertIn('J1330', result['label'])
+        self.assertEqual(self.errors, [])
+
+    def test_white_dwarf_gallery_places_the_chosen_star_and_iax_demo(self):
+        self.open_sim()
+        self.page.locator('#tools [data-type="whiteDwarf"]').click()
+        self.page.locator('#whiteDwarfGallery [data-variant="j2356"]').click()
+        self.assertEqual(self.page.locator('#whiteDwarfVariant').input_value(), 'j2356')
+        self.page.evaluate('sim.clear()')
+        self.page.mouse.click(900, 450)
+        self.assertTrue(self.page.evaluate("sim.bodies.some(b => b.type === 'whiteDwarf' && b.whiteDwarfVariant === 'j2356')"))
+        self.page.locator('#btnIaxDemo').click()
+        self.assertTrue(self.page.evaluate("sim.bodies.some(b => b.iaxRemnant && b.whiteDwarfVariant === 'j2356')"))
+        self.assertTrue(self.page.evaluate("sim.nebulae.some(n => n.type === 'iax')"))
         self.assertEqual(self.errors, [])
 
     def test_nova_distant_donor_and_chandrasekhar_limit(self):

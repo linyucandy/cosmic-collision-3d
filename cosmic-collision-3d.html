@@ -118,6 +118,22 @@
     <a href="https://github.com/linyucandy/cosmic-collision-3d/blob/main/docs/exotic-objects.md" target="_blank" rel="noopener noreferrer" style="display:block;color:#a9cfff;margin-top:7px">科学状态与参考资料 ↗</a>
   </details>
   <div id="objectInfo" style="font-size:11px;color:#c3d9f5;line-height:1.5;margin-bottom:8px"></div>
+  <div id="whiteDwarfPanel" hidden style="font-size:12px;color:#c3d9f5;line-height:1.5;margin-bottom:8px">
+    <label for="whiteDwarfVariant">白矮星样例（创建时使用）</label>
+    <select id="whiteDwarfVariant" style="width:100%;margin:5px 0;background:#15243d;color:#e6f2ff;padding:5px">
+      <option value="sirius">天狼星 B · DA · 25970 K</option>
+      <option value="j1147">WD J1147−7457 · DC · 3820 K</option>
+      <option value="j0902">WD J0902+2010 · DQ · 5500 K</option>
+      <option value="j1011">WD J1011+2845 · DQpec · 4300 K</option>
+      <option value="j1535">WD J1535+1247 · DZ · 5680 K</option>
+      <option value="j0744">WD J0744+4649 · DZ · 5020 K</option>
+      <option value="j1330">WD J1330+6435 · DZ · 4240 K</option>
+      <option value="j2356">WD J2356−2054 · DZ · 4040 K</option>
+    </select>
+    <div id="whiteDwarfGallery" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:5px 0"></div>
+    <div id="whiteDwarfInfo"></div>
+    <button class="btn" id="btnIaxSelected" type="button" style="width:100%;margin-top:5px">💥 让选中的白矮星发生 Iax 爆发</button>
+  </div>
   <div id="limitInfo" hidden style="font-size:11px;color:#ffdfa5;line-height:1.5;margin-bottom:8px"></div>
   <div class="slider-row">
     <label><span>质量倍率</span><span id="massVal">×1.0</span></label>
@@ -146,6 +162,7 @@
   <div class="row">
     <div class="btn" id="btnDemo">💥 演示碰撞</div>
     <button class="btn" id="btnNovaDemo" type="button">💫 新星爆发演示</button>
+    <button class="btn" id="btnIaxDemo" type="button">💥 Iax 型超新星演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
@@ -835,6 +852,17 @@ const TYPES = {
 const WHITE_DWARF_SOLAR_UNIT = 3000;
 const CHANDRASEKHAR_LIMIT = WHITE_DWARF_SOLAR_UNIT * 1.4;
 const NOVA_THRESHOLD = 18, NOVA_RATE = 8;
+// Approximate display colours inspired by published spectra, not measured photographs.
+const WHITE_DWARF_VARIANTS = {
+  sirius:{name:'天狼星 B', spectrum:'DA', temp:25970, color:0xa9c8ff, note:'氢谱线明显的炽热白矮星。'},
+  j1147:{name:'WD J1147−7457', spectrum:'DC', temp:3820, color:0xffc97f, note:'光谱较平滑的冷白矮星，外观偏橙。'},
+  j0902:{name:'WD J0902+2010', spectrum:'DQ', temp:5500, color:0xf2a9c4, note:'大气中的碳分子吸收使颜色偏粉。'},
+  j1011:{name:'WD J1011+2845', spectrum:'DQpec', temp:4300, color:0xff8775, note:'特殊碳分子吸收让它呈鲑红色。'},
+  j1535:{name:'WD J1535+1247', spectrum:'DZ', temp:5680, color:0xfff9f2, note:'含金属谱线的白矮星，外观接近白色。'},
+  j0744:{name:'WD J0744+4649', spectrum:'DZ', temp:5020, color:0xe8ed8e, note:'金属吸收影响光谱，外观偏黄。'},
+  j1330:{name:'WD J1330+6435', spectrum:'DZ', temp:4240, color:0xd0ffb4, note:'钠等元素的吸收使计算颜色偏绿。'},
+  j2356:{name:'WD J2356−2054', spectrum:'DZ', temp:4040, color:0x68b4f5, note:'虽较冷，但强烈吸收可使计算颜色偏蓝。'}
+};
 const EXOTIC_INFO = {
   redDwarf:['已观测','低质量 M 型主序星，较冷且寿命很长；颜色和大小为示意。'],
   orangeDwarf:['已观测','K 型主序星，通常比太阳更冷、更小；尺度为示意。'],
@@ -2007,9 +2035,14 @@ function pickBody(e) {
 let infoBody = null;
 function updateObjectInfo(type, mass) {
   const info = EXOTIC_INFO[type];
+  document.getElementById('whiteDwarfPanel').hidden = type !== 'whiteDwarf';
   const text = document.getElementById('objectInfo');
   text.textContent = info ? `${TYPE_NAMES[type]} · ${info[0]}：${info[1]}` :
     `${TYPE_NAMES[type] || type} · 游戏沙盒模拟`;
+  if (type === 'whiteDwarf' && infoBody && infoBody.whiteDwarfVariant) {
+    const variant = WHITE_DWARF_VARIANTS[infoBody.whiteDwarfVariant];
+    text.textContent += ` 当前选中：${variant.name} · ${variant.spectrum} · ${variant.temp} K。${variant.note}`;
+  }
   if (['strangeStar','electroweakStar','preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron'].includes(type)) {
     text.textContent += ' 参考大小下很小，可切换“易观察”查看外观。';
   }
@@ -2024,6 +2057,8 @@ function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
   focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} #${selected.labelNumber} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
+    + (selected.whiteDwarfVariant ? ` · ${WHITE_DWARF_VARIANTS[selected.whiteDwarfVariant].name}` : '')
+    + (selected.iaxRemnant ? ' · Iax 遗留白矮星（示意）' : '')
     + (selected.type === 'whiteDwarf' ? ` · 新星燃料 ${Math.round((selected.novaEnvelope || 0) / NOVA_THRESHOLD * 100)}%` : '')
     + (selected.ring ? ` · 环潮汐 ${Math.round(selected.ringTide * 100)}%` : '');
 }
@@ -2135,6 +2170,7 @@ function placeLaunch(velocity) {
     showNotice('天体已达 320 个上限，请先清空场景后再创建。');
     return;
   }
+  if (body.type === 'whiteDwarf') applyWhiteDwarfVariant(body, document.getElementById('whiteDwarfVariant').value);
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
   showNotice(`已创建${TYPE_NAMES[curType] || curType}；碰撞时会合并。`);
@@ -2192,6 +2228,35 @@ canvas.addEventListener('pointercancel', e => {
 });
 
 /* ================= 预设场景 ================= */
+function applyWhiteDwarfVariant(body, key) {
+  const variant = WHITE_DWARF_VARIANTS[key];
+  if (!body || body.type !== 'whiteDwarf' || !variant) return false;
+  body.whiteDwarfVariant = key; body.color = variant.color;
+  body.mesh.material.color.setHex(variant.color);
+  if (body.glow) body.glow.material.color.setHex(variant.color);
+  return true;
+}
+function triggerIax(body) {
+  if (!body || !bodies.includes(body) || body.type !== 'whiteDwarf' || body.iaxRemnant || body.mass >= CHANDRASEKHAR_LIMIT) return false;
+  removeNovaStream(body);
+  createNebula('iax', body.mesh.position, body.r);
+  explode(body.mesh.position, {mass:body.mass*.45, color:0xffc9b3, r:body.r, mesh:body.mesh});
+  body.mass *= .65; body.r = radiusFor(body.type,body.mass);
+  body.novaEnvelope = 0; body.novaCooldown = 2; body.iaxRemnant = true;
+  if (selected === body) { updateFocusLabel(); updateObjectInfo(body.type,body.mass); }
+  showNotice('Iax 型超新星示意：部分物质被抛出，留下受损的白矮星残骸。');
+  return true;
+}
+function demoIax() {
+  clearScene(); paused = false; timeScale = 1;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('btnSpeed').textContent = '⏱ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const dwarf = spawnBody(0,0,0,0,0,0,3900,'whiteDwarf');
+  applyWhiteDwarfVariant(dwarf, document.getElementById('whiteDwarfVariant').value);
+  camera.position.set(0,7,40); controls.target.set(0,0,0);
+  selectBody(dwarf); selRing.visible = false; triggerIax(dwarf);
+}
 function demoNova() {
   clearScene(); paused = false; timeScale = 1;
   document.getElementById('btnPause').textContent = '⏸ 暂停';
@@ -2482,6 +2547,32 @@ document.querySelectorAll('#tools .btn, #exoticTools .btn').forEach(btn => {
     infoBody = null; updateObjectInfo(curType, TYPES[curType].base * mMul);
   });
 });
+function updateWhiteDwarfVariantInfo() {
+  const variant = WHITE_DWARF_VARIANTS[document.getElementById('whiteDwarfVariant').value];
+  document.getElementById('whiteDwarfInfo').textContent = `${variant.name} · ${variant.spectrum} · ${variant.temp} K：${variant.note} 色彩为光谱推算与画面近似。`;
+  document.querySelectorAll('#whiteDwarfGallery button').forEach(button => {
+    const active = button.dataset.variant === document.getElementById('whiteDwarfVariant').value;
+    button.setAttribute('aria-pressed', String(active));
+    button.style.borderColor = active ? '#fff' : '#405577';
+  });
+}
+for (const [key,variant] of Object.entries(WHITE_DWARF_VARIANTS)) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.dataset.variant = key;
+  button.title = `${variant.name} · ${variant.spectrum} · ${variant.temp} K`;
+  button.setAttribute('aria-label', button.title);
+  button.style.cssText = 'cursor:pointer;border:1px solid #405577;background:#101c30;border-radius:5px;padding:5px;min-height:42px';
+  const star = document.createElement('span');
+  star.style.cssText = `display:block;width:26px;height:26px;margin:auto;border-radius:50%;background:#${variant.color.toString(16).padStart(6,'0')};box-shadow:0 0 8px #${variant.color.toString(16).padStart(6,'0')}`;
+  button.appendChild(star);
+  button.addEventListener('click', () => { document.getElementById('whiteDwarfVariant').value = key; updateWhiteDwarfVariantInfo(); });
+  document.getElementById('whiteDwarfGallery').appendChild(button);
+}
+document.getElementById('whiteDwarfVariant').addEventListener('change', updateWhiteDwarfVariantInfo);
+updateWhiteDwarfVariantInfo();
+document.getElementById('btnIaxSelected').addEventListener('click', () => {
+  if (!triggerIax(selected)) showNotice('请先选中低于模拟质量极限、且尚未发生 Iax 爆发的白矮星。');
+});
 massSlider.addEventListener('input', () => {
   mMul = parseFloat(massSlider.value);
   massVal.textContent = '×' + mMul.toFixed(1);
@@ -2525,6 +2616,7 @@ document.getElementById('btnReset').addEventListener('click', () => {
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnNovaDemo').addEventListener('click', () => { ensureAudio(); demoNova(); });
+document.getElementById('btnIaxDemo').addEventListener('click', () => { ensureAudio(); demoIax(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
@@ -2810,7 +2902,7 @@ function updateMeasurements() {
     if (occupied.length >= limit) break;
     const body = item.body;
     const distance = body.mesh.position.distanceTo(reference ? reference.mesh.position : controls.target);
-    const text = `${TYPE_NAMES[body.type] || body.type} #${body.labelNumber} · ` +
+    const text = `${body.whiteDwarfVariant ? WHITE_DWARF_VARIANTS[body.whiteDwarfVariant].name : (TYPE_NAMES[body.type] || body.type)} #${body.labelNumber} · ` +
       (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
     const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(text).width) + 14);
     const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
