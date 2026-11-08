@@ -44,6 +44,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   clearScene, explosions, shockwaves, flashes, step, updateEffects, explode, transformBody, checkEvolution,
   get applyWhiteDwarfVariant() { return typeof applyWhiteDwarfVariant === 'undefined' ? null : applyWhiteDwarfVariant; },
   get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
+  get updateTidalLocks() { return typeof updateTidalLocks === 'undefined' ? null : updateTidalLocks; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
@@ -1000,6 +1001,41 @@ loop();''')
         self.page.set_viewport_size({'width': 390, 'height': 844})
         self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
         self.page.screenshot(path=str(ROOT / '.screenshots' / 'menu-mobile-verified.png'), full_page=True)
+        self.assertEqual(self.errors, [])
+
+    def test_tidal_lock_tracks_same_surface_and_releases_on_target_removal(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.spawnBody(0,0,0,0,0,0,600,'star'); sim.selectBody(sim.spawnBody(100,0,0,0,0,0,40,'planet'))")
+        self.page.locator('#btnTidalLock').click()
+        result=self.page.evaluate('''() => {
+          const target=sim.bodies[0], b=sim.selected, spinBefore=b.tidalLockSavedSpin;
+          if (!b.tidalLockTarget || !b.tidalLockFace) return {locked:false};
+          target.mesh.position.set(100,70,100); sim.updateTidalLocks();
+          const direction=target.mesh.position.clone().sub(b.mesh.position).normalize();
+          const face=b.tidalLockFace.clone().applyQuaternion(b.mesh.quaternion).normalize();
+          const alignment=face.dot(direction), marker=!!b.tidalLockMarker;
+          sim.removeBody(target);
+          return {locked:true,alignment,marker,released:!b.tidalLockTarget,restored:b.spinW===spinBefore};
+        }''')
+        self.assertTrue(result['locked'] and result['marker'] and result['released'] and result['restored'], result)
+        self.assertGreater(result['alignment'], .99999, result)
+        self.assertEqual(self.errors, [])
+
+    def test_tidal_lock_demo_creates_a_locked_orbit(self):
+        self.open_sim()
+        self.page.locator('#btnTidalLockDemo').click()
+        result=self.page.evaluate('''() => ({count:sim.bodies.length, locked:!!sim.selected.tidalLockTarget,
+          moving:sim.selected.vel.length()>0, marker:!!sim.selected.tidalLockMarker})''')
+        self.assertEqual(result,{'count':2,'locked':True,'moving':True,'marker':True})
+        self.page.wait_for_timeout(1200)
+        alignment=self.page.evaluate('''() => {
+          const b=sim.selected, t=b && b.tidalLockTarget;
+          if (!b || !t || !sim.bodies.includes(t)) return -1;
+          return b.tidalLockFace.clone().applyQuaternion(b.mesh.quaternion).normalize().dot(t.mesh.position.clone().sub(b.mesh.position).normalize());
+        }''')
+        self.assertGreater(alignment,.999,alignment)
+        self.page.locator('#btnTidalLock').click()
+        self.assertFalse(self.page.evaluate('!!sim.selected.tidalLockTarget'))
         self.assertEqual(self.errors, [])
 
     def test_white_hole_repels_and_reflects_without_absorbing(self):

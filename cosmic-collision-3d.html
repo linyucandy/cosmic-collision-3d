@@ -173,6 +173,7 @@
     <button class="btn" id="btnIaxDemo" type="button">💥 Iax 型超新星演示</button>
     <button class="btn" id="btnWhiteHoleDemo" type="button">⚪ 白洞排斥演示</button>
     <button class="btn" id="btnGalaxyCollision" type="button">🌌 星系碰撞演示</button>
+    <button class="btn" id="btnTidalLockDemo" type="button">🌗 潮汐锁定演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
@@ -183,6 +184,7 @@
     <div class="btn" id="btnSpeed">⏩ ×1</div>
     <div class="btn" id="btnFindBody" role="button" tabindex="0" title="逐个寻找并跟随天体">🔭 寻找天体</div>
     <button class="btn" id="btnAutoOrbit" type="button" title="让选中的天体围绕附近较重的天体运行">🪐 自动轨道</button>
+    <button class="btn" id="btnTidalLock" type="button" title="将选中天体锁定到最近的较重伴星">🔒 潮汐锁定</button>
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
@@ -1286,6 +1288,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
 function removeBody(b) {
   removeNovaStream(b);
   for (const other of bodies) if (other.novaDonor === b) removeNovaStream(other);
+  for (const other of bodies) if (other.tidalLockTarget === b) releaseTidalLock(other);
   b.labelEl.remove();
   scene.remove(b.mesh);
   if (b.tail) scene.remove(b.tail);
@@ -1790,6 +1793,7 @@ function step() {
   }
   handleCollisions(true);
   updateNovaAccretion(timeScale / 60);
+  updateTidalLocks();
   for (const b of bodies) if (b.tpCd > 0) b.tpCd -= timeScale / 60;
 }
 
@@ -2165,6 +2169,7 @@ function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
   focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} #${selected.labelNumber} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
+    + (selected.tidalLockTarget ? ` · 🔒 朝向${TYPE_NAMES[selected.tidalLockTarget.type] || selected.tidalLockTarget.type} #${selected.tidalLockTarget.labelNumber}` : '')
     + (selected.whiteDwarfVariant ? ` · ${WHITE_DWARF_VARIANTS[selected.whiteDwarfVariant].name}` : '')
     + (selected.iaxRemnant ? ' · Iax 遗留白矮星（示意）' : '')
     + (selected.type === 'whiteDwarf' ? ` · 新星燃料 ${Math.round((selected.novaEnvelope || 0) / NOVA_THRESHOLD * 100)}%` : '')
@@ -2172,6 +2177,7 @@ function updateFocusLabel() {
 }
 function selectBody(b) {
   selected = b;
+  updateTidalLockButton();
   selRing.visible = !!b;
   focusChip.style.display = b ? 'block' : 'none';
   if (!b) {
@@ -2179,6 +2185,63 @@ function selectBody(b) {
     updateObjectInfo(curType, TYPES[curType].base * mMul);
   } else { infoBody = b; updateFocusLabel(); updateObjectInfo(b.type, b.mass); }
 }
+function updateTidalLockButton() {
+  const button = document.getElementById('btnTidalLock');
+  const locked = !!(selected && selected.tidalLockTarget);
+  button.textContent = locked ? '🔓 解除潮汐锁定' : '🔒 潮汐锁定';
+  button.setAttribute('aria-pressed', String(locked));
+}
+function releaseTidalLock(body) {
+  if (!body.tidalLockTarget) return;
+  body.spinW = body.tidalLockSavedSpin;
+  body.tidalLockTarget = null; body.tidalLockFace = null; body.tidalLockSavedSpin = null;
+  if (body.tidalLockMarker) {
+    body.mesh.remove(body.tidalLockMarker); body.tidalLockMarker.material.dispose(); body.tidalLockMarker = null;
+  }
+  if (selected === body) { updateTidalLockButton(); updateFocusLabel(); }
+}
+function lockToCompanion(body, target) {
+  if (!body || !target || body === target || !bodies.includes(body) || !bodies.includes(target)) return false;
+  const direction = target.mesh.position.clone().sub(body.mesh.position);
+  if (direction.lengthSq() < 1e-12) return false;
+  releaseTidalLock(body);
+  body.tidalLockSavedSpin = body.spinW; body.spinW = 0; body.tidalLockTarget = target;
+  body.tidalLockFace = direction.normalize().applyQuaternion(body.mesh.quaternion.clone().invert()).normalize();
+  const marker = new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture,color:0xffe493,transparent:true,depthWrite:false}));
+  marker.position.copy(body.tidalLockFace).multiplyScalar(1.02); marker.scale.setScalar(.45); marker.raycast=()=>{};
+  body.mesh.add(marker); body.tidalLockMarker = marker;
+  updateTidalLocks();
+  if (selected === body) { updateTidalLockButton(); updateFocusLabel(); }
+  return true;
+}
+function updateTidalLocks() {
+  for (const body of bodies) {
+    const target = body.tidalLockTarget;
+    if (!target) continue;
+    if (!bodies.includes(target)) { releaseTidalLock(body); continue; }
+    const direction = target.mesh.position.clone().sub(body.mesh.position);
+    if (direction.lengthSq() < 1e-12) continue;
+    const face = body.tidalLockFace.clone().applyQuaternion(body.mesh.quaternion).normalize();
+    const turn = new THREE.Quaternion().setFromUnitVectors(face,direction.normalize());
+    body.mesh.quaternion.premultiply(turn).normalize();
+  }
+}
+function toggleTidalLock() {
+  if (!selected || !bodies.includes(selected)) { showNotice('请先选中要锁定的天体。'); return; }
+  if (selected.tidalLockTarget) { releaseTidalLock(selected); showNotice('已解除潮汐锁定，恢复原来的自转。'); return; }
+  if (isStarCollection(selected.type) || ['blackhole','whitehole','quasar','wormhole','probe'].includes(selected.type)) {
+    showNotice('请选中行星、卫星或恒星等可自转天体。'); return;
+  }
+  let target = null, nearest = Infinity;
+  for (const candidate of bodies) {
+    if (candidate === selected || candidate.mass <= selected.mass || candidate.type === 'wormhole') continue;
+    const d = candidate.mesh.position.distanceToSquared(selected.mesh.position);
+    if (d > 1e-12 && d < nearest) { target = candidate; nearest = d; }
+  }
+  if (!target || !lockToCompanion(selected,target)) { showNotice('附近没有可锁定的较重伴星。'); return; }
+  showNotice('潮汐锁定已启用：标记所在的一面始终朝向伴星；可再次点击解除。');
+}
+document.getElementById('btnTidalLock').addEventListener('click', toggleTidalLock);
 function setAutomaticOrbit() {
   if (!selected || !bodies.includes(selected)) {
     showNotice('请先点击选择要进入轨道的天体。'); return;
@@ -2402,6 +2465,21 @@ function demoGalaxyCollision() {
   right.galaxyStars.rotation.z=.35;
   camera.position.set(0,2000*scale,2800*scale); controls.target.set(0,0,0);
   showNotice('两个星系正在靠近；星点为视觉示意，碰撞以整体合并简化。');
+}
+function demoTidalLock() {
+  clearScene(); paused = false; timeScale = 1;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('btnSpeed').textContent = '⏱ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const mode = document.getElementById('sizeMode'); mode.value = 'display'; mode.dispatchEvent(new Event('change'));
+  const planet = spawnBody(0,0,0,0,0,0,70,'planet',0x4c9fea);
+  const distance = 48, moonMass = 5, total = planet.mass + moonMass;
+  const speed = Math.sqrt(G * total * distance*distance / Math.pow(distance*distance + 60,1.5));
+  planet.vel.z = -speed * moonMass / total;
+  const moon = spawnBody(distance,0,0,0,0,speed * planet.mass / total,moonMass,'planet',0xc5cbd3);
+  camera.position.set(0,55,110); controls.target.set(0,0,0);
+  selectBody(moon); lockToCompanion(moon,planet); selRing.visible = false;
+  showNotice('月球式演示：小天体绕行时，金色标记始终朝向行星。已切换易观察大小。');
 }
 function demoNova() {
   clearScene(); paused = false; timeScale = 1;
@@ -2765,6 +2843,7 @@ document.getElementById('btnNovaDemo').addEventListener('click', () => { ensureA
 document.getElementById('btnIaxDemo').addEventListener('click', () => { ensureAudio(); demoIax(); });
 document.getElementById('btnWhiteHoleDemo').addEventListener('click', () => { ensureAudio(); demoWhiteHole(); });
 document.getElementById('btnGalaxyCollision').addEventListener('click', () => { ensureAudio(); demoGalaxyCollision(); });
+document.getElementById('btnTidalLockDemo').addEventListener('click', () => { ensureAudio(); demoTidalLock(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
@@ -3115,7 +3194,9 @@ function loop() {
         b.deform += (target - b.deform) * 0.08;
         const wob = b.tide > 0.02 ? Math.sin(simT * 22 + b.spin * 9) * b.tide * 0.05 : 0;
         b.mesh.scale.set(...shapeScale(b.r, b.deform, b.tide, wob));
-        if (b.tideT && b.tide > 0.02) {
+        if (b.tidalLockTarget) {
+          // Orientation follows the companion in updateTidalLocks, not free spin or tidal deformation.
+        } else if (b.tideT && b.tide > 0.02) {
           // 潮汐定向：局部 X 轴对准吸引源 → 蛋形指向主星
           _tv.subVectors(b.tideT.mesh.position, b.mesh.position).normalize();
           _q1.setFromUnitVectors(_xAxis, _tv);
