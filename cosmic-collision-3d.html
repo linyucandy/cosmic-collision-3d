@@ -200,7 +200,7 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=8"></script>
+<script src="celestial-size.js?v=9"></script>
 <script src="planet-assessment.js?v=5"></script>
 
 <script type="module">
@@ -834,9 +834,9 @@ const TYPES = {
   wolfRayet: { base: 2200, rk: 3, color: 0xb5eaff },
   blackhole: { base: 2500, rk: 0.85,color: 0x8a5cff },
   whitehole: { base: 2500, rk: 0.85,color: 0xdffaff },
-  galaxySpiral: {base:2400, rk:12, color:0xb6d8ff},
-  galaxyElliptical: {base:2400, rk:12, color:0xffd6a0},
-  galaxyIrregular: {base:2400, rk:12, color:0x96dfff},
+  galaxySpiral: {base:2400, rk:1200, color:0xb6d8ff},
+  galaxyElliptical: {base:2400, rk:1200, color:0xffd6a0},
+  galaxyIrregular: {base:2400, rk:1200, color:0x96dfff},
   comet:     { base: 2,    rk: 1.6, color: 0xaee6ff },
   neutron:   { base: 6000, rk: 0.18,color: 0x9fd8ff },
   ringplanet:{ base: 55,   rk: 1.7, color: 0xe8c98b },
@@ -1185,7 +1185,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.BufferAttribute(vertices,3));
     geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
-    const stars = new THREE.Points(geometry,new THREE.PointsMaterial({size:7,map:glowTex,vertexColors:true,
+    const stars = new THREE.Points(geometry,new THREE.PointsMaterial({size:r*.01,map:glowTex,vertexColors:true,
       transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));
     stars.frustumCulled=false; mesh.add(stars); extra.galaxyStars=stars;
     const core = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffd7aa,transparent:true,
@@ -2378,10 +2378,11 @@ function demoGalaxyCollision() {
   document.getElementById('btnPause').textContent = '⏸ 暂停';
   document.getElementById('btnSpeed').textContent = '⏱ ×1';
   document.getElementById('btnSpeed').classList.remove('active');
-  const left=spawnBody(-1100,0,0,4,0,.3,2400,'galaxySpiral');
-  const right=spawnBody(1100,0,0,-4,0,-.3,2400,'galaxySpiral');
+  const radius=radiusFor('galaxySpiral',TYPES.galaxySpiral.base), scale=radius/700;
+  const left=spawnBody(-1100*scale,0,0,4*scale,0,.3*scale,2400,'galaxySpiral');
+  const right=spawnBody(1100*scale,0,0,-4*scale,0,-.3*scale,2400,'galaxySpiral');
   right.galaxyStars.rotation.z=.35;
-  camera.position.set(0,2000,2800); controls.target.set(0,0,0);
+  camera.position.set(0,2000*scale,2800*scale); controls.target.set(0,0,0);
   showNotice('两个星系正在靠近；星点为视觉示意，碰撞以整体合并简化。');
 }
 function demoNova() {
@@ -2833,6 +2834,7 @@ document.getElementById('sizeMode').addEventListener('change', event => {
     const spinRatio = b.spinW / omegaBreak(b.mass, b.r);
     b.r = radiusFor(b.type, b.mass) * (b.type === 'cepheid' ? 1 + .12 * cepheidWave(b.mass,simT) : 1);
     b.mesh.scale.setScalar(b.r);
+    if (b.galaxyStars) b.galaxyStars.material.size = b.r * .01;
     if (b.tail) b.tail.scale.set(b.r * 3.5, b.r * 18, 1);
     b.spinW = spinRatio * omegaBreak(b.mass, b.r);
   }
@@ -3142,6 +3144,7 @@ function loop() {
       }
       if (checkEvolution(b)) continue;             // 质量上限 → 演化/超新星
       if (b.galaxyStars) {
+        b.galaxyStars.material.size = b.r * .01;
         b.galaxyStars.rotation.y += .001 * timeScale;
       } else if ((b.type === 'redSupergiant' || b.type === 'redHypergiant') && b.glow) {
         b.glow.scale.setScalar(4 + .2 * Math.sin(simT * 1.5 + b.spin));

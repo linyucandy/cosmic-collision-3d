@@ -234,6 +234,17 @@ loop();''')
         }'''))
         self.assertEqual(self.errors, [])
 
+    def test_galaxy_stars_rescale_when_changing_size_mode(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral')")
+        before=self.page.evaluate('({radius:sim.bodies[0].r, pointSize:sim.bodies[0].galaxyStars.material.size})')
+        self.page.select_option('#sizeMode','display')
+        after=self.page.evaluate('({radius:sim.bodies[0].r, pointSize:sim.bodies[0].galaxyStars.material.size})')
+        self.assertGreater(before['radius'], after['radius'])
+        self.assertAlmostEqual(before['pointSize']/before['radius'], .01)
+        self.assertAlmostEqual(after['pointSize']/after['radius'], .01)
+        self.assertEqual(self.errors, [])
+
     def test_impact_leaves_private_crater_texture_and_cleans_up(self):
         self.open_sim()
         result = self.page.evaluate('''() => {

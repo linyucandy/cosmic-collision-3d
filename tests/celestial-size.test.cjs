@@ -48,3 +48,12 @@ test('galaxy aggregate types have a finite sandbox size',()=>{
   const t={galaxySpiral:{base:2400,rk:12},galaxyElliptical:{base:2400,rk:12},galaxyIrregular:{base:2400,rk:12}};
   for(const k of Object.keys(t)) assert.ok(Number.isFinite(size.radiusFor(k,2400,t,'reference')) && size.radiusFor(k,2400,t,'reference')>0);
 });
+
+test('galaxies remain much larger than a red hypergiant in both size modes',()=>{
+  const t={galaxySpiral:{base:2400,rk:1200},redHypergiant:{base:2600,rk:8}};
+  for(const mode of ['reference','display']) {
+    const galaxy=size.radiusFor('galaxySpiral',2400,t,mode);
+    const star=size.radiusFor('redHypergiant',2600,t,mode);
+    assert.ok(galaxy>star*100,`${mode}: galaxy ${galaxy}, star ${star}`);
+  }
+});
