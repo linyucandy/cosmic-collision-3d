@@ -245,6 +245,46 @@ loop();''')
         self.assertAlmostEqual(after['pointSize']/after['radius'], .01)
         self.assertEqual(self.errors, [])
 
+    def test_star_clusters_selection_shapes_and_cleanup(self):
+        self.open_sim()
+        for kind in ['openCluster','globularCluster']:
+            self.page.locator(f'#tools [data-type="{kind}"]').click()
+            self.assertIn('星团', self.page.locator('#objectInfo').inner_text())
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const open=sim.spawnBody(0,0,0,0,0,0,1000,'openCluster');
+          const glob=sim.spawnBody(10000000,0,0,0,0,0,2000,'globularCluster');
+          const made=!!open.galaxyStars && !!glob.galaxyStars && glob.galaxyStars.geometry.attributes.position.count>open.galaxyStars.geometry.attributes.position.count;
+          const geometry=glob.galaxyStars.geometry; let disposed=false;
+          geometry.addEventListener('dispose',()=>disposed=true); sim.removeBody(glob);
+          return {made,disposed,openAlive:sim.bodies.includes(open)};
+        }''')
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_cluster_placement_reframes_camera(self):
+        self.open_sim()
+        self.page.evaluate('sim.clear()')
+        self.page.locator('#tools [data-type="globularCluster"]').click()
+        self.page.mouse.click(900,450)
+        self.assertTrue(self.page.evaluate('''() => {
+          const b=sim.bodies.find(b=>b.type==='globularCluster');
+          return !!b && sim.selected===b && sim.camera.position.distanceTo(b.mesh.position)>b.r*2;
+        }'''))
+        self.assertEqual(self.errors, [])
+
+    def test_cluster_can_remain_inside_galaxy(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const galaxy=sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral');
+          const cluster=sim.spawnBody(100,0,0,0,0,0,1000,'openCluster');
+          sim.handleCollisions(); sim.step();
+          return sim.bodies.includes(galaxy) && sim.bodies.includes(cluster);
+        }''')
+        self.assertTrue(result)
+        self.assertEqual(self.errors, [])
+
     def test_impact_leaves_private_crater_texture_and_cleans_up(self):
         self.open_sim()
         result = self.page.evaluate('''() => {

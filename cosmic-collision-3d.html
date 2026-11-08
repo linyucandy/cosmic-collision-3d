@@ -84,6 +84,8 @@
     <div class="btn active" data-type="star">⭐ 恒星</div>
     <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
     <div class="btn" data-type="whitehole">⚪ 白洞</div>
+    <div class="btn" data-type="openCluster">✨ 疏散星团</div>
+    <div class="btn" data-type="globularCluster">🌟 球状星团</div>
     <div class="btn" data-type="galaxySpiral">🌀 旋涡星系</div>
     <div class="btn" data-type="galaxyElliptical">🌕 椭圆星系</div>
     <div class="btn" data-type="galaxyIrregular">✨ 不规则星系</div>
@@ -200,7 +202,7 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=9"></script>
+<script src="celestial-size.js?v=10"></script>
 <script src="planet-assessment.js?v=5"></script>
 
 <script type="module">
@@ -834,6 +836,8 @@ const TYPES = {
   wolfRayet: { base: 2200, rk: 3, color: 0xb5eaff },
   blackhole: { base: 2500, rk: 0.85,color: 0x8a5cff },
   whitehole: { base: 2500, rk: 0.85,color: 0xdffaff },
+  openCluster: {base:1000, rk:100, color:0xb7d8ff},
+  globularCluster: {base:2000, rk:200, color:0xffd5a0},
   galaxySpiral: {base:2400, rk:1200, color:0xb6d8ff},
   galaxyElliptical: {base:2400, rk:1200, color:0xffd6a0},
   galaxyIrregular: {base:2400, rk:1200, color:0x96dfff},
@@ -878,6 +882,8 @@ const WHITE_DWARF_VARIANTS = {
   j2356:{name:'WD J2356−2054', spectrum:'DZ', temp:4040, color:0x68b4f5, note:'虽较冷，但强烈吸收可使计算颜色偏蓝。'}
 };
 const EXOTIC_INFO = {
+  openCluster:['已观测','疏散星团由引力联系较松散的恒星组成，形状通常不规则；星点是轻量化视觉示意。'],
+  globularCluster:['已观测','球状星团由大量恒星组成，通常呈中心密集的球形；星点是轻量化视觉示意。'],
   galaxySpiral:['已观测','旋涡星系由恒星、气体和尘埃等构成；旋臂与核球为轻量化示意，星点不是独立物理天体。'],
   galaxyElliptical:['已观测','椭圆星系具有近椭圆形的恒星分布；颜色与星点为游戏示意。'],
   galaxyIrregular:['已观测','不规则星系没有整齐的旋臂或椭圆外形；结构为游戏示意。'],
@@ -904,6 +910,7 @@ const EXOTIC_INFO = {
 const PLANET_COLORS = [0x5fb2ff, 0x7de0a3, 0xe0a35f, 0xc98bff, 0xff8b8b, 0x8be0dd];
 let sizeMode = 'reference';
 const radiusFor = (type, mass) => CelestialSize.radiusFor(type, mass, TYPES, sizeMode);
+const isStarCollection = type => type.startsWith('galaxy') || type === 'openCluster' || type === 'globularCluster';
 const shapeScale = CelestialSize.shapeScale;
 /* 解体角速度：赤道线速度达到表面轨道速度时离心力超过引力 */
 const omegaBreak = (mass, r) => Math.sqrt(G * mass / (r * r * r));
@@ -1158,14 +1165,19 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     rim.scale.setScalar(8);
     mesh.add(rim);
     extra.glow = glow;
-  } else if (['galaxySpiral','galaxyElliptical','galaxyIrregular'].includes(type)) {
+  } else if (isStarCollection(type)) {
     // One aggregate simulation body; the individual rendered points are decorative stars.
     mesh = new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
-    const count = 900, vertices = new Float32Array(count*3), colors = new Float32Array(count*3);
+    const count = type === 'openCluster' ? 350 : type === 'globularCluster' ? 1400 : 900;
+    const vertices = new Float32Array(count*3), colors = new Float32Array(count*3);
     const c = new THREE.Color();
     for (let i=0; i<count; i++) {
       let x,y,z,r;
-      if (type === 'galaxySpiral') {
+      if (type === 'openCluster' || type === 'globularCluster') {
+        r = Math.pow(Math.random(), type === 'globularCluster' ? 1.7 : .5)*.95;
+        const a=Math.random()*Math.PI*2, h=Math.random()*2-1, q=Math.sqrt(1-h*h);
+        x=Math.cos(a)*q*r; y=h*r*(type === 'openCluster' ? .65 : 1); z=Math.sin(a)*q*r;
+      } else if (type === 'galaxySpiral') {
         r = Math.pow(Math.random(),.65)*.95;
         const angle = (i%2)*Math.PI + r*8 + (Math.random()-.5)*(.35 + (1-r)*1.1);
         x=Math.cos(angle)*r; z=Math.sin(angle)*r; y=(Math.random()-.5)*(.07 + .18*(1-r));
@@ -1178,7 +1190,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
         x=Math.cos(a)*r + .13*Math.sin(a*3); z=Math.sin(a)*r*.7; y=(Math.random()-.5)*.25;
       }
       vertices[i*3]=x; vertices[i*3+1]=y; vertices[i*3+2]=z;
-      c.setHex(type==='galaxyElliptical' ? (Math.random()<.7?0xffd4a0:0xfff1dd) :
+      c.setHex(type==='galaxyElliptical' || type==='globularCluster' ? (Math.random()<.7?0xffd4a0:0xfff1dd) :
         (r<.25?0xffd392:(Math.random()<.25?0xff9ac6:0xa5d3ff)));
       colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
     }
@@ -1190,7 +1202,9 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     stars.frustumCulled=false; mesh.add(stars); extra.galaxyStars=stars;
     const core = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffd7aa,transparent:true,
       opacity:.65,blending:THREE.AdditiveBlending,depthWrite:false}));
-    core.scale.setScalar(type==='galaxyElliptical' ? .9 : .4); mesh.add(core);
+    core.scale.setScalar(type==='galaxyElliptical' ? .9 : type==='openCluster' ? .12 : .4);
+    if (type==='openCluster') core.material.opacity=.12;
+    mesh.add(core);
   } else if (type === 'whitehole') {
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({color:0xffffff}));
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xbceaff,transparent:true,
@@ -1254,7 +1268,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
-  if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe' && !type.startsWith('galaxy')) {
+  if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe' && !isStarCollection(type)) {
     // Extremely compact hypothetical models use a visual spin cap to avoid numeric instability.
     const initialSpin = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
     b.spinW = EXOTIC_INFO[type] && r < .01 ? Math.min(10,initialSpin) : initialSpin;
@@ -1337,7 +1351,7 @@ const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant','redSup
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
-  comet: '彗星', blackhole: '黑洞', whitehole:'白洞', galaxySpiral:'旋涡星系', galaxyElliptical:'椭圆星系', galaxyIrregular:'不规则星系', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
+  comet: '彗星', blackhole: '黑洞', whitehole:'白洞', openCluster:'疏散星团', globularCluster:'球状星团', galaxySpiral:'旋涡星系', galaxyElliptical:'椭圆星系', galaxyIrregular:'不规则星系', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
   redGiant: '红巨星', redSupergiant:'红超巨星', redHypergiant:'红特超巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
   sakurai:'樱井天体',cepheid:'造父变星',quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',
   preonStar:'先子星',bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星' };
@@ -1791,6 +1805,9 @@ function handleCollisions(swept = false) {
       if (dead.has(b)) continue;
       // Wormholes are gateways, not solid bodies that merge on contact.
       if (a.type === 'wormhole' || b.type === 'wormhole') continue;
+      // A star cluster can reside inside a galaxy without being swallowed as a solid ball.
+      if ((a.type.startsWith('galaxy') && (b.type === 'openCluster' || b.type === 'globularCluster')) ||
+          (b.type.startsWith('galaxy') && (a.type === 'openCluster' || a.type === 'globularCluster'))) continue;
       const rr = a.r + b.r;
       const pa = a.mesh.position, pb = b.mesh.position;
       const _dx = pb.x - pa.x, _dy = pb.y - pa.y, _dz = pb.z - pa.z;
@@ -1868,7 +1885,7 @@ function handleCollisions(swept = false) {
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
         // Galaxy points represent an aggregate, so do not fragment it as a single star.
-        if (small.type.startsWith('galaxy')) continue;
+        if (isStarCollection(small.type)) continue;
         const tideR = rr * 1.45;
         if (d2 < tideR * tideR) {
           if (small.mass > 8 && small.type !== 'blackhole' && small.type !== 'quasar' && small.type !== 'wormhole' && !dead.has(small)) {
@@ -2226,6 +2243,7 @@ function safeLaunchPosition(point, radius) {
   const intervals = [];
   for (const body of bodies) {
     if (body.type === 'wormhole') continue;
+    if ((curType === 'openCluster' || curType === 'globularCluster') && body.type.startsWith('galaxy')) continue;
     const relative = point.clone().sub(body.mesh.position);
     const projection = relative.dot(direction);
     const clearance = body.r + radius + Math.max(0.05, radius * 0.05);
@@ -2265,7 +2283,7 @@ function placeLaunch(velocity) {
     return;
   }
   if (body.type === 'whiteDwarf') applyWhiteDwarfVariant(body, document.getElementById('whiteDwarfVariant').value);
-  if ((['redSupergiant','redHypergiant'].includes(body.type) || body.type.startsWith('galaxy')) && camera.position.distanceTo(body.mesh.position) < body.r * 2.5) {
+  if ((['redSupergiant','redHypergiant'].includes(body.type) || isStarCollection(body.type)) && camera.position.distanceTo(body.mesh.position) < body.r * 2.5) {
     const direction = camera.position.clone().sub(body.mesh.position);
     if (direction.lengthSq() < 1e-12) direction.set(0,0,1);
     camera.position.copy(body.mesh.position).addScaledVector(direction.normalize(), body.r * 3);
@@ -3090,7 +3108,7 @@ function loop() {
     // 恒星脉动 & 吸积盘旋转 & 小行星自转
     for (const b of bodies) {
       // 自转 · 扁化形变 · 潮汐定向拉扯 · 超过解体阈值甩出碎片（黑洞除外）
-      if (b.type !== 'blackhole' && b.type !== 'whitehole' && b.type !== 'quasar' && !b.type.startsWith('galaxy')) {
+      if (b.type !== 'blackhole' && b.type !== 'whitehole' && b.type !== 'quasar' && !isStarCollection(b.type)) {
         const ratio = b.spinW / omegaBreak(b.mass, b.r);
         b.spin += b.spinW * timeScale / 60;
         const target = Math.max(0, Math.min(0.28, (ratio - 0.55) * 0.42));

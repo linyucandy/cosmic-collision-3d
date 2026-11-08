@@ -57,3 +57,11 @@ test('galaxies remain much larger than a red hypergiant in both size modes',()=>
     assert.ok(galaxy>star*100,`${mode}: galaxy ${galaxy}, star ${star}`);
   }
 });
+
+test('representative star clusters are between giant stars and galaxies',()=>{
+  const t={redHypergiant:{base:2600,rk:8},openCluster:{base:1000,rk:100},globularCluster:{base:2000,rk:200},galaxySpiral:{base:2400,rk:1200}};
+  for(const mode of ['reference','display']) {
+    const r=k=>size.radiusFor(k,t[k].base,t,mode);
+    assert.ok(r('redHypergiant')<r('openCluster') && r('openCluster')<r('globularCluster') && r('globularCluster')<r('galaxySpiral'));
+  }
+});
