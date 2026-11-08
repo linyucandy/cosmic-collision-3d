@@ -47,6 +47,16 @@
     backdrop-filter:blur(6px); white-space:nowrap; user-select:none; pointer-events:none;
   }
   .home-link { display:block; color:#aebfff; font-size:12px; margin-bottom:10px; text-decoration:none; }
+  #measurementOverlay { position:fixed; inset:0; z-index:6; pointer-events:none; overflow:hidden; }
+  .body-label, .grid-tick { position:absolute; left:0; top:0; white-space:nowrap; pointer-events:none;
+    font:11px "Microsoft YaHei",sans-serif; color:#d9edff; text-shadow:0 1px 4px #000,0 0 6px #000; }
+  .body-label { padding:2px 5px; border-radius:5px; background:#101a30c9; border:1px solid #91bdff50; }
+  .body-label.selected { border-color:#ffdf96; color:#fff0c2; }
+  .grid-tick { color:#a9d8e7; font-size:10px; }
+  #gridLegend { position:fixed; z-index:7; left:50%; top:12px; transform:translateX(-50%); max-width:46%;
+    padding:4px 8px; border-radius:6px; background:#101a30d9; color:#bce8f4;
+    font:11px "Microsoft YaHei",sans-serif; text-align:center; pointer-events:none; }
+  @media(max-width:640px) { #gridLegend { top:auto; bottom:170px; max-width:80%; font-size:10px; } .body-label { font-size:10px; } }
   .panel { max-height:calc(100dvh - 65px); overflow-y:auto; }
   @media (max-width:640px){ .panel{ width:170px; padding:10px; } .hint{ font-size:10px; white-space:normal; width:95%; text-align:center; } }
 </style>
@@ -61,6 +71,8 @@
 </head>
 <body>
 <canvas id="space"></canvas>
+<div id="measurementOverlay" aria-hidden="true"></div>
+<div id="gridLegend" aria-label="距离网格说明"></div>
 
 <div class="panel">
   <a class="home-link" href="index.html">← 游戏选择 / 作者信息</a>
@@ -95,6 +107,8 @@
     <input id="spinSlider" type="range" min="0" max="2" step="0.05" value="0.4">
   </div>
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨道轨迹</label></div>
+  <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
+  <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
@@ -819,6 +833,8 @@ const xrayToggle = document.getElementById('xrayToggle');
 let xrayEnabled = xrayToggle.checked;
 xrayToggle.addEventListener('change', () => { xrayEnabled = xrayToggle.checked; });
 const bodies = [];
+const measurementOverlay = document.getElementById('measurementOverlay');
+let nextBodyLabelId = 1;
 let collisions = 0;
 let simT = 0;
 
@@ -1032,8 +1048,11 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
   const sizeMarker = new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture, transparent:true, depthWrite:false, toneMapped:false}));
   sizeMarker.visible = false;
   mesh.add(sizeMarker);
+  const labelEl = document.createElement('div');
+  labelEl.className = 'body-label'; labelEl.id = `body-label-${nextBodyLabelId}`;
+  labelEl.hidden = true; measurementOverlay.appendChild(labelEl);
   const b = {
-    xray, sizeMarker, mesh, type, mass, r, color,
+    labelEl, labelNumber: nextBodyLabelId++, xray, sizeMarker, mesh, type, mass, r, color,
     previousPosition: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(vx, vy, vz),
     acc: new THREE.Vector3(),
@@ -1057,6 +1076,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
 }
 
 function removeBody(b) {
+  b.labelEl.remove();
   scene.remove(b.mesh);
   if (b.tail) scene.remove(b.tail);
   if (b.bridge) { scene.remove(b.bridge); b.bridge.geometry.dispose(); b.bridge.material.dispose(); }
@@ -1829,7 +1849,7 @@ function pickBody(e) {
 function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
-  focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
+  focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} #${selected.labelNumber} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
     + (selected.ring ? ` · 环潮汐 ${Math.round(selected.ringTide * 100)}%` : '');
 }
 function selectBody(b) {
@@ -2471,8 +2491,132 @@ function updateBlackHoleLenses() {
   }
   lensPass.enabled = count > 0;
 }
+// A relative XZ grid follows the observation center; all figures are game units.
+const gridGeometry = new THREE.BufferGeometry();
+const gridPositions = [], gridColors = [];
+for (let i = -10; i <= 10; i++) {
+  gridPositions.push(-10,0,i,10,0,i, i,0,-10,i,0,10);
+  const color = new THREE.Color(i === 0 ? 0x8cdbef : 0x4f809a);
+  for (let j=0;j<4;j++) gridColors.push(color.r,color.g,color.b);
+}
+gridGeometry.setAttribute('position',new THREE.Float32BufferAttribute(gridPositions,3));
+gridGeometry.setAttribute('color',new THREE.Float32BufferAttribute(gridColors,3));
+const referenceGrid = new THREE.LineSegments(gridGeometry,new THREE.LineBasicMaterial({
+  vertexColors:true, transparent:true, opacity:.38, depthWrite:false
+}));
+referenceGrid.frustumCulled = false; scene.add(referenceGrid);
+const gridLegend = document.getElementById('gridLegend');
+const gridToggle = document.getElementById('gridToggle');
+const labelsToggle = document.getElementById('labelsToggle');
+const gridTicks = [];
+for (const axis of ['X','Z']) for (const value of [-5,-2,2,5]) {
+  const el = document.createElement('span'); el.className = 'grid-tick'; el.hidden = true;
+  measurementOverlay.appendChild(el); gridTicks.push({axis,value,el});
+}
+let gridSpacing = 0;
+const _measurementProjection = new THREE.Vector3();
+function formatGameDistance(value) {
+  if (value === 0) return '0';
+  if (value < .00001 || value >= 1000000) return value.toExponential(1);
+  if (value < .01) return String(Number(value.toPrecision(2)));
+  if (value < 1) return value.toFixed(2);
+  if (value < 100) return value.toFixed(1).replace(/\.0$/, '');
+  return String(Math.round(value));
+}
+function niceGridSpacing(distance) {
+  const rough = Math.max(1e-9, distance / 6);
+  const power = Math.pow(10, Math.floor(Math.log10(rough)));
+  const factor = rough / power;
+  return (factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 5 ? 5 : 10) * power;
+}
+function lensSmoothstep(a, b, value) {
+  const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+// Invert the screen-space lens mapping so annotations follow the rendered object.
+function projectMeasurement(position, out) {
+  out.copy(position).project(camera);
+  if (lensPass && lensPass.enabled && out.z >= -1 && out.z <= 1) {
+    const targetX = (out.x + 1) * .5, targetY = (out.y + 1) * .5;
+    const aspect = lensPass.uniforms.aspect.value, lenses = lensPass.uniforms.lenses.value;
+    const nearLens = lenses.some(lens => lens.w > 0 &&
+      Math.hypot((targetX - lens.x) * aspect, targetY - lens.y) < lens.z * 1.3);
+    let guessX = targetX, guessY = targetY;
+    for (let iteration = 0; nearLens && iteration < 8; iteration++) {
+      let sampleX = guessX, sampleY = guessY;
+      for (const lens of lenses) {
+        if (lens.w <= 0) continue;
+        const dx = (sampleX - lens.x) * aspect, dy = sampleY - lens.y;
+        const distance = Math.hypot(dx, dy), radius = lens.z;
+        const fade = (1 - lensSmoothstep(radius * .25, radius, distance)) *
+          lensSmoothstep(radius * .05, radius * .22, distance);
+        const amount = radius * .24 * lens.w * fade / Math.max(distance, .00001);
+        sampleX += dx * amount / aspect; sampleY += dy * amount;
+      }
+      guessX += targetX - sampleX; guessY += targetY - sampleY;
+    }
+    out.x = guessX * 2 - 1; out.y = guessY * 2 - 1;
+  }
+  return out.z >= -1 && out.z <= 1 && Math.abs(out.x) < .98 && Math.abs(out.y) < .95;
+}
+function updateMeasurements() {
+  camera.updateMatrixWorld();
+  const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
+  referenceGrid.visible = gridOn; gridLegend.hidden = !gridOn;
+  if (gridOn) {
+    gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
+    referenceGrid.scale.setScalar(gridSpacing);
+    referenceGrid.position.copy(controls.target);
+    const legend = `每格 ${formatGameDistance(gridSpacing)} 游戏单位 · XZ 平面 · 原点：观察中心`;
+    if (gridLegend.textContent !== legend) gridLegend.textContent = legend;
+  }
+  for (const tick of gridTicks) {
+    if (!gridOn) { tick.el.hidden = true; continue; }
+    const position = _measurementProjection.copy(controls.target);
+    if (tick.axis === 'X') position.x += tick.value * gridSpacing;
+    else position.z += tick.value * gridSpacing;
+    if (!projectMeasurement(position, position)) { tick.el.hidden = true; continue; }
+    tick.el.hidden = false;
+    tick.el.textContent = `${tick.axis} ${tick.value > 0 ? '+' : '−'}${formatGameDistance(Math.abs(tick.value * gridSpacing))}`;
+    tick.el.style.transform = `translate(${Math.round((position.x*.5+.5)*window.innerWidth)}px,${Math.round((-.5*position.y+.5)*window.innerHeight)}px)`;
+  }
+  const reference = selected && bodies.includes(selected) ? selected : null;
+  const candidates = [];
+  for (const body of bodies) {
+    if (!labelsOn || !projectMeasurement(body.mesh.position, _measurementProjection)) continue;
+    candidates.push({body,x:(_measurementProjection.x*.5+.5)*window.innerWidth,
+      y:(-.5*_measurementProjection.y+.5)*window.innerHeight,
+      distance:camera.position.distanceTo(body.mesh.position)});
+  }
+  candidates.sort((a,b) => (a.body === reference ? -1 : b.body === reference ? 1 : a.distance - b.distance));
+  const occupied = [], shown = new Set();
+  const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  const limit = window.innerWidth <= 640 ? 24 : 60;
+  for (const item of candidates) {
+    if (occupied.length >= limit) break;
+    const body = item.body;
+    const x = Math.max(80, Math.min(window.innerWidth - 80, item.x));
+    const y = Math.max(24, Math.min(window.innerHeight - 4,
+      item.y - Math.max(13, Math.min(80, body.r * focal / Math.max(.001,item.distance) + 8))));
+    if (body !== reference && occupied.some(p => Math.abs(p.x-x)<105 && Math.abs(p.y-y)<24)) continue;
+    occupied.push({x,y});
+    const distance = body.mesh.position.distanceTo(reference ? reference.mesh.position : controls.target);
+    const text = `${TYPE_NAMES[body.type] || body.type} #${body.labelNumber} · ` +
+      (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
+    if (body.labelEl.textContent !== text) body.labelEl.textContent = text;
+    body.labelEl.classList.toggle('selected',body === reference);
+    body.labelEl.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-100%)`;
+    if (body.labelEl.hidden) body.labelEl.hidden = false;
+    shown.add(body);
+  }
+  for (const body of bodies) if (!shown.has(body) && !body.labelEl.hidden) body.labelEl.hidden = true;
+}
 function updateCameraFarPlane() {
   let required = 12000;
+  if (gridToggle.checked) {
+    const distance = camera.position.distanceTo(controls.target);
+    required = Math.max(required, distance + 15 * niceGridSpacing(distance));
+  }
   for (const b of bodies) {
     required = Math.max(required, (camera.position.distanceTo(b.mesh.position) + b.r * 4) * 1.2);
   }
@@ -2597,12 +2741,13 @@ function loop() {
     const sources = observed ? bodies.filter(b => b !== observed && LIT_TYPES.has(b.type)).map(b => ({
       type:b.type, mass:b.mass, distance:b.mesh.position.distanceTo(observed.mesh.position)
     })) : [];
-    renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
+    renderPlanetAssessment(observed ? {...observed, earthReferenceRadius: radiusFor('planet', TYPES.planet.base)} : null, sources, observed ? `${TYPE_NAMES[observed.type] || observed.type} #${observed.labelNumber}` : '');
     updateProbeTelemetry();
     lastAssessmentAt = performance.now();
   }
   updateCameraFarPlane();
   updateBlackHoleLenses();
+  updateMeasurements();
   updateXrayEffects();
   updateSizeMarkers();
   if (composer) composer.render(); else renderer.render(scene, camera);

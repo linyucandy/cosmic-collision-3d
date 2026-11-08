@@ -47,6 +47,8 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
   get lensPass() { return typeof lensPass === "undefined" ? null : lensPass; },
   get lensDemoGrid() { return typeof lensDemoGrid === "undefined" ? null : lensDemoGrid; },
+  get referenceGrid() { return typeof referenceGrid === "undefined" ? null : referenceGrid; },
+  get gridSpacing() { return typeof gridSpacing === "undefined" ? null : gridSpacing; },
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get selected() { return selected; },
@@ -423,6 +425,7 @@ loop();''')
         self.page.locator('#btnLensDemo').click(timeout=5000)
         self.page.wait_for_function("sim.lensPass && sim.lensPass.enabled && sim.lensPass.uniforms.lenses.value[0].w > 0",timeout=15000)
         before=self.page.evaluate("sim.bodies.map(b=>({mass:b.mass,r:b.r,position:b.mesh.position.toArray()}))")
+        self.page.add_style_tag(content='#measurementOverlay, #gridLegend { visibility:hidden !important; }')
         on=Image.open(io.BytesIO(self.page.screenshot())).convert('RGB').crop((500,200,1000,700))
         self.page.locator('#lensToggle').uncheck()
         self.page.wait_for_function('!sim.lensPass.enabled')
@@ -458,6 +461,116 @@ loop();''')
         self.page.wait_for_function("sim.lensPass && sim.lensPass.uniforms.lenses.value.filter(v=>v.w>0).length===4",timeout=15000)
         self.page.evaluate("""() => {sim.clear();sim.spawnBody(0,0,200,0,0,0,2500,'blackhole');}""")
         self.page.wait_for_function('!sim.lensPass.enabled',timeout=15000)
+        self.assertEqual(self.errors,[])
+
+    def test_body_labels_show_type_and_three_dimensional_distance_and_can_be_toggled(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          sim.spawnBody(60,80,0,0,0,0,40,'planet');sim.selectBody(a);
+        }""")
+        self.page.wait_for_function("sim.bodies[1].labelEl && !sim.bodies[1].labelEl.hidden",timeout=5000)
+        info=self.page.evaluate("""() => ({star:sim.bodies[0].labelEl.textContent,
+          planet:sim.bodies[1].labelEl.textContent,id:sim.bodies[1].labelEl.id})""")
+        self.assertIn('恒星',info['star']);self.assertIn('行星',info['planet'])
+        self.assertIn('距选中 100',info['planet'])
+        self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
+        self.page.locator('#labelsToggle').uncheck()
+        self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
+        self.page.locator('#labelsToggle').check()
+        self.page.wait_for_function("!sim.bodies[1].labelEl.hidden")
+        self.page.evaluate('sim.removeBody(sim.bodies[1])')
+        self.assertEqual(self.page.locator('#'+info['id']).count(),0)
+        self.assertEqual(self.errors,[])
+
+    def test_labels_follow_collision_survivor_and_stellar_transformation(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,100,'planet');
+          const b=sim.spawnBody(a.r,0,0,0,0,0,40,'planet');sim.selectBody(b);sim.handleCollisions();
+        }""")
+        self.page.wait_for_function("sim.bodies.length===1 && !sim.selected.labelEl.hidden")
+        self.assertEqual(self.page.locator('.body-label').count(),1)
+        self.assertIn('行星',self.page.evaluate('sim.selected.labelEl.textContent'))
+        self.page.evaluate("sim.transformBody(sim.selected,'brownDwarf')")
+        self.page.wait_for_function("sim.selected.labelEl.textContent.includes('褐矮星')")
+        self.assertEqual(self.page.locator('.body-label').count(),1)
+        self.assertEqual(self.errors,[])
+
+    def test_distance_grid_adapts_to_zoom_and_can_be_hidden(self):
+        self.open_sim()
+        self.page.wait_for_function('sim.referenceGrid && sim.gridSpacing > 0')
+        initial=self.page.evaluate('sim.gridSpacing')
+        self.assertIn('每格',self.page.locator('#gridLegend').inner_text())
+        self.assertIn('游戏单位',self.page.locator('#gridLegend').inner_text())
+        self.page.evaluate("sim.camera.position.set(0,18,52);sim.controls.target.set(0,0,0);sim.controls.update()")
+        self.page.wait_for_function('(old) => sim.gridSpacing < old',arg=initial)
+        self.assertGreater(self.page.locator('.grid-tick:visible').count(),0)
+        self.page.locator('#gridToggle').uncheck()
+        self.page.wait_for_function('!sim.referenceGrid.visible')
+        self.assertTrue(self.page.locator('#gridLegend').is_hidden())
+        self.page.locator('#gridToggle').check()
+        self.page.wait_for_function('sim.referenceGrid.visible')
+        self.assertEqual(self.errors,[])
+
+    def test_labels_follow_visible_position_when_black_hole_lensing_is_toggled(self):
+        self.open_sim();self.page.locator('#btnLensDemo').click()
+        self.page.evaluate("""() => {
+          sim.selectBody(null);
+          sim.spawnBody(.006,.006,-.03,0,0,0,.001,'asteroid');
+        }""")
+        self.page.wait_for_function("sim.lensPass.enabled && sim.bodies[1].labelEl && !sim.bodies[1].labelEl.hidden")
+        on=self.page.evaluate('sim.bodies[1].labelEl.getBoundingClientRect().x')
+        error=self.page.evaluate("""() => {
+          const body=sim.bodies[1], rect=body.labelEl.getBoundingClientRect();
+          const focal=innerHeight/(2*Math.tan(sim.camera.fov*Math.PI/360));
+          const offset=Math.max(13,Math.min(80,body.r*focal/sim.camera.position.distanceTo(body.mesh.position)+8));
+          let x=(rect.x+rect.width/2)/innerWidth,y=1-(rect.y+rect.height+offset)/innerHeight;
+          const aspect=sim.lensPass.uniforms.aspect.value;
+          const smooth=(a,b,v)=>{const t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t)};
+          for(const lens of sim.lensPass.uniforms.lenses.value){
+            if(!lens.w)continue;const dx=(x-lens.x)*aspect,dy=y-lens.y,d=Math.hypot(dx,dy),r=lens.z;
+            const fade=(1-smooth(r*.25,r,d))*smooth(r*.05,r*.22,d);
+            const amount=r*.24*lens.w*fade/Math.max(d,.00001);x+=dx*amount/aspect;y+=dy*amount;
+          }
+          const target=body.mesh.position.clone().project(sim.camera);
+          return Math.hypot((x-(target.x+1)/2)*innerWidth,(y-(target.y+1)/2)*innerHeight);
+        }""" )
+        self.assertLess(error,3,'label anchor should match the rendered body under lensing')
+        self.page.locator('#lensToggle').uncheck()
+        self.page.wait_for_function('!sim.lensPass.enabled')
+        self.page.wait_for_timeout(100)
+        off=self.page.evaluate('sim.bodies[1].labelEl.getBoundingClientRect().x')
+        self.assertGreater(abs(on-off),2,'label should follow the optically displaced body')
+        self.assertEqual(self.errors,[])
+
+    def test_distance_grid_legend_remains_visible_on_mobile(self):
+        self.open_sim();self.page.set_viewport_size({'width':390,'height':844})
+        self.page.wait_for_function("document.getElementById('panelControls').hidden")
+        legend=self.page.locator('#gridLegend');inspector=self.page.locator('#planetInspector')
+        self.assertTrue(legend.is_visible())
+        self.assertGreater(legend.bounding_box()['y'],inspector.bounding_box()['y']+inspector.bounding_box()['height'])
+        self.assertIn('游戏单位',legend.inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_distance_grid_stays_within_camera_range_when_zoomed_far_out(self):
+        self.open_sim()
+        self.page.evaluate("sim.camera.position.set(0,200000,500000);sim.controls.target.set(0,0,0);sim.controls.update()")
+        self.page.wait_for_function('sim.gridSpacing >= 100000')
+        result=self.page.evaluate("""() => ({far:sim.camera.far,
+          distance:sim.camera.position.distanceTo(sim.controls.target),spacing:sim.gridSpacing})""")
+        self.assertGreaterEqual(result['far'],result['distance']+15*result['spacing'],result)
+        self.assertEqual(self.errors,[])
+
+    def test_distance_grid_follows_observed_body_without_altering_its_position(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clear();const body=sim.spawnBody(1000,120,500,0,0,0,40,'planet');sim.selectBody(body);
+        }""")
+        self.page.wait_for_function('sim.referenceGrid && sim.referenceGrid.position.distanceTo(sim.selected.mesh.position)<0.01')
+        self.page.evaluate('sim.selected.mesh.position.set(1200,130,650)')
+        self.page.wait_for_function('sim.referenceGrid.position.distanceTo(sim.selected.mesh.position)<0.01')
+        self.assertEqual(self.page.evaluate('sim.selected.mesh.position.toArray()'),[1200,130,650])
         self.assertEqual(self.errors,[])
 
     def test_deformation_preserves_body_volume(self):
