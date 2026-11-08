@@ -1486,8 +1486,14 @@ function clearScene() {
 }
 
 function explode(pos, body) {
-  // 群体碰撞限制并发特效，避免瞬时增加几十盏点光源。
-  if (explosions.length >= 12) return;
+  // Keep the newest impact visible while bounding concurrent graphics resources.
+  if (explosions.length >= 12) {
+    const old=explosions.shift(); scene.remove(old.pts); old.geo.dispose(); old.mat.dispose();
+  }
+  if (shockwaves.length >= 24) removeShockwave(shockwaves.shift());
+  if (flashes.length >= 12) {
+    const old=flashes.shift(); scene.remove(old.light,old.sp); old.sp.material.dispose();
+  }
   const power = Math.min(1, Math.cbrt(body.mass) / 9);
   const count = Math.round(Math.min(220, 40 + Math.sqrt(body.mass) * 6));
   const posArr = new Float32Array(count * 3);
@@ -1871,8 +1877,40 @@ function step() {
   for (const b of bodies) if (b.tpCd > 0) b.tpCd -= timeScale / 60;
 }
 
+function createImpactFragments(events) {
+  for (const event of events) {
+    const body=event.body;
+    if (!bodies.includes(body) || bodies.length>=320) continue;
+    const count=Math.min(4,320-bodies.length);
+    const initialMass=body.mass, budget=Math.min(event.mass*.2,initialMass*.08);
+    if (budget<=.0001 || initialMass<=budget) continue;
+    const pieceMass=budget/count, pieceRadius=radiusFor('asteroid',pieceMass);
+    const launchRadius=body.r*1.5+pieceRadius+.5;
+    const escape=Math.sqrt(2*G*initialMass/Math.sqrt(launchRadius*launchRadius+60));
+    const speed=Math.max(2,event.speed*.5,escape*1.35);
+    const originalVelocity=body.vel.clone(), momentum=new THREE.Vector3();
+    let ejected=0;
+    const phase=Math.random()*Math.PI*2;
+    for (let i=0;i<count;i++) {
+      const y=1-2*(i+.5)/count, radial=Math.sqrt(1-y*y), angle=phase+i*Math.PI*(3-Math.sqrt(5));
+      const direction=new THREE.Vector3(Math.cos(angle)*radial,y,Math.sin(angle)*radial);
+      const position=body.mesh.position.clone().addScaledVector(direction,launchRadius);
+      const velocity=originalVelocity.clone().addScaledVector(direction,speed);
+      const fragment=spawnBody(position.x,position.y,position.z,velocity.x,velocity.y,velocity.z,pieceMass,'asteroid');
+      if (!fragment) break;
+      fragment.impactDebris=true; ejected+=pieceMass; momentum.addScaledVector(velocity,pieceMass);
+    }
+    if (ejected>0) {
+      body.mass=initialMass-ejected;
+      body.vel.copy(originalVelocity).multiplyScalar(initialMass).sub(momentum).divideScalar(body.mass);
+      body.r=radiusFor(body.type,body.mass); body.mesh.scale.setScalar(body.r);
+      if (selected===body) updateFocusLabel();
+    }
+  }
+}
 function handleCollisions(swept = false) {
   const dead = new Set();
+  const impactEvents = [];
   for (const b of bodies) b.tideT = null;      // 每帧重新检测潮汐配对
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i];
@@ -1915,6 +1953,7 @@ function handleCollisions(swept = false) {
         }
         if (bothGalaxies) {
           for (const body of dead) if (bodies.includes(body)) removeBody(body);
+          createImpactFragments(impactEvents);
           mergeGalaxies(a,b);
           // Bodies were replaced; continue collision checking on the next frame.
           return;
@@ -1942,6 +1981,10 @@ function handleCollisions(swept = false) {
         const isHole = body => body.type === 'blackhole' || body.type === 'quasar';
         const survivor = isHole(a) !== isHole(b) ? (isHole(a) ? a : b) : big;
         const other = survivor === big ? small : big;
+        const impactSpeed=survivor.vel.distanceTo(other.vel);
+        const impactDirection=other.mesh.position.clone().sub(survivor.mesh.position);
+        if (impactDirection.lengthSq()<1e-12) impactDirection.set(1,0,0);
+        impactDirection.normalize();
         addImpactCrater(survivor, other);
         const M = survivor.mass + other.mass;
         survivor.heat = Math.min(2, (survivor.heat || 0) + other.mass / M);
@@ -1954,11 +1997,15 @@ function handleCollisions(swept = false) {
         survivor.r = radiusFor(survivor.type, M);
         survivor.mesh.scale.setScalar(survivor.r);   // 子级辉光/吸积盘按比例随动
         // 切向撞击带来角动量 → 自转加快，过快会在后续帧甩出碎片
-        const nvec = other.mesh.position.clone().sub(survivor.mesh.position).normalize();
         const relV = other.vel.clone().sub(survivor.vel);
-        const vT = relV.sub(nvec.multiplyScalar(relV.dot(nvec))).length();
+        const vT = relV.addScaledVector(impactDirection,-relV.dot(impactDirection)).length();
         survivor.spinW += (other.mass * vT) / (0.4 * M * survivor.r) * 0.5;
-        explode(other.mesh.position, other);
+        const impactPoint=survivor.mesh.position.clone().addScaledVector(impactDirection,survivor.r);
+        explode(impactPoint, other);
+        if (impactSpeed>=1.5 && !isHole(survivor) && !isHole(other) &&
+            !isStarCollection(survivor.type) && !isStarCollection(other.type) && survivor.type!=='probe' && other.type!=='probe') {
+          impactEvents.push({body:survivor,mass:other.mass,speed:impactSpeed});
+        }
         if (selected === other || selected === survivor) {
           selectBody(survivor);
           showNotice(`碰撞合并：继续跟随${TYPE_NAMES[survivor.type] || survivor.type}，质量 ${M.toFixed(1)}`);
@@ -1989,6 +2036,7 @@ function handleCollisions(swept = false) {
     }
   }
   if (dead.size) for (const b of dead) removeBody(b);
+  createImpactFragments(impactEvents);
   /* 潮汐撕扯：变形 + 流失物质 + 物质桥 */
   for (const v of bodies) {
     if (!v.tideT) {
@@ -2284,7 +2332,7 @@ function removeOortCloud(host) {
 function updateOortClouds() {
   for (const host of bodies) if (host.oortCloud) {
     const cloud=host.oortCloud;
-    cloud.outerRadius=Math.max(100,host.r*25);
+    cloud.outerRadius=Math.max(100,host.r*2000);
     cloud.group.position.copy(host.mesh.position); cloud.group.scale.setScalar(cloud.outerRadius);
     cloud.points.material.size=cloud.outerRadius*.008;
   }
@@ -2329,11 +2377,12 @@ function releaseOortComet() {
   if (!host || !bodies.includes(host) || !host.oortCloud) { showNotice('请先选中拥有奥尔特云的恒星。'); return; }
   if (bodies.length>=320) { showNotice('天体已达 320 个上限，请先清空部分天体。'); return; }
   const direction=new THREE.Vector3().randomDirection(), distance=host.oortCloud.outerRadius*.72;
-  const speed=Math.sqrt(G*host.mass / Math.sqrt(distance*distance+60))*.85;
+  // Accelerate the illustrative inward journey so the enlarged cloud remains playable.
+  const speed=Math.max(Math.sqrt(G*host.mass / Math.sqrt(distance*distance+60))*.85, distance/360);
   const p=host.mesh.position.clone().addScaledVector(direction,distance);
   const v=host.vel.clone().addScaledVector(direction,-speed);
   const comet=spawnBody(p.x,p.y,p.z,v.x,v.y,v.z,1,'comet');
-  if (comet) showNotice('已从云中释放一颗真实参与模拟的彗星；轨迹受场景引力影响。');
+  if (comet) showNotice('已从云中释放彗星；初速度为方便观察而加快，之后受场景引力影响。');
 }
 document.getElementById('btnOortCloud').addEventListener('click',toggleOortCloud);
 document.getElementById('btnOortComet').addEventListener('click',releaseOortComet);

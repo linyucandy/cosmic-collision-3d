@@ -1044,9 +1044,57 @@ loop();''')
         self.open_sim()
         result=self.page.evaluate('''() => {
           sim.clear();sim.spawnBody(-8,0,0,16,0,0,40,'planet');sim.spawnBody(8,0,0,-16,0,0,40,'planet');
-          sim.step();return {count:sim.bodies.length,mass:sim.bodies[0].mass};
+          sim.step();return {count:sim.bodies.length,mass:sim.bodies.reduce((n,b)=>n+b.mass,0),fragments:sim.bodies.filter(b=>b.type==='asteroid').length};
         }''')
-        self.assertEqual(result['count'],1);self.assertEqual(result['mass'],80)
+        self.assertGreater(result['fragments'],0,result);self.assertAlmostEqual(result['mass'],80)
+
+    def test_high_speed_impact_fragments_preserve_mass_and_momentum(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const a=sim.spawnBody(0,0,0,4,0,0,40,'planet');
+          sim.spawnBody(.3,0,0,-8,0,0,20,'planet');
+          sim.handleCollisions();
+          const fragments=sim.bodies.filter(b=>b.type==='asteroid');
+          return {n:fragments.length, mass:sim.bodies.reduce((s,b)=>s+b.mass,0),
+            px:sim.bodies.reduce((s,b)=>s+b.mass*b.vel.x,0),
+            outside:fragments.every(f=>f.mesh.position.distanceTo(a.mesh.position)>a.r+f.r)};
+        }''')
+        self.assertGreater(result['n'],0,result)
+        self.assertAlmostEqual(result['mass'],60,places=8)
+        self.assertAlmostEqual(result['px'],0,places=8)
+        self.assertTrue(result['outside'],result)
+        self.assertEqual(self.errors,[])
+
+    def test_new_impact_remains_visible_at_effect_limit(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clearScene(); const a=sim.spawnBody(0,0,0,0,0,0,40,'planet');
+          for(let i=0;i<12;i++) sim.explode(a.mesh.position,a);
+          const oldest=sim.explosions[0];
+          sim.spawnBody(a.r*.9,0,0,0,0,0,2,'asteroid'); sim.handleCollisions();
+          return {count:sim.explosions.length,replaced:!sim.explosions.includes(oldest)};
+        }''')
+        self.assertEqual(result,{'count':12,'replaced':True})
+        self.assertEqual(self.errors,[])
+
+    def test_impact_at_body_capacity_preserves_existing_bodies_and_mass(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const a=sim.spawnBody(0,0,0,4,0,0,40,'planet');
+          sim.spawnBody(.3,0,0,-8,0,0,20,'planet');
+          const bystanders=[];
+          for(let i=0;i<318;i++) bystanders.push(sim.spawnBody(1000+i*100,0,0,0,0,0,1,'asteroid'));
+          sim.handleCollisions();
+          return {count:sim.bodies.length, survivors:bystanders.every(b=>sim.bodies.includes(b)),
+            mass:sim.bodies.reduce((s,b)=>s+b.mass,0), debris:sim.bodies.filter(b=>b.impactDebris).length};
+        }''')
+        self.assertEqual(result['count'],320,result)
+        self.assertTrue(result['survivors'],result)
+        self.assertAlmostEqual(result['mass'],378,places=7)
+        self.assertEqual(result['debris'],1,result)
+        self.assertEqual(self.errors,[])
 
     def test_selected_body_displays_simulation_radius_and_volume(self):
         self.open_sim()
@@ -1143,6 +1191,19 @@ loop();''')
             hasPlanets:sim.bodies.some(b=>b.type==='planet')};
         }''')
         self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_oort_cloud_is_far_larger_than_host_and_demo_orbits(self):
+        self.open_sim()
+        self.page.locator('#btnOortDemo').click()
+        result=self.page.evaluate('''() => {
+          const host=sim.bodies.find(b=>b.type==='star');
+          const planets=sim.bodies.filter(b=>b.type==='planet');
+          return {hostRatio:host.oortCloud.outerRadius/host.r,
+            orbitRatio:host.oortCloud.outerRadius/Math.max(...planets.map(p=>p.mesh.position.distanceTo(host.mesh.position)))};
+        }''')
+        self.assertGreaterEqual(result['hostRatio'],2000,result)
+        self.assertGreater(result['orbitRatio'],100,result)
         self.assertEqual(self.errors, [])
 
     def test_oort_cloud_scales_with_host_and_camera_far_plane(self):

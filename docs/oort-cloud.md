@@ -2,4 +2,4 @@
 
 选中恒星并点击“添加奥尔特云”，可在恒星周围显示由冰体组成的球壳示意；再次点击会移除。点击“释放彗星”会从云中创建一颗向恒星运动、参与引力和碰撞的彗星。云点仅是装饰，不计入天体数量，也不会独立运动。
 
-“奥尔特云演示”提供带行星的恒星系统并切换到易观察比例。场景将距离大幅压缩，也没有模拟真实云体的数十亿颗冰体、形成过程或外来恒星扰动。奥尔特云是解释长周期彗星来源的假想遥远冰体区域，尚未直接整体观测到；参考 [NASA 奥尔特云介绍](https://science.nasa.gov/solar-system/oort-cloud/facts/)和 [哈勃彗星观测说明](https://science.nasa.gov/missions/hubble/hubble-confirms-largest-comet-nucleus-ever-seen/)。
+“奥尔特云演示”提供带行星的恒星系统并切换到易观察比例。云体扩展到宿主恒星半径的 2000 倍，仍将距离大幅压缩；释放彗星时也会提高初速度，方便观察。场景没有模拟真实云体的数十亿颗冰体、形成过程或外来恒星扰动。奥尔特云是解释长周期彗星来源的假想遥远冰体区域，尚未直接整体观测到；参考 [NASA 奥尔特云介绍](https://science.nasa.gov/solar-system/oort-cloud/facts/)和 [哈勃彗星观测说明](https://science.nasa.gov/missions/hubble/hubble-confirms-largest-comet-nucleus-ever-seen/)。
