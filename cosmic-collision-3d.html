@@ -1202,6 +1202,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.BufferAttribute(vertices,3));
     geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+    if (type.startsWith('galaxy')) extra.galaxyBasePositions = new Float32Array(vertices);
     const stars = new THREE.Points(geometry,new THREE.PointsMaterial({size:r*.01,map:glowTex,vertexColors:true,
       transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));
     stars.frustumCulled=false; mesh.add(stars); extra.galaxyStars=stars;
@@ -1729,6 +1730,73 @@ function updateNovaAccretion(dt) {
     }
   }
 }
+// Visual tidal distortion uses the existing point buffer; it does not create physical stars.
+function updateGalaxyInteractions() {
+  const galaxies=bodies.filter(b=>b.type.startsWith('galaxy') && b.galaxyStars);
+  let activeDistortions=0;
+  for (const galaxy of galaxies) {
+    const attribute=galaxy.galaxyStars.geometry.attributes.position, array=attribute.array;
+    if (galaxy.galaxyMerger) {
+      const merger=galaxy.galaxyMerger;
+      merger.age+=timeScale/60;
+      const t=Math.min(1,merger.age/merger.duration), ease=t*t*(3-2*t);
+      for (let i=0;i<array.length;i++) array[i]=merger.start[i]*(1-ease)+merger.target[i]*ease;
+      attribute.needsUpdate=true;
+      if (t>=1) { galaxy.galaxyBasePositions=new Float32Array(merger.target); galaxy.galaxyMerger=null; }
+      continue;
+    }
+    let companion=null, intensity=0;
+    for (const other of galaxies) if (other!==galaxy) {
+      const d=galaxy.mesh.position.distanceTo(other.mesh.position), range=(galaxy.r+other.r)*3;
+      const strength=Math.max(0,1-d/range);
+      if (strength>intensity) { intensity=strength; companion=other; }
+    }
+    const base=galaxy.galaxyBasePositions;
+    if (!base) continue;
+    // Bound per-frame point updates in crowded scenes.
+    if (companion && activeDistortions>=32) companion=null;
+    if (!companion && !galaxy.galaxyDistorted) continue;
+    if (!companion) { array.set(base); galaxy.galaxyDistorted=false; attribute.needsUpdate=true; continue; }
+    activeDistortions++;
+    const direction=companion.mesh.position.clone().sub(galaxy.mesh.position);
+    if (direction.lengthSq()<1e-12) direction.set(1,0,0);
+    const rotation=new THREE.Quaternion(); galaxy.galaxyStars.getWorldQuaternion(rotation);
+    direction.normalize().applyQuaternion(rotation.invert());
+    const dx=direction.x, dy=direction.y, dz=direction.z;
+    for (let i=0;i<array.length;i+=3) {
+      const x=base[i], y=base[i+1], z=base[i+2], radial=Math.sqrt(x*x+y*y+z*z);
+      const side=x*dx+y*dy+z*dz, edge=Math.max(0,radial-.18);
+      const stretch=intensity*edge*edge*2.2*(side<0?-1:1);
+      array[i]=x+dx*stretch; array[i+1]=y+dy*stretch; array[i+2]=z+dz*stretch;
+    }
+    galaxy.galaxyDistorted=true; attribute.needsUpdate=true;
+  }
+}
+function mergeGalaxies(a,b) {
+  const total=a.mass+b.mass, selectedMerger=selected===a || selected===b;
+  const center=a.mesh.position.clone().multiplyScalar(a.mass/total).addScaledVector(b.mesh.position,b.mass/total);
+  const velocity=a.vel.clone().multiplyScalar(a.mass/total).addScaledVector(b.vel,b.mass/total);
+  const major=Math.min(a.mass,b.mass)/Math.max(a.mass,b.mass)>=.35;
+  const type=major ? 'galaxyElliptical' : (a.mass>=b.mass ? a.type : b.type);
+  const radius=radiusFor(type,total), count=900, start=new Float32Array(count*3), position=new THREE.Vector3();
+  for (const [index,source] of [a,b].entries()) {
+    source.galaxyStars.updateWorldMatrix(true,false);
+    const old=source.galaxyStars.geometry.attributes.position, half=count/2;
+    for (let j=0;j<half;j++) {
+      const k=Math.floor(j*old.count/half);
+      position.fromBufferAttribute(old,k).applyMatrix4(source.galaxyStars.matrixWorld).sub(center).divideScalar(radius);
+      const out=(index*half+j)*3; start[out]=position.x; start[out+1]=position.y; start[out+2]=position.z;
+    }
+  }
+  removeBody(a); removeBody(b);
+  const remnant=spawnBody(center.x,center.y,center.z,velocity.x,velocity.y,velocity.z,total,type);
+  if (!remnant) return;
+  const attribute=remnant.galaxyStars.geometry.attributes.position;
+  remnant.galaxyMerger={start,target:new Float32Array(attribute.array),age:0,duration:6};
+  attribute.array.set(start); attribute.needsUpdate=true; collisions++;
+  if (selectedMerger) selectBody(remnant);
+  showNotice('星系核心合并：星点逐渐形成新星系，潮汐拉伸为简化示意。');
+}
 function step() {
   for (const b of bodies) b.previousPosition.copy(b.mesh.position);
   // 天体多时（碎片风暴）降为单步积分，总推进时长不变，省一半 O(n²) 引力计算
@@ -1795,6 +1863,7 @@ function step() {
       }
     }
   }
+  updateGalaxyInteractions();
   handleCollisions(true);
   updateNovaAccretion(timeScale / 60);
   updateTidalLocks();
@@ -1814,10 +1883,11 @@ function handleCollisions(swept = false) {
       if (dead.has(b)) continue;
       // Wormholes are gateways, not solid bodies that merge on contact.
       if (a.type === 'wormhole' || b.type === 'wormhole') continue;
-      // A star cluster can reside inside a galaxy without being swallowed as a solid ball.
-      if ((a.type.startsWith('galaxy') && (b.type === 'openCluster' || b.type === 'globularCluster')) ||
-          (b.type.startsWith('galaxy') && (a.type === 'openCluster' || a.type === 'globularCluster'))) continue;
-      const rr = a.r + b.r;
+      // A diffuse galaxy is not a solid sphere: individual bodies can pass through it.
+      if (a.type.startsWith('galaxy') !== b.type.startsWith('galaxy')) continue;
+      const bothGalaxies = a.type.startsWith('galaxy') && b.type.startsWith('galaxy');
+      // Diffuse galactic disks can overlap; merge only when their cores meet.
+      const rr = (a.r + b.r) * (bothGalaxies ? .22 : 1);
       const pa = a.mesh.position, pb = b.mesh.position;
       const _dx = pb.x - pa.x, _dy = pb.y - pa.y, _dz = pb.z - pa.z;
       const d2 = _dx * _dx + _dy * _dy + _dz * _dz;
@@ -1842,6 +1912,12 @@ function handleCollisions(swept = false) {
         if (impactT < 1) {
           pa.lerpVectors(a.previousPosition, pa, impactT);
           pb.lerpVectors(b.previousPosition, pb, impactT);
+        }
+        if (bothGalaxies) {
+          for (const body of dead) if (bodies.includes(body)) removeBody(body);
+          mergeGalaxies(a,b);
+          // Bodies were replaced; continue collision checking on the next frame.
+          return;
         }
         if (a.type === 'whitehole' || b.type === 'whitehole') {
           // Bounce at the swept contact instead of consuming either body.
@@ -2382,7 +2458,7 @@ function safeLaunchPosition(point, radius) {
   const intervals = [];
   for (const body of bodies) {
     if (body.type === 'wormhole') continue;
-    if ((curType === 'openCluster' || curType === 'globularCluster') && body.type.startsWith('galaxy')) continue;
+    if (curType.startsWith('galaxy') !== body.type.startsWith('galaxy')) continue;
     const relative = point.clone().sub(body.mesh.position);
     const projection = relative.dot(direction);
     const clearance = body.r + radius + Math.max(0.05, radius * 0.05);
@@ -2536,11 +2612,11 @@ function demoGalaxyCollision() {
   document.getElementById('btnSpeed').textContent = '⏱ ×1';
   document.getElementById('btnSpeed').classList.remove('active');
   const radius=radiusFor('galaxySpiral',TYPES.galaxySpiral.base), scale=radius/700;
-  const left=spawnBody(-1100*scale,0,0,4*scale,0,.3*scale,2400,'galaxySpiral');
-  const right=spawnBody(1100*scale,0,0,-4*scale,0,-.3*scale,2400,'galaxySpiral');
+  const left=spawnBody(-1100*scale,0,0,7*scale,0,.3*scale,2400,'galaxySpiral');
+  const right=spawnBody(1100*scale,0,0,-7*scale,0,-.3*scale,2400,'galaxySpiral');
   right.galaxyStars.rotation.z=.35;
   camera.position.set(0,2000*scale,2800*scale); controls.target.set(0,0,0);
-  showNotice('两个星系正在靠近；星点为视觉示意，碰撞以整体合并简化。');
+  showNotice('星系盘逐渐交错、产生潮汐尾；核心靠近后合并。星点与速度为加速示意。');
 }
 function demoTidalLock() {
   clearScene(); paused = false; timeScale = 1;

@@ -45,6 +45,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get applyWhiteDwarfVariant() { return typeof applyWhiteDwarfVariant === 'undefined' ? null : applyWhiteDwarfVariant; },
   get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
   get updateTidalLocks() { return typeof updateTidalLocks === 'undefined' ? null : updateTidalLocks; },
+  get updateGalaxyInteractions() { return typeof updateGalaxyInteractions === 'undefined' ? null : updateGalaxyInteractions; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
@@ -219,9 +220,77 @@ loop();''')
         self.assertTrue(result['towards'], result)
         merged=self.page.evaluate('''() => {
           for(let i=0;i<200 && sim.bodies.length>1;i++) sim.step();
-          return sim.bodies.length===1 && sim.bodies[0].type==='galaxySpiral' && sim.bodies[0].mass===4800;
+          return sim.bodies.length===1 && sim.bodies[0].type==='galaxyElliptical' && sim.bodies[0].mass===4800 && !!sim.bodies[0].galaxyMerger;
         }''')
         self.assertTrue(merged)
+        self.assertEqual(self.errors, [])
+
+    def test_galaxy_overlap_creates_tidal_distortion_before_merger(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const a=sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral');
+          const b=sim.spawnBody(a.r*1.5,0,0,0,0,0,2400,'galaxySpiral');
+          const before=Array.from(a.galaxyStars.geometry.attributes.position.array);
+          sim.updateGalaxyInteractions();
+          const after=a.galaxyStars.geometry.attributes.position.array;
+          const changed=before.some((v,i)=>Math.abs(v-after[i])>1e-6);
+          sim.handleCollisions();
+          const both=sim.bodies.includes(a)&&sim.bodies.includes(b);
+          b.mesh.position.x=a.r*20; sim.updateGalaxyInteractions();
+          const restored=before.every((v,i)=>Math.abs(v-after[i])<1e-6);
+          return {changed,both,restored,noExplosion:sim.explosions.length===0};
+        }''')
+        self.assertTrue(all(result.values()),result)
+        self.assertEqual(self.errors, [])
+
+    def test_galaxy_merger_preserves_momentum_and_cleans_up(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const a=sim.spawnBody(0,0,0,3,0,0,2400,'galaxySpiral');
+          const b=sim.spawnBody(a.r*.1,0,0,-1,0,0,2400,'galaxySpiral');
+          const geometry=a.galaxyStars.geometry;let disposed=false;
+          geometry.addEventListener('dispose',()=>disposed=true);
+          sim.selectBody(a); sim.handleCollisions();
+          const remnant=sim.bodies[0];
+          return {count:sim.bodies.length,type:remnant.type,mass:remnant.mass,vx:remnant.vel.x,
+            selected:sim.selected===remnant,disposed,noExplosion:sim.explosions.length===0,hasTransition:!!remnant.galaxyMerger};
+        }''')
+        self.assertEqual(result['count'],1,result)
+        self.assertEqual(result['type'],'galaxyElliptical',result)
+        self.assertEqual(result['mass'],4800,result)
+        self.assertAlmostEqual(result['vx'],1)
+        self.assertTrue(result['selected'] and result['disposed'] and result['noExplosion'] and result['hasTransition'],result)
+        self.assertTrue(self.page.evaluate('''() => {
+          for(let i=0;i<370;i++) sim.updateGalaxyInteractions();
+          const b=sim.bodies[0];
+          return !b.galaxyMerger && !!b.galaxyBasePositions && Array.from(b.galaxyStars.geometry.attributes.position.array).every(Number.isFinite);
+        }'''))
+        self.assertEqual(self.errors, [])
+
+    def test_fast_galaxy_cores_cannot_pass_through_each_other(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const a=sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral');
+          sim.spawnBody(-a.r*3,0,0,a.r*6,0,0,2400,'galaxySpiral');
+          sim.step();
+          return sim.bodies.length===1 && sim.bodies[0].mass===4800 && !!sim.bodies[0].galaxyMerger;
+        }''')
+        self.assertTrue(result)
+        self.assertEqual(self.errors, [])
+
+    def test_star_can_pass_through_a_galaxy_without_being_swallowed(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const galaxy=sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral');
+          const star=sim.spawnBody(galaxy.r*.5,0,0,0,0,0,600,'star');
+          sim.handleCollisions(); sim.step();
+          return sim.bodies.includes(galaxy) && sim.bodies.includes(star) && galaxy.mass===2400 && star.mass===600;
+        }''')
+        self.assertTrue(result)
         self.assertEqual(self.errors, [])
 
     def test_galaxy_placement_moves_camera_to_show_it(self):
