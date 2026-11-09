@@ -65,3 +65,10 @@ test('representative star clusters are between giant stars and galaxies',()=>{
     assert.ok(r('redHypergiant')<r('openCluster') && r('openCluster')<r('globularCluster') && r('globularCluster')<r('galaxySpiral'));
   }
 });
+
+test('dark matter distributions are extended and gravastar is compact',()=>{
+  const t={darkMatter:{base:1000,rk:80},darkHalo:{base:4000,rk:1800},gravastar:{base:2500,rk:.85},blackhole:{base:2500,rk:.85}};
+  const r=k=>size.radiusFor(k,t[k].base,t,'reference');
+  assert.ok(r('darkHalo')>r('darkMatter')); assert.ok(r('darkMatter')>r('gravastar')*1e6);
+  assert.ok(r('gravastar')>r('blackhole'));
+});

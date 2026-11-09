@@ -84,6 +84,8 @@
     <div class="btn active" data-type="star">⭐ 恒星</div>
     <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
     <div class="btn" data-type="whitehole">⚪ 白洞</div>
+    <div class="btn" data-type="darkMatter">🟣 暗物质团</div>
+    <div class="btn" data-type="darkHalo">🌌 暗物质晕</div>
     <div class="btn" data-type="openCluster">✨ 疏散星团</div>
     <div class="btn" data-type="globularCluster">🌟 球状星团</div>
     <div class="btn" data-type="galaxySpiral">🌀 旋涡星系</div>
@@ -119,6 +121,7 @@
       <button class="btn" type="button" data-type="bosonStar">🔵 玻色子星</button>
       <button class="btn" type="button" data-type="solitonStar">🔷 孤子星</button>
       <button class="btn" type="button" data-type="qStar">🟪 Q 星</button>
+      <button class="btn" type="button" data-type="gravastar">🔮 引力真空星</button>
       <button class="btn" type="button" data-type="blackDwarf">⚫ 黑矮星</button>
       <button class="btn" type="button" data-type="blackNeutron">🌑 黑中子星</button>
     </div>
@@ -159,6 +162,8 @@
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
+  <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 显示暗物质伪彩分布</label></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">伪彩仅用于观察；隐藏后暗物质仍有引力。</div>
   <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
   <div id="habitableZoneInfo" style="font-size:11px;color:#a9dbb8;line-height:1.4;margin-bottom:8px">宜居带为简化光照示意，不代表存在生命。</div>
   <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
@@ -183,6 +188,7 @@
     <button class="btn" id="btnTidalLockDemo" type="button">🌗 潮汐锁定演示</button>
     <button class="btn" id="btnOortDemo" type="button">☄️ 奥尔特云演示</button>
     <button class="btn" id="btnHillDemo" type="button">🔵 希尔球演示</button>
+    <button class="btn" id="btnDarkMatterDemo" type="button">🌌 暗物质晕演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
@@ -196,6 +202,7 @@
     <button class="btn" id="btnTidalLock" type="button" title="将选中天体锁定到最近的较重伴星">🔒 潮汐锁定</button>
     <button class="btn" id="btnOortCloud" type="button" title="为选中的恒星添加或移除奥尔特云">☁️ 添加奥尔特云</button>
     <button class="btn" id="btnOortComet" type="button" title="从选中恒星的奥尔特云释放一颗彗星">☄️ 释放彗星</button>
+    <button class="btn" id="btnDarkHalo" type="button" title="为选中的星系添加独立的暗物质晕">🌌 给星系添加暗物质晕</button>
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
   </div>
@@ -215,7 +222,7 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
-<script src="celestial-size.js?v=10"></script>
+<script src="celestial-size.js?v=11"></script>
 <script src="planet-assessment.js?v=5"></script>
 
 <script type="module">
@@ -849,6 +856,9 @@ const TYPES = {
   wolfRayet: { base: 2200, rk: 3, color: 0xb5eaff },
   blackhole: { base: 2500, rk: 0.85,color: 0x8a5cff },
   whitehole: { base: 2500, rk: 0.85,color: 0xdffaff },
+  darkMatter: {base:1000, rk:80, color:0x8e7cf0},
+  darkHalo: {base:4000, rk:1800, color:0x7a91ef},
+  gravastar: {base:2500, rk:.85, color:0x8cd9ff},
   openCluster: {base:1000, rk:100, color:0xb7d8ff},
   globularCluster: {base:2000, rk:200, color:0xffd5a0},
   galaxySpiral: {base:2400, rk:1200, color:0xb6d8ff},
@@ -895,6 +905,9 @@ const WHITE_DWARF_VARIANTS = {
   j2356:{name:'WD J2356−2054', spectrum:'DZ', temp:4040, color:0x68b4f5, note:'虽较冷，但强烈吸收可使计算颜色偏蓝。'}
 };
 const EXOTIC_INFO = {
+  darkMatter:['观测证据','暗物质可通过引力效应推断，但其微观组成尚未确定；紫色分布为伪彩示意。'],
+  darkHalo:['观测证据','暗物质晕是包围星系的扩展质量分布；伪彩和密度为游戏示意。'],
+  gravastar:['假说','引力真空星是替代黑洞的一类假说模型，设想真空态核心和物质壳；尚未确认。'],
   openCluster:['已观测','疏散星团由引力联系较松散的恒星组成，形状通常不规则；星点是轻量化视觉示意。'],
   globularCluster:['已观测','球状星团由大量恒星组成，通常呈中心密集的球形；星点是轻量化视觉示意。'],
   galaxySpiral:['已观测','旋涡星系由恒星、气体和尘埃等构成；旋臂与核球为轻量化示意，星点不是独立物理天体。'],
@@ -924,6 +937,7 @@ const PLANET_COLORS = [0x5fb2ff, 0x7de0a3, 0xe0a35f, 0xc98bff, 0xff8b8b, 0x8be0d
 let sizeMode = 'reference';
 const radiusFor = (type, mass) => CelestialSize.radiusFor(type, mass, TYPES, sizeMode);
 const isStarCollection = type => type.startsWith('galaxy') || type === 'openCluster' || type === 'globularCluster';
+const isDarkDistribution = type => type === 'darkMatter' || type === 'darkHalo';
 const shapeScale = CelestialSize.shapeScale;
 /* 解体角速度：赤道线速度达到表面轨道速度时离心力超过引力 */
 const omegaBreak = (mass, r) => Math.sqrt(G * mass / (r * r * r));
@@ -1152,6 +1166,14 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffaa70,
       transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false}));
     glow.scale.setScalar(4); mesh.add(glow); extra.glow = glow;
+  } else if (type === 'gravastar') {
+    mesh=new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({color:0x1b2d53}));
+    const shell=new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({color:0x82ddff,transparent:true,
+      opacity:.42,side:THREE.FrontSide,depthWrite:false}));
+    shell.scale.setScalar(1.12); mesh.add(shell); extra.gravastarShell=shell;
+    const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0x90cfff,transparent:true,
+      opacity:.55,blending:THREE.AdditiveBlending,depthWrite:false}));
+    glow.scale.setScalar(4);mesh.add(glow);extra.glow=glow;
   } else if (['strangeStar','electroweakStar','preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron'].includes(type)) {
     const dark = type === 'blackDwarf' || type === 'blackNeutron';
     mesh = new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({color,transparent:!dark,
@@ -1178,6 +1200,19 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     rim.scale.setScalar(8);
     mesh.add(rim);
     extra.glow = glow;
+  } else if (isDarkDistribution(type)) {
+    mesh=new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+    const count=type==='darkHalo'?900:500, vertices=new Float32Array(count*3);
+    for(let i=0;i<count;i++) {
+      const angle=Math.random()*Math.PI*2, y=Math.random()*2-1, q=Math.sqrt(1-y*y);
+      const radius=Math.pow(Math.random(),type==='darkHalo'?.55:.4);
+      vertices[i*3]=Math.cos(angle)*q*radius; vertices[i*3+1]=y*radius; vertices[i*3+2]=Math.sin(angle)*q*radius;
+    }
+    const geometry=new THREE.BufferGeometry(); geometry.setAttribute('position',new THREE.BufferAttribute(vertices,3));
+    const points=new THREE.Points(geometry,new THREE.PointsMaterial({size:r*.008,map:glowTex,color,
+      transparent:true,opacity:.4,blending:THREE.AdditiveBlending,depthWrite:false}));
+    points.visible=document.getElementById('darkMatterToggle').checked; points.frustumCulled=false; points.raycast=()=>{};
+    mesh.add(points); extra.darkMatterPoints=points;
   } else if (isStarCollection(type)) {
     // One aggregate simulation body; the individual rendered points are decorative stars.
     mesh = new THREE.Mesh(sphereGeo,new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
@@ -1282,7 +1317,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
-  if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe' && !isStarCollection(type)) {
+  if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe' && !isStarCollection(type) && !isDarkDistribution(type)) {
     // Extremely compact hypothetical models use a visual spin cap to avoid numeric instability.
     const initialSpin = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
     b.spinW = EXOTIC_INFO[type] && r < .01 ? Math.min(10,initialSpin) : initialSpin;
@@ -1302,6 +1337,7 @@ function removeBody(b) {
   removeNovaStream(b);
   for (const other of bodies) if (other.novaDonor === b) removeNovaStream(other);
   for (const other of bodies) if (other.tidalLockTarget === b) releaseTidalLock(other);
+  for (const other of bodies) if (other.darkHaloHost === b) other.darkHaloHost=null;
   b.labelEl.remove();
   scene.remove(b.mesh);
   if (b.tail) scene.remove(b.tail);
@@ -1318,6 +1354,7 @@ function removeBody(b) {
   for (const material of materials) material.dispose();
   if (b.impactTexture) b.impactTexture.dispose();
   if (b.galaxyStars) b.galaxyStars.geometry.dispose();
+  if (b.darkMatterPoints) b.darkMatterPoints.geometry.dispose();
   if (b.ring) b.ring.geometry.dispose();
   const i = bodies.indexOf(b);
   if (i >= 0) bodies.splice(i, 1);
@@ -1413,10 +1450,10 @@ for (let i=0;i<3;i++) {
 hillSphere.group.visible=false; scene.add(hillSphere.group);
 const otherHillSpheres=[];
 function estimateHillSphere(body) {
-  if (!body || body.mass<=0 || body.type==='wormhole' || body.type==='whitehole') return null;
+  if (!body || body.mass<=0 || body.type==='wormhole' || body.type==='whitehole' || isDarkDistribution(body.type)) return null;
   let heavier=null, fallback=null, heavyDistance=Infinity, fallbackDistance=Infinity;
   for (const candidate of bodies) {
-    if (candidate===body || candidate.mass<=0 || candidate.type==='wormhole' || candidate.type==='whitehole') continue;
+    if (candidate===body || candidate.mass<=0 || candidate.type==='wormhole' || candidate.type==='whitehole' || isDarkDistribution(candidate.type)) continue;
     const d=body.mesh.position.distanceTo(candidate.mesh.position);
     if (d<=body.r+candidate.r) continue;
     // A fast flyby is not a bound orbit and should not acquire a huge Hill sphere.
@@ -1484,7 +1521,7 @@ document.getElementById('hillFullScale').addEventListener('change',updateHillSph
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
-  comet: '彗星', blackhole: '黑洞', whitehole:'白洞', openCluster:'疏散星团', globularCluster:'球状星团', galaxySpiral:'旋涡星系', galaxyElliptical:'椭圆星系', galaxyIrregular:'不规则星系', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
+  comet: '彗星', blackhole: '黑洞', whitehole:'白洞', darkMatter:'暗物质团', darkHalo:'暗物质晕', gravastar:'引力真空星', openCluster:'疏散星团', globularCluster:'球状星团', galaxySpiral:'旋涡星系', galaxyElliptical:'椭圆星系', galaxyIrregular:'不规则星系', neutron: '中子星', brownDwarf: '褐矮星', whiteDwarf: '白矮星',
   redGiant: '红巨星', redSupergiant:'红超巨星', redHypergiant:'红特超巨星', blueGiant: '蓝巨星', quarkStar: '夸克星', wormhole: '虫洞', probe: '探测器',
   sakurai:'樱井天体',cepheid:'造父变星',quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',
   preonStar:'先子星',bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星' };
@@ -1941,11 +1978,14 @@ function step() {
         const dx = b.mesh.position.x - a.mesh.position.x;
         const dy = b.mesh.position.y - a.mesh.position.y;
         const dz = b.mesh.position.z - a.mesh.position.z;
-        const d2 = dx*dx + dy*dy + dz*dz + 60;
+        // Diffuse dark distributions use an extended Plummer-like force, not a point singularity.
+        const aSoft=isDarkDistribution(a.type) ? a.r*.35 : 0;
+        const bSoft=isDarkDistribution(b.type) ? b.r*.35 : 0;
+        const d2 = dx*dx + dy*dy + dz*dz + 60 + aSoft*aSoft + bSoft*bSoft;
         const d = Math.sqrt(d2);
         // Fictional near-field outflow; outside this range the ordinary gravity remains attractive.
         const whiteOutflow = (a.type === 'whitehole' || b.type === 'whitehole') &&
-          dx*dx + dy*dy + dz*dz < Math.pow(30 + a.r + b.r, 2);
+          dx*dx + dy*dy + dz*dz < Math.pow(30 + (isDarkDistribution(a.type)?0:a.r) + (isDarkDistribution(b.type)?0:b.r), 2);
         const f = (whiteOutflow ? -1 : 1) * G * a.mass * b.mass / d2;
         const fx = f * dx / d, fy = f * dy / d, fz = f * dz / d;
         a.acc.x += fx / a.mass; a.acc.y += fy / a.mass; a.acc.z += fz / a.mass;
@@ -1961,7 +2001,7 @@ function step() {
   const holes = bodies.filter(b => b.type === 'wormhole');
   if (holes.length >= 2) {
     for (const b of bodies) {
-      if (b.type === 'wormhole' || b.tpCd > 0) continue;
+      if (b.type === 'wormhole' || isDarkDistribution(b.type) || b.tpCd > 0) continue;
       for (const h of holes) {
         // Test the whole relative path so fast objects cannot pass through the portal.
         const start = _portalStart.subVectors(b.previousPosition, h.previousPosition);
@@ -2047,6 +2087,8 @@ function handleCollisions(swept = false) {
       if (dead.has(b)) continue;
       // Wormholes are gateways, not solid bodies that merge on contact.
       if (a.type === 'wormhole' || b.type === 'wormhole') continue;
+      // Diffuse dark matter participates through gravity, not solid collisions.
+      if (isDarkDistribution(a.type) || isDarkDistribution(b.type)) continue;
       // A diffuse galaxy is not a solid sphere: individual bodies can pass through it.
       if (a.type.startsWith('galaxy') !== b.type.startsWith('galaxy')) continue;
       const bothGalaxies = a.type.startsWith('galaxy') && b.type.startsWith('galaxy');
@@ -2381,7 +2423,8 @@ function pickBody(e) {
     (e.clientX / window.innerWidth) * 2 - 1,
     -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects(bodies.map(b => b.mesh), true);
+  const selectable=bodies.filter(b=>!isDarkDistribution(b.type) || isDarkDistribution(curType));
+  const hits = raycaster.intersectObjects(selectable.map(b => b.mesh), true);
   for (const h of hits) {
     let o = h.object;
     while (o && !o.userData.bodyRef) o = o.parent;
@@ -2389,7 +2432,7 @@ function pickBody(e) {
   }
   // 屏幕空间容差拾取：小天体也容易点中（≤16px）
   let best = null, bestD = 16;
-  for (const b of bodies) {
+  for (const b of selectable) {
     _tv.copy(b.mesh.position).project(camera);
     if (_tv.z > 1) continue;
     const sx = (_tv.x * 0.5 + 0.5) * window.innerWidth;
@@ -2633,6 +2676,7 @@ function safeLaunchPosition(point, radius) {
   const intervals = [];
   for (const body of bodies) {
     if (body.type === 'wormhole') continue;
+    if (isDarkDistribution(curType) || isDarkDistribution(body.type)) continue;
     if (curType.startsWith('galaxy') !== body.type.startsWith('galaxy')) continue;
     const relative = point.clone().sub(body.mesh.position);
     const projection = relative.dot(direction);
@@ -2673,7 +2717,7 @@ function placeLaunch(velocity) {
     return;
   }
   if (body.type === 'whiteDwarf') applyWhiteDwarfVariant(body, document.getElementById('whiteDwarfVariant').value);
-  if ((['redSupergiant','redHypergiant'].includes(body.type) || isStarCollection(body.type)) && camera.position.distanceTo(body.mesh.position) < body.r * 2.5) {
+  if ((['redSupergiant','redHypergiant'].includes(body.type) || isStarCollection(body.type) || isDarkDistribution(body.type)) && camera.position.distanceTo(body.mesh.position) < body.r * 2.5) {
     const direction = camera.position.clone().sub(body.mesh.position);
     if (direction.lengthSq() < 1e-12) direction.set(0,0,1);
     camera.position.copy(body.mesh.position).addScaledVector(direction.normalize(), body.r * 3);
@@ -2682,7 +2726,7 @@ function placeLaunch(velocity) {
   }
   shockwaveReplay = false;
   setShockwaveReplayUI(false);
-  showNotice(curType === 'whitehole' ? '已创建白洞；近处的排斥和碰撞反弹为游戏示意。' : `已创建${TYPE_NAMES[curType] || curType}；碰撞时可能合并。`);
+  showNotice(isDarkDistribution(curType) ? '已创建暗物质分布；伪彩仅用于观察，质量参与引力。' : curType === 'whitehole' ? '已创建白洞；近处的排斥和碰撞反弹为游戏示意。' : `已创建${TYPE_NAMES[curType] || curType}；碰撞时可能合并。`);
 }
 canvas.addEventListener('pointerdown', e => {
   ensureAudio();
@@ -2842,6 +2886,32 @@ function demoHillSphere() {
   camera.position.set(d,95,240); controls.target.copy(planet.mesh.position);
   selectBody(planet); selRing.visible=false; updateHillSphere();
   showNotice('蓝色球体是选中行星的希尔球近似；实际稳定范围还取决于卫星轨道。');
+}
+function addDarkHaloToGalaxy(galaxy) {
+  if (!galaxy || !bodies.includes(galaxy) || !galaxy.type.startsWith('galaxy')) {
+    showNotice('请先选中一个星系。'); return null;
+  }
+  if (bodies.some(b=>b.type==='darkHalo' && b.darkHaloHost===galaxy)) {
+    showNotice('这个星系已经添加过暗物质晕。'); return null;
+  }
+  const p=galaxy.mesh.position, v=galaxy.vel;
+  const halo=spawnBody(p.x,p.y,p.z,v.x,v.y,v.z,galaxy.mass*3,'darkHalo');
+  if (!halo) { showNotice('天体已达 320 个上限，请先清空部分天体。'); return null; }
+  halo.darkHaloHost=galaxy;
+  showNotice('已添加独立暗物质晕：伪彩显示分布，质量会产生引力。');
+  return halo;
+}
+function demoDarkMatter() {
+  clearScene(); paused=false; timeScale=1;
+  document.getElementById('btnPause').textContent='⏸ 暂停';
+  document.getElementById('btnSpeed').textContent='⏱ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const mode=document.getElementById('sizeMode'); mode.value='display'; mode.dispatchEvent(new Event('change'));
+  document.getElementById('darkMatterToggle').checked=true;
+  const galaxy=spawnBody(0,0,0,0,0,0,2400,'galaxySpiral');
+  selectBody(galaxy); const halo=addDarkHaloToGalaxy(galaxy);
+  camera.position.set(0,halo.r*1.3,halo.r*2); controls.target.set(0,0,0); selRing.visible=false;
+  showNotice('紫色是暗物质晕的伪彩分布；晕和星系分别参与引力，不代表真实发光。');
 }
 function demoNova() {
   clearScene(); paused = false; timeScale = 1;
@@ -3208,6 +3278,11 @@ document.getElementById('btnGalaxyCollision').addEventListener('click', () => { 
 document.getElementById('btnTidalLockDemo').addEventListener('click', () => { ensureAudio(); demoTidalLock(); });
 document.getElementById('btnOortDemo').addEventListener('click', () => { ensureAudio(); demoOortCloud(); });
 document.getElementById('btnHillDemo').addEventListener('click', () => { ensureAudio(); demoHillSphere(); });
+document.getElementById('btnDarkHalo').addEventListener('click', () => addDarkHaloToGalaxy(selected));
+document.getElementById('btnDarkMatterDemo').addEventListener('click', () => { ensureAudio(); demoDarkMatter(); });
+document.getElementById('darkMatterToggle').addEventListener('change', event => {
+  for (const b of bodies) if (b.darkMatterPoints) b.darkMatterPoints.visible=event.target.checked;
+});
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
@@ -3280,6 +3355,7 @@ function updateSizeMarkers() {
     const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
     const projected=b.r*focal/distance;
     b.sizeMarker.visible = (sizeMode === 'reference' && projected < 3) || (!!b.impactDebris && projected < 6);
+    if (isDarkDistribution(b.type) && !document.getElementById('darkMatterToggle').checked) b.sizeMarker.visible=false;
     if (b.sizeMarker.visible) b.sizeMarker.scale.setScalar(distance * 16 / focal / Math.max(1e-12, b.mesh.scale.x));
   }
   if (ghost.visible) {
@@ -3297,6 +3373,7 @@ document.getElementById('sizeMode').addEventListener('change', event => {
     b.r = radiusFor(b.type, b.mass) * (b.type === 'cepheid' ? 1 + .12 * cepheidWave(b.mass,simT) : 1);
     b.mesh.scale.setScalar(b.r);
     if (b.galaxyStars) b.galaxyStars.material.size = b.r * .01;
+    if (b.darkMatterPoints) b.darkMatterPoints.material.size = b.r * .008;
     if (b.tail) b.tail.scale.set(b.r * 3.5, b.r * 18, 1);
     b.spinW = spinRatio * omegaBreak(b.mass, b.r);
   }
@@ -3559,7 +3636,7 @@ function loop() {
     // 恒星脉动 & 吸积盘旋转 & 小行星自转
     for (const b of bodies) {
       // 自转 · 扁化形变 · 潮汐定向拉扯 · 超过解体阈值甩出碎片（黑洞除外）
-      if (b.type !== 'blackhole' && b.type !== 'whitehole' && b.type !== 'quasar' && !isStarCollection(b.type)) {
+      if (b.type !== 'blackhole' && b.type !== 'whitehole' && b.type !== 'quasar' && !isStarCollection(b.type) && !isDarkDistribution(b.type)) {
         const ratio = b.spinW / omegaBreak(b.mass, b.r);
         b.spin += b.spinW * timeScale / 60;
         const target = Math.max(0, Math.min(0.28, (ratio - 0.55) * 0.42));

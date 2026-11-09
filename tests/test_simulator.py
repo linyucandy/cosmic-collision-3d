@@ -52,6 +52,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get otherHillSpheres() { return typeof otherHillSpheres === 'undefined' ? null : otherHillSpheres; },
   get updateHillSphere() { return typeof updateHillSphere === 'undefined' ? null : updateHillSphere; },
   get updateSizeMarkers() { return typeof updateSizeMarkers === 'undefined' ? null : updateSizeMarkers; },
+  get pickBody() { return typeof pickBody === 'undefined' ? null : pickBody; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
@@ -337,6 +338,87 @@ loop();''')
         }''')
         self.assertTrue(all(result.values()), result)
         self.assertEqual(self.errors, [])
+
+    def test_dark_matter_gravity_overlay_and_no_solid_collision(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#tools [data-type="darkMatter"]').count(),1)
+        self.assertEqual(self.page.locator('#tools [data-type="darkHalo"]').count(),1)
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const cloud=sim.spawnBody(0,0,0,0,0,0,1000,'darkMatter');
+          const planet=sim.spawnBody(cloud.r*.2,0,0,0,0,0,40,'planet');
+          sim.handleCollisions(); sim.step();
+          return {both:sim.bodies.includes(cloud)&&sim.bodies.includes(planet),
+            inward:planet.vel.x<0, finite:Number.isFinite(planet.vel.x), visual:!!cloud.darkMatterPoints};
+        }''')
+        self.assertTrue(all(result.values()),result)
+        self.page.locator('#darkMatterToggle').uncheck()
+        self.page.wait_for_function("sim.bodies.some(b=>b.type==='darkMatter' && !b.darkMatterPoints.visible)")
+        self.assertEqual(self.errors,[])
+
+    def test_attach_dark_halo_to_galaxy_and_gravastar(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.selectBody(sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral'))")
+        self.page.locator('#btnDarkHalo').click()
+        result=self.page.evaluate('''() => {
+          const galaxy=sim.selected, halo=sim.bodies.find(b=>b.type==='darkHalo');
+          const star=sim.spawnBody(5e7,0,0,0,0,0,2500,'gravastar');
+          return {halo:!!halo,center:halo && halo.mesh.position.distanceTo(galaxy.mesh.position),
+            mass:halo && halo.mass, galaxyMass:galaxy.mass, star:star.type, compact:star.r<1};
+        }''')
+        self.assertTrue(result['halo'] and result['compact'],result)
+        self.assertAlmostEqual(result['center'],0)
+        self.assertGreater(result['mass'],result['galaxyMass'])
+        self.page.locator('#exoticCatalog summary').click()
+        self.page.locator('#exoticTools [data-type="gravastar"]').click()
+        self.assertIn('假说',self.page.locator('#objectInfo').inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_dark_matter_visibility_does_not_change_gravity_or_momentum(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          const run=visible=>{
+            sim.clear(); document.querySelector('#darkMatterToggle').checked=visible;
+            const halo=sim.spawnBody(0,0,0,0,0,0,1000,'darkMatter');
+            const planet=sim.spawnBody(halo.r*.2,0,0,0,0,0,40,'planet');
+            sim.step(); return {pv:planet.vel.x,hv:halo.vel.x,px:planet.mass*planet.vel.x+halo.mass*halo.vel.x};
+          };
+          return {on:run(true),off:run(false)};
+        }''')
+        self.assertLess(result['on']['pv'],0,result)
+        self.assertAlmostEqual(result['on']['pv'],result['off']['pv'],places=14)
+        self.assertAlmostEqual(result['on']['hv'],result['off']['hv'],places=14)
+        self.assertAlmostEqual(result['on']['px'],0,places=12)
+        self.assertEqual(self.errors,[])
+
+    def test_dark_halo_cleanup_and_duplicate_prevention(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear(); sim.selectBody(sim.spawnBody(0,0,0,0,0,0,2400,'galaxySpiral'))")
+        self.page.locator('#btnDarkHalo').click();self.page.locator('#btnDarkHalo').click()
+        result=self.page.evaluate('''() => {
+          const all=sim.bodies.filter(b=>b.type==='darkHalo'), halo=all[0];
+          let disposed=false;halo.darkMatterPoints.geometry.addEventListener('dispose',()=>disposed=true);
+          sim.removeBody(halo);return {count:all.length,disposed};
+        }''')
+        self.assertEqual(result,{'count':1,'disposed':True})
+        self.assertEqual(self.errors,[])
+
+    def test_dark_halo_demo_and_picking_visible_body_inside(self):
+        self.open_sim()
+        self.page.locator('#btnDarkMatterDemo').click()
+        result=self.page.evaluate('''() => {
+          const galaxy=sim.bodies.find(b=>b.type==='galaxySpiral'), halo=sim.bodies.find(b=>b.type==='darkHalo');
+          return {galaxy:!!galaxy,halo:!!halo,host:halo && halo.darkHaloHost===galaxy};
+        }''')
+        self.assertTrue(all(result.values()),result)
+        picked=self.page.evaluate('''() => {
+          sim.clear();const planet=sim.spawnBody(0,0,0,0,0,0,40,'planet');
+          sim.spawnBody(0,0,0,0,0,0,4000,'darkHalo');
+          sim.camera.position.set(0,0,100);sim.controls.target.set(0,0,0);sim.controls.update();sim.frame();
+          return sim.pickBody({clientX:720,clientY:450})===planet;
+        }''')
+        self.assertTrue(picked)
+        self.assertEqual(self.errors,[])
 
     def test_cluster_placement_reframes_camera(self):
         self.open_sim()
