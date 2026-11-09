@@ -165,6 +165,9 @@
     <input id="spinSlider" type="range" min="0" max="2" step="0.05" value="0.4">
   </div>
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨道轨迹</label></div>
+  <div class="check"><input type="checkbox" id="cmeToggle" checked><label for="cmeToggle">☀️ 显示恒星日冕物质抛射</label></div>
+  <button class="btn" id="btnCme" type="button">☀️ 选中恒星：触发日冕抛射</button>
+  <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">发光粒子为示意，不参与引力和碰撞。</div>
   <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">造父变星的半径会周期变化；普通恒星只改变光晕，光晕不是本体。</div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
@@ -1567,6 +1570,8 @@ function updateCometTail(b) {
 }
 
 /* ================= 爆炸特效 ================= */
+const CME_STARS = new Set(['star','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet','blueGiant','redGiant','redSupergiant','redHypergiant','cepheid','sakurai']);
+const coronalEjections = [];
 const explosions = [];   // 粒子
 const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
@@ -1648,6 +1653,7 @@ function clearScene() {
   setShockwaveReplayUI(false);
   selectBody(null);
   while (bodies.length) removeBody(bodies[0]);
+  for (const e of coronalEjections.splice(0)) removeCoronalEjection(e);
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
   for (const s of shockwaves.splice(0)) removeShockwave(s);
   for (const n of nebulae.splice(0)) removeNebula(n);
@@ -1720,6 +1726,53 @@ function explode(pos, body, visualScale = 1) {
 
   boom(0.1 + power * 0.9);
 }
+
+// CME particles are a bounded visual approximation, not gravitating matter.
+function removeCoronalEjection(e) {
+  scene.remove(e.group); e.points.geometry.dispose(); e.points.material.dispose();
+}
+function emitCoronalMassEjection(star) {
+  if (!star || !bodies.includes(star) || !CME_STARS.has(star.type)) return false;
+  if (coronalEjections.length >= 8) removeCoronalEjection(coronalEjections.shift());
+  const count=80, positions=new Float32Array(count*3);
+  for (let i=0; i<count; i++) {
+    const angle=Math.random()*Math.PI*2, spread=Math.sqrt(Math.random())*.65;
+    positions[i*3]=.15+Math.random()*.45;
+    positions[i*3+1]=Math.cos(angle)*spread;
+    positions[i*3+2]=Math.sin(angle)*spread;
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const material=new THREE.PointsMaterial({color:star.color, size:Math.max(.7,star.r*.11),
+    map:glowTex, transparent:true, opacity:.9, blending:THREE.AdditiveBlending, depthWrite:false});
+  const points=new THREE.Points(geometry,material), group=new THREE.Group();
+  group.add(points);
+  const direction=new THREE.Vector3().randomDirection();
+  group.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),direction);
+  group.position.copy(star.mesh.position).addScaledVector(direction,star.r*1.03);
+  group.scale.setScalar(star.r);
+  scene.add(group);
+  coronalEjections.push({group,points,direction,velocity:star.vel.clone(), radius:star.r, age:0, duration:5});
+  return true;
+}
+function updateCoronalMassEjections(dt) {
+  for (let i=coronalEjections.length-1; i>=0; i--) {
+    const e=coronalEjections[i]; e.age+=dt;
+    e.group.position.addScaledVector(e.velocity,dt).addScaledVector(e.direction,e.radius*.3*dt);
+    e.group.scale.setScalar(e.radius*(1+e.age*.45));
+    e.points.material.opacity=.9*Math.max(0,1-e.age/e.duration);
+    if (e.age>=e.duration) { removeCoronalEjection(e); coronalEjections.splice(i,1); }
+  }
+}
+document.getElementById('btnCme').addEventListener('click',()=>{
+  if (!selected || !CME_STARS.has(selected.type)) { showNotice('请先选中一颗恒星，再触发日冕物质抛射。'); return; }
+  if (!document.getElementById('cmeToggle').checked) document.getElementById('cmeToggle').checked=true;
+  emitCoronalMassEjection(selected);
+  showNotice('日冕物质抛射：发光粒子为视觉示意。');
+});
+document.getElementById('cmeToggle').addEventListener('change',e=>{
+  if (!e.target.checked) for (const cme of coronalEjections.splice(0)) removeCoronalEjection(cme);
+});
 
 function updateEffects() {
   for (let i = nebulae.length - 1; i >= 0; i--) {
@@ -3646,6 +3699,12 @@ function loop() {
     updateVariableStars(simT);
     step();
     updateEffects();
+    updateCoronalMassEjections(timeScale / 60);
+    if (document.getElementById('cmeToggle').checked) for (const b of bodies) {
+      if (!CME_STARS.has(b.type)) continue;
+      if (b.nextCmeAt === undefined) b.nextCmeAt=simT+2+Math.random()*4;
+      if (simT>=b.nextCmeAt) { emitCoronalMassEjection(b); b.nextCmeAt=simT+12+Math.random()*10; }
+    }
     simT += timeScale / 60;
     frameNo++;
     updateTrails();

@@ -45,6 +45,9 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get applyWhiteDwarfVariant() { return typeof applyWhiteDwarfVariant === 'undefined' ? null : applyWhiteDwarfVariant; },
   get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
   get updateTidalLocks() { return typeof updateTidalLocks === 'undefined' ? null : updateTidalLocks; },
+  get emitCoronalMassEjection() { return typeof emitCoronalMassEjection === 'undefined' ? null : emitCoronalMassEjection; },
+  get updateCoronalMassEjections() { return typeof updateCoronalMassEjections === 'undefined' ? null : updateCoronalMassEjections; },
+  get coronalEjections() { return typeof coronalEjections === 'undefined' ? null : coronalEjections; },
   get tidalStrip() { return typeof tidalStrip === 'undefined' ? null : tidalStrip; },
   get updateGalaxyInteractions() { return typeof updateGalaxyInteractions === 'undefined' ? null : updateGalaxyInteractions; },
   get updateHabitableZone() { return typeof updateHabitableZone === 'undefined' ? null : updateHabitableZone; },
@@ -74,6 +77,39 @@ loop();''')
         self.page.route('**/cosmic-collision-3d.html*', lambda route: route.fulfill(body=source, content_type='text/html'))
         self.page.goto(self.url + '/cosmic-collision-3d.html?scene=bh')
         self.page.wait_for_function('window.sim', timeout=60000)
+
+    def test_coronal_ejection_expands_and_cleans_up_without_creating_bodies(self):
+        self.open_sim()
+        result = self.page.evaluate("""() => {
+          sim.clearScene();
+          const star=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const planet=sim.spawnBody(100,0,0,0,0,0,30,'planet');
+          if (!sim.emitCoronalMassEjection) return {available:false};
+          const mass=star.mass, count=sim.bodies.length;
+          const allowed=sim.emitCoronalMassEjection(star);
+          const rejected=!sim.emitCoronalMassEjection(planet);
+          const e=sim.coronalEjections[0], before=e.group.scale.x;
+          sim.updateCoronalMassEjections(1);
+          const expanded=e.group.scale.x>before;
+          sim.updateCoronalMassEjections(20);
+          return {available:true,allowed,rejected,expanded,clean:sim.coronalEjections.length===0,
+                  unchanged:star.mass===mass && sim.bodies.length===count};
+        }""")
+        self.assertTrue(all(result.values()), result)
+        self.assertEqual(self.errors, [])
+
+    def test_coronal_ejection_button_and_toggle(self):
+        self.open_sim()
+        self.page.evaluate("""() => {
+          sim.clearScene();
+          const star=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          sim.selectBody(star);
+        }""")
+        self.page.locator('#btnCme').click()
+        self.assertEqual(self.page.evaluate('sim.coronalEjections.length'), 1)
+        self.page.locator('#cmeToggle').uncheck()
+        self.assertEqual(self.page.evaluate('sim.coronalEjections.length'), 0)
+        self.assertEqual(self.errors, [])
 
     def test_new_stars_and_nova_accretion(self):
         self.open_sim()
