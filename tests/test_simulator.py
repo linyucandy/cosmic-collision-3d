@@ -49,6 +49,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get updateHabitableZone() { return typeof updateHabitableZone === 'undefined' ? null : updateHabitableZone; },
   get habitableZone() { return typeof habitableZone === 'undefined' ? null : habitableZone; },
   get hillSphere() { return typeof hillSphere === 'undefined' ? null : hillSphere; },
+  get otherHillSpheres() { return typeof otherHillSpheres === 'undefined' ? null : otherHillSpheres; },
   get updateHillSphere() { return typeof updateHillSphere === 'undefined' ? null : updateHillSphere; },
   get updateSizeMarkers() { return typeof updateSizeMarkers === 'undefined' ? null : updateSizeMarkers; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
@@ -1112,8 +1113,8 @@ loop();''')
         self.assertTrue(self.page.locator('#hillSphereToggle').is_checked())
         result=self.page.evaluate('''() => {
           sim.clear(); const star=sim.spawnBody(0,0,0,0,0,0,600,'star');
-          const planet=sim.spawnBody(300,0,0,0,0,0,60,'planet'); sim.selectBody(planet); sim.updateHillSphere();
-          const initial=sim.hillSphere.radius, expected=300*Math.cbrt(60/(3*600));
+          const planet=sim.spawnBody(300,0,0,0,0,0,6,'planet'); sim.selectBody(planet); sim.updateHillSphere();
+          const initial=sim.hillSphere.radius, expected=300*Math.cbrt(6/(3*600));
           planet.mesh.position.set(600,0,0); sim.updateHillSphere();
           return {visible:sim.hillSphere.group.visible, correct:Math.abs(initial-expected)<1e-9,
             ratio:sim.hillSphere.radius/initial, primary:sim.hillSphere.primary===star,
@@ -1150,9 +1151,98 @@ loop();''')
           const follows=!!primary && sim.hillSphere.group.visible && sim.hillSphere.group.position.distanceTo(body.mesh.position)<1e-7;
           if(primary) sim.removeBody(primary);
           sim.updateHillSphere();
-          return {follows,hidden:!sim.hillSphere.group.visible};
+          return {follows,reselected:!sim.hillSphere.group.visible || sim.hillSphere.primary!==primary};
         }''')
         self.assertTrue(all(result.values()),result)
+        self.assertEqual(self.errors,[])
+
+    def test_hill_spheres_show_other_bodies_and_use_clear_visual_scale(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#hillShowAll').count(),1)
+        result=self.page.evaluate('''() => {
+          sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const b=sim.spawnBody(300,0,0,0,0,0,60,'planet');
+          const c=sim.spawnBody(500,0,0,0,0,0,20,'planet');
+          sim.selectBody(b); sim.updateHillSphere();
+          return {other:sim.otherHillSpheres.filter(s=>s.group.visible).length,
+            physical:sim.hillSphere.radius, visual:sim.hillSphere.group.scale.x,
+            target:sim.hillSphere.primary===a};
+        }''')
+        self.assertGreaterEqual(result['other'],2,result)
+        self.assertTrue(result['target'],result)
+        self.assertAlmostEqual(result['visual']/result['physical'],.35)
+        self.assertIn('缩小',self.page.locator('#hillSphereInfo').inner_text())
+        self.page.locator('#hillFullScale').check();self.page.evaluate('sim.updateHillSphere()')
+        self.assertAlmostEqual(self.page.evaluate('sim.hillSphere.group.scale.x / sim.hillSphere.radius'),1)
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_does_not_change_gravity(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          const run=enabled=>{
+            sim.clear(); document.querySelector('#hillSphereToggle').checked=enabled;
+            sim.spawnBody(0,0,0,0,0,0,600,'star');
+            const p=sim.spawnBody(300,0,0,0,0,1,40,'planet');sim.selectBody(p);sim.updateHillSphere();sim.step();
+            return [...p.mesh.position.toArray(),...p.vel.toArray()];
+          };
+          return {off:run(false),on:run(true)};
+        }''')
+        for off,on in zip(result['off'],result['on']): self.assertAlmostEqual(off,on,places=10)
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_uses_binary_estimate_for_equal_and_more_massive_body(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear(); const a=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const b=sim.spawnBody(300,0,0,0,0,0,600,'star');
+          sim.selectBody(a);sim.updateHillSphere();const equal=sim.hillSphere.radius;
+          b.mass=60;sim.updateHillSphere();
+          return {equal,visible:sim.hillSphere.group.visible,method:sim.hillSphere.method,
+            smaller:sim.hillSphere.primary===b,radius:sim.hillSphere.radius};
+        }''')
+        self.assertAlmostEqual(result['equal'],150,places=5)
+        self.assertTrue(result['visible'] and result['smaller'],result)
+        self.assertEqual(result['method'],'binary')
+        self.assertGreater(result['radius'],150,result)
+        self.assertLess(result['radius'],300,result)
+        self.assertEqual(self.errors,[])
+
+    def test_similar_mass_hill_uses_l1_instead_of_inflated_small_mass_formula(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const p=sim.spawnBody(300,0,0,0,0,0,60,'planet');sim.selectBody(p);sim.updateHillSphere();
+          return {radius:sim.hillSphere.radius,method:sim.hillSphere.method};
+        }''')
+        self.assertEqual(result['method'],'binary')
+        self.assertLess(result['radius'],300*(60/(3*600))**(1/3),result)
+        self.assertGreater(result['radius'],0,result)
+        self.assertEqual(self.errors,[])
+
+    def test_unbound_flyby_does_not_gain_enormous_hill_sphere(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const p=sim.spawnBody(3000,0,0,100,0,0,40,'planet');sim.selectBody(p);sim.updateHillSphere();
+          return {visible:sim.hillSphere.group.visible, primary:sim.hillSphere.primary};
+        }''')
+        self.assertFalse(result['visible'],result)
+        self.assertIsNone(result['primary'])
+        self.assertIn('束缚',self.page.locator('#hillSphereInfo').inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_collection_is_bounded_and_cleared(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          for(let i=0;i<30;i++) sim.spawnBody(i*100,0,0,0,0,0,40,'planet');
+          sim.selectBody(sim.bodies[0]);sim.updateHillSphere();
+          const displayed=sim.otherHillSpheres.filter(x=>x.group.visible).length;
+          sim.clear();sim.selectBody(null);sim.updateHillSphere();
+          return {displayed,cleared:sim.otherHillSpheres.every(x=>!x.group.visible && x.body===null)};
+        }''')
+        self.assertEqual(result['displayed'],24,result)
+        self.assertTrue(result['cleared'],result)
         self.assertEqual(self.errors,[])
 
     def test_habitable_zone_uses_nearest_star_and_hides_inside_giant(self):

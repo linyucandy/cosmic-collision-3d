@@ -162,6 +162,9 @@
   <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
   <div id="habitableZoneInfo" style="font-size:11px;color:#a9dbb8;line-height:1.4;margin-bottom:8px">宜居带为简化光照示意，不代表存在生命。</div>
   <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
+  <div class="check"><input type="checkbox" id="hillShowAll" checked><label for="hillShowAll">显示其他天体的估算范围</label></div>
+  <div class="check"><input type="checkbox" id="hillFullScale"><label for="hillFullScale">希尔球按计算比例显示</label></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">其他天体最多显示 24 个；无束缚伴星时无法估算。球体仅为显示，不改变引力；可用 G 滑块调节引力。</div>
   <div id="hillSphereInfo" style="font-size:11px;color:#a9d9ff;line-height:1.4;margin-bottom:8px">选中天体后，按最近较重天体估算希尔半径。</div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
@@ -1408,28 +1411,76 @@ for (let i=0;i<3;i++) {
   circle.raycast=()=>{}; hillSphere.group.add(circle);
 }
 hillSphere.group.visible=false; scene.add(hillSphere.group);
+const otherHillSpheres=[];
+function estimateHillSphere(body) {
+  if (!body || body.mass<=0 || body.type==='wormhole' || body.type==='whitehole') return null;
+  let heavier=null, fallback=null, heavyDistance=Infinity, fallbackDistance=Infinity;
+  for (const candidate of bodies) {
+    if (candidate===body || candidate.mass<=0 || candidate.type==='wormhole' || candidate.type==='whitehole') continue;
+    const d=body.mesh.position.distanceTo(candidate.mesh.position);
+    if (d<=body.r+candidate.r) continue;
+    // A fast flyby is not a bound orbit and should not acquire a huge Hill sphere.
+    const relativeSpeedSq=body.vel.distanceToSquared(candidate.vel);
+    if (.5*relativeSpeedSq >= G*(body.mass+candidate.mass)/Math.sqrt(d*d+60)) continue;
+    if (candidate.mass>body.mass && d<heavyDistance) { heavier=candidate; heavyDistance=d; }
+    if (d<fallbackDistance) { fallback=candidate; fallbackDistance=d; }
+  }
+  const primary=heavier || fallback, distance=heavier ? heavyDistance : fallbackDistance;
+  if (!primary) return null;
+  const ratio=body.mass/primary.mass;
+  if (ratio<.02) return {primary,radius:distance*Math.cbrt(ratio/3),method:'hill'};
+  // Circular two-body L1 distance, used when the small-mass Hill formula is inappropriate.
+  let lo=1e-8, hi=1-1e-8;
+  const m=body.mass, M=primary.mass, barycenter=M/(m+M);
+  for (let i=0;i<48;i++) {
+    const x=(lo+hi)/2, force=-m/(x*x)+M/((1-x)*(1-x))+(m+M)*(x-barycenter);
+    if (force>0) hi=x; else lo=x;
+  }
+  return {primary,radius:distance*(lo+hi)/2,method:'binary'};
+}
+function hillVisualRadius(body, radius) {
+  if (document.getElementById('hillFullScale').checked) return radius;
+  return Math.min(radius*.35,Math.max(body.r*2,camera.position.distanceTo(body.mesh.position)*.55));
+}
 function updateHillSphere() {
   const info=document.getElementById('hillSphereInfo'), body=selected;
   hillSphere.body=body && bodies.includes(body) ? body : null;
   hillSphere.primary=null; hillSphere.group.visible=false;
-  let message='选中天体后，按最近较重天体估算希尔半径。';
-  if (document.getElementById('hillSphereToggle').checked && hillSphere.body) {
-    let best=Infinity;
-    for (const candidate of bodies) {
-      if (candidate===body || candidate.mass<=body.mass || candidate.type==='wormhole' || candidate.type==='whitehole') continue;
-      const d=body.mesh.position.distanceTo(candidate.mesh.position);
-      if (d>body.r+candidate.r && d<best) { best=d; hillSphere.primary=candidate; }
+  for (const item of otherHillSpheres) { item.group.visible=false; item.body=null; }
+  const enabled=document.getElementById('hillSphereToggle').checked;
+  let message='选中天体可查看希尔球估算；显示仅供参考，不改变引力。';
+  if (enabled && hillSphere.body) {
+    const estimate=estimateHillSphere(body);
+    if (estimate && Number.isFinite(estimate.radius) && estimate.radius>0) {
+      hillSphere.primary=estimate.primary; hillSphere.radius=estimate.radius; hillSphere.method=estimate.method;
+      const visual=hillVisualRadius(body,estimate.radius);
+      hillSphere.group.position.copy(body.mesh.position); hillSphere.group.scale.setScalar(visual); hillSphere.group.visible=true;
+      const kind=estimate.method==='hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
+      const scale=visual/estimate.radius;
+      const percent=scale*100<1 ? '<1%' : `${Math.round(scale*100)}%`;
+      message=`${kind}约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[estimate.primary.type] || estimate.primary.type} #${estimate.primary.labelNumber}；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}，不改变引力。`;
+    } else message='没有引力束缚的较重或其他合适天体，无法估算希尔球；显示不改变引力。';
+  }
+  if (enabled && document.getElementById('hillShowAll').checked) {
+    let used=0;
+    for (const other of bodies) {
+      if (other===hillSphere.body) continue;
+      const estimate=estimateHillSphere(other);
+      if (!estimate || !Number.isFinite(estimate.radius) || estimate.radius<=0) continue;
+      if (used>=24) break;
+      if (!otherHillSpheres[used]) {
+        const group=hillSphere.group.clone(); group.visible=false; scene.add(group);
+        otherHillSpheres.push({group,body:null});
+      }
+      const item=otherHillSpheres[used++]; item.body=other;
+      item.group.position.copy(other.mesh.position); item.group.scale.setScalar(hillVisualRadius(other,estimate.radius)); item.group.visible=true;
     }
-    if (hillSphere.primary) {
-      hillSphere.radius=best*Math.cbrt(body.mass/(3*hillSphere.primary.mass));
-      hillSphere.group.position.copy(body.mesh.position);
-      hillSphere.group.scale.setScalar(hillSphere.radius); hillSphere.group.visible=Number.isFinite(hillSphere.radius) && hillSphere.radius>0;
-      message=`希尔半径约 ${hillSphere.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[hillSphere.primary.type] || hillSphere.primary.type} #${hillSphere.primary.labelNumber}；瞬时距离近似，不保证轨道稳定。`;
-    } else message='附近没有可用于估算的较重天体，暂不显示希尔球。';
   }
   if (info.textContent!==message) info.textContent=message;
 }
 document.getElementById('hillSphereToggle').addEventListener('change',updateHillSphere);
+document.getElementById('hillShowAll').addEventListener('change',updateHillSphere);
+document.getElementById('hillFullScale').addEventListener('change',updateHillSphere);
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
@@ -3470,8 +3521,11 @@ function updateCameraFarPlane() {
   for (const b of bodies) {
     const extent = Math.max(b.r * 4, b.oortCloud ? b.oortCloud.outerRadius : 0,
       habitableZone.mesh.visible && habitableZone.host===b ? habitableZone.outerRadius : 0,
-      hillSphere.group.visible && hillSphere.body===b ? hillSphere.radius : 0);
+      hillSphere.group.visible && hillSphere.body===b ? hillSphere.group.scale.x : 0);
     required = Math.max(required, (camera.position.distanceTo(b.mesh.position) + extent) * 1.2);
+  }
+  for (const item of otherHillSpheres) if (item.group.visible) {
+    required=Math.max(required,(camera.position.distanceTo(item.group.position)+item.group.scale.x)*1.2);
   }
   if (required > camera.far || required < camera.far * 0.5) {
     camera.far = required;
