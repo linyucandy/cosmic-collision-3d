@@ -46,6 +46,9 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
   get updateTidalLocks() { return typeof updateTidalLocks === 'undefined' ? null : updateTidalLocks; },
   get updateGalaxyInteractions() { return typeof updateGalaxyInteractions === 'undefined' ? null : updateGalaxyInteractions; },
+  get updateHabitableZone() { return typeof updateHabitableZone === 'undefined' ? null : updateHabitableZone; },
+  get habitableZone() { return typeof habitableZone === 'undefined' ? null : habitableZone; },
+  get updateSizeMarkers() { return typeof updateSizeMarkers === 'undefined' ? null : updateSizeMarkers; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
@@ -1064,6 +1067,69 @@ loop();''')
         self.assertAlmostEqual(result['mass'],60,places=8)
         self.assertAlmostEqual(result['px'],0,places=8)
         self.assertTrue(result['outside'],result)
+        self.assertEqual(self.errors,[])
+
+    def test_low_speed_impact_creates_visible_fragments_in_display_mode(self):
+        self.open_sim()
+        self.page.select_option('#sizeMode','display')
+        result=self.page.evaluate('''() => {
+          sim.clear(); const a=sim.spawnBody(0,0,0,0,0,0,40,'planet');
+          sim.spawnBody(a.r*.9,0,0,.1,0,0,2,'asteroid'); sim.handleCollisions();
+          const debris=sim.bodies.filter(b=>b.impactDebris);
+          sim.camera.position.set(0,0,10000); sim.updateSizeMarkers();
+          return {count:debris.length,visible:debris.every(b=>b.sizeMarker.visible),
+            mass:sim.bodies.reduce((sum,b)=>sum+b.mass,0)};
+        }''')
+        self.assertGreater(result['count'],0,result)
+        self.assertTrue(result['visible'],result)
+        self.assertAlmostEqual(result['mass'],42)
+        self.assertEqual(self.errors,[])
+
+    def test_habitable_zone_tracks_star_and_can_be_hidden(self):
+        self.open_sim()
+        self.assertTrue(self.page.locator('#habitableZoneToggle').is_checked())
+        result=self.page.evaluate('''() => {
+          sim.clear();const star=sim.spawnBody(0,0,0,0,0,0,800,'star');sim.selectBody(star);
+          sim.updateHabitableZone();
+          const initial=sim.habitableZone.outerRadius;
+          star.mass=3200;star.mesh.position.set(12,3,4);sim.updateHabitableZone();
+          return {visible:sim.habitableZone.mesh.visible, ratio:sim.habitableZone.outerRadius/initial,
+            follow:sim.habitableZone.mesh.position.distanceTo(star.mesh.position)<1e-9};
+        }''')
+        self.assertTrue(result['visible'] and result['follow'],result)
+        self.assertAlmostEqual(result['ratio'],2)
+        self.assertIn('宜居带',self.page.locator('#habitableZoneInfo').inner_text())
+        self.page.locator('#habitableZoneToggle').uncheck()
+        self.page.evaluate('sim.updateHabitableZone()')
+        self.assertFalse(self.page.evaluate('sim.habitableZone.mesh.visible'))
+        self.assertEqual(self.errors,[])
+
+    def test_habitable_zone_uses_nearest_star_and_hides_inside_giant(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();
+          const near=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          sim.spawnBody(2000,0,0,0,0,0,600,'star');
+          const planet=sim.spawnBody(200,0,0,0,0,0,40,'planet'); sim.selectBody(planet); sim.updateHabitableZone();
+          const nearest=sim.habitableZone.host===near && sim.habitableZone.mesh.visible;
+          sim.clear(); const giant=sim.spawnBody(0,0,0,0,0,0,1800,'redSupergiant');
+          sim.selectBody(giant); sim.updateHabitableZone();
+          return {nearest,hidden:!sim.habitableZone.mesh.visible};
+        }''')
+        self.assertTrue(all(result.values()),result)
+        self.assertEqual(self.errors,[])
+
+    def test_impact_debris_persists_after_simulation_steps(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear(); const a=sim.spawnBody(0,0,0,4,0,0,40,'planet');
+          sim.spawnBody(.3,0,0,-8,0,0,20,'planet'); sim.handleCollisions();
+          for(let i=0;i<3;i++) sim.step();
+          return {count:sim.bodies.filter(b=>b.impactDebris).length,
+            mass:sim.bodies.reduce((sum,b)=>sum+b.mass,0)};
+        }''')
+        self.assertGreater(result['count'],0,result)
+        self.assertAlmostEqual(result['mass'],60,places=7)
         self.assertEqual(self.errors,[])
 
     def test_new_impact_remains_visible_at_effect_limit(self):

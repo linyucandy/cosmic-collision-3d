@@ -159,6 +159,8 @@
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
+  <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
+  <div id="habitableZoneInfo" style="font-size:11px;color:#a9dbb8;line-height:1.4;margin-bottom:8px">宜居带为简化光照示意，不代表存在生命。</div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">蓝紫射线表示模拟的高能辐射与碰撞热量，仅供观察，并非真实测量。</div>
@@ -1356,6 +1358,39 @@ for (let i = 0; i < 3; i++) {
   scene.add(l); starLights.push(l);
 }
 const LIT_TYPES = new Set(['star', 'whiteDwarf', 'blueGiant', 'redGiant','redSupergiant','redHypergiant', 'quarkStar','sakurai','cepheid','quasar','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet']);
+// Matches the relative source intensities used by the existing planet assessment.
+const HABITABLE_INTENSITY = {star:1,redDwarf:.04,orangeDwarf:.3,hotSubdwarf:.1,wolfRayet:4,blueGiant:2,redGiant:1.5,redSupergiant:3,redHypergiant:5,whiteDwarf:.2,cepheid:2,quasar:3,sakurai:.7};
+const habitableZone = {mesh:new THREE.Mesh(new THREE.RingGeometry(.95,1.67,96),
+  new THREE.MeshBasicMaterial({color:0x55e593,transparent:true,opacity:.19,side:THREE.DoubleSide,depthWrite:false})),host:null,innerRadius:0,outerRadius:0};
+habitableZone.mesh.rotation.x=-Math.PI/2; habitableZone.mesh.visible=false; habitableZone.mesh.raycast=()=>{};
+scene.add(habitableZone.mesh);
+function updateHabitableZone() {
+  const mesh=habitableZone.mesh, info=document.getElementById('habitableZoneInfo');
+  const candidates=bodies.filter(b=>HABITABLE_INTENSITY[b.type] && b.mass>0);
+  let host=selected && candidates.includes(selected) ? selected : null;
+  if (!host && selected && bodies.includes(selected)) {
+    let best=Infinity;
+    for (const candidate of candidates) {
+      const d=candidate.mesh.position.distanceToSquared(selected.mesh.position);
+      if (d<best) { best=d; host=candidate; }
+    }
+  }
+  if (!host) host=candidates[0] || null;
+  habitableZone.host=host;
+  let message='宜居带为简化光照示意，不代表存在生命。';
+  if (!document.getElementById('habitableZoneToggle').checked || !host) {
+    mesh.visible=false;
+  } else {
+    const scale=390*Math.sqrt(HABITABLE_INTENSITY[host.type]*host.mass/800);
+    habitableZone.innerRadius=.95*scale; habitableZone.outerRadius=1.67*scale;
+    mesh.visible=host.r<habitableZone.innerRadius;
+    mesh.position.copy(host.mesh.position); mesh.scale.setScalar(scale);
+    message=mesh.visible ? `宜居带 · ${TYPE_NAMES[host.type] || host.type} #${host.labelNumber}：${habitableZone.innerRadius.toFixed(0)}–${habitableZone.outerRadius.toFixed(0)} 游戏距离单位；仅供示意，不代表存在生命。` :
+      '该恒星的模拟半径大于估算内边界，暂不显示宜居带。';
+  }
+  if (info.textContent!==message) info.textContent=message;
+}
+document.getElementById('habitableZoneToggle').addEventListener('change',updateHabitableZone);
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
@@ -1485,7 +1520,7 @@ function clearScene() {
   document.querySelectorAll('#systems .btn').forEach(b => b.classList.remove('active'));
 }
 
-function explode(pos, body) {
+function explode(pos, body, visualScale = 1) {
   // Keep the newest impact visible while bounding concurrent graphics resources.
   if (explosions.length >= 12) {
     const old=explosions.shift(); scene.remove(old.pts); old.geo.dispose(); old.mat.dispose();
@@ -1504,7 +1539,7 @@ function explode(pos, body) {
   for (let i = 0; i < count; i++) {
     posArr[i*3] = pos.x; posArr[i*3+1] = pos.y; posArr[i*3+2] = pos.z;
     const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-    const sp = (0.4 + Math.random() * 2.6) * (0.7 + power * 2.2);
+    const sp = (0.4 + Math.random() * 2.6) * (0.7 + power * 2.2) * visualScale;
     velArr[i*3]   = Math.sin(ph) * Math.cos(th) * sp;
     velArr[i*3+1] = Math.cos(ph) * sp;
     velArr[i*3+2] = Math.sin(ph) * Math.sin(th) * sp;
@@ -1514,7 +1549,7 @@ function explode(pos, body) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-  const mat = new THREE.PointsMaterial({ size: 2.4, vertexColors: true, transparent: true,
+  const mat = new THREE.PointsMaterial({ size: 2.4 * visualScale, vertexColors: true, transparent: true,
     blending: THREE.AdditiveBlending, depthWrite: false });
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
@@ -1533,7 +1568,7 @@ function explode(pos, body) {
   const startRadius = Math.max(2, body.r * 0.8);
   sw.scale.setScalar(startRadius);
   scene.add(sw);
-  shockwaves.push({ mesh: sw, ring: waveRing, r: startRadius, vr: 2 + power * 4,
+  shockwaves.push({ mesh: sw, ring: waveRing, r: startRadius, vr: (2 + power * 4) * visualScale,
     age: 0, duration: 1.2 + power * 0.4 });
 
   // 闪光
@@ -1878,10 +1913,11 @@ function step() {
 }
 
 function createImpactFragments(events) {
+  let debrisCount=bodies.filter(b=>b.impactDebris).length;
   for (const event of events) {
     const body=event.body;
-    if (!bodies.includes(body) || bodies.length>=320) continue;
-    const count=Math.min(4,320-bodies.length);
+    if (!bodies.includes(body) || bodies.length>=320 || debrisCount>=64) continue;
+    const count=Math.min(4,320-bodies.length,64-debrisCount);
     const initialMass=body.mass, budget=Math.min(event.mass*.2,initialMass*.08);
     if (budget<=.0001 || initialMass<=budget) continue;
     const pieceMass=budget/count, pieceRadius=radiusFor('asteroid',pieceMass);
@@ -1898,7 +1934,7 @@ function createImpactFragments(events) {
       const velocity=originalVelocity.clone().addScaledVector(direction,speed);
       const fragment=spawnBody(position.x,position.y,position.z,velocity.x,velocity.y,velocity.z,pieceMass,'asteroid');
       if (!fragment) break;
-      fragment.impactDebris=true; ejected+=pieceMass; momentum.addScaledVector(velocity,pieceMass);
+      fragment.impactDebris=true; debrisCount++; ejected+=pieceMass; momentum.addScaledVector(velocity,pieceMass);
     }
     if (ejected>0) {
       body.mass=initialMass-ejected;
@@ -2001,8 +2037,8 @@ function handleCollisions(swept = false) {
         const vT = relV.addScaledVector(impactDirection,-relV.dot(impactDirection)).length();
         survivor.spinW += (other.mass * vT) / (0.4 * M * survivor.r) * 0.5;
         const impactPoint=survivor.mesh.position.clone().addScaledVector(impactDirection,survivor.r);
-        explode(impactPoint, other);
-        if (impactSpeed>=1.5 && !isHole(survivor) && !isHole(other) &&
+        explode(impactPoint, other, Math.min(1000,Math.max(1,survivor.r*.025)));
+        if (impactSpeed>1e-6 && !isHole(survivor) && !isHole(other) &&
             !isStarCollection(survivor.type) && !isStarCollection(other.type) && survivor.type!=='probe' && other.type!=='probe') {
           impactEvents.push({body:survivor,mass:other.mass,speed:impactSpeed});
         }
@@ -3132,7 +3168,8 @@ function updateSizeMarkers() {
   const focal = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   for (const b of bodies) {
     const distance = Math.max(.001, camera.position.distanceTo(b.mesh.position));
-    b.sizeMarker.visible = sizeMode === 'reference' && b.r * focal / distance < 3;
+    const projected=b.r*focal/distance;
+    b.sizeMarker.visible = (sizeMode === 'reference' && projected < 3) || (!!b.impactDebris && projected < 6);
     if (b.sizeMarker.visible) b.sizeMarker.scale.setScalar(distance * 16 / focal / Math.max(1e-12, b.mesh.scale.x));
   }
   if (ghost.visible) {
@@ -3372,7 +3409,8 @@ function updateCameraFarPlane() {
     required = Math.max(required, distance + 15 * niceGridSpacing(distance));
   }
   for (const b of bodies) {
-    const extent = Math.max(b.r * 4, b.oortCloud ? b.oortCloud.outerRadius : 0);
+    const extent = Math.max(b.r * 4, b.oortCloud ? b.oortCloud.outerRadius : 0,
+      habitableZone.mesh.visible && habitableZone.host===b ? habitableZone.outerRadius : 0);
     required = Math.max(required, (camera.position.distanceTo(b.mesh.position) + extent) * 1.2);
   }
   if (required > camera.far || required < camera.far * 0.5) {
@@ -3507,6 +3545,7 @@ function loop() {
     updateLights();
   }
   updateOortClouds();
+  updateHabitableZone();
   controls.update();
   // 跟随观察：相机锁定选中天体 + 选中环 + 温度读数
   if (selected && bodies.includes(selected)) {
