@@ -161,6 +161,8 @@
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
   <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
   <div id="habitableZoneInfo" style="font-size:11px;color:#a9dbb8;line-height:1.4;margin-bottom:8px">宜居带为简化光照示意，不代表存在生命。</div>
+  <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
+  <div id="hillSphereInfo" style="font-size:11px;color:#a9d9ff;line-height:1.4;margin-bottom:8px">选中天体后，按最近较重天体估算希尔半径。</div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">蓝紫射线表示模拟的高能辐射与碰撞热量，仅供观察，并非真实测量。</div>
@@ -177,6 +179,7 @@
     <button class="btn" id="btnGalaxyCollision" type="button">🌌 星系碰撞演示</button>
     <button class="btn" id="btnTidalLockDemo" type="button">🌗 潮汐锁定演示</button>
     <button class="btn" id="btnOortDemo" type="button">☄️ 奥尔特云演示</button>
+    <button class="btn" id="btnHillDemo" type="button">🔵 希尔球演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
@@ -1391,6 +1394,42 @@ function updateHabitableZone() {
   if (info.textContent!==message) info.textContent=message;
 }
 document.getElementById('habitableZoneToggle').addEventListener('change',updateHabitableZone);
+const hillSphere = {group:new THREE.Group(),body:null,primary:null,radius:0};
+const hillSurface=new THREE.Mesh(new THREE.SphereGeometry(1,28,16),
+  new THREE.MeshBasicMaterial({color:0x72c7ff,transparent:true,opacity:.045,side:THREE.DoubleSide,depthWrite:false}));
+hillSurface.raycast=()=>{}; hillSphere.group.add(hillSurface);
+const hillCirclePoints=[];
+for (let i=0;i<96;i++) { const a=i*Math.PI*2/96; hillCirclePoints.push(new THREE.Vector3(Math.cos(a),Math.sin(a),0)); }
+for (let i=0;i<3;i++) {
+  const circle=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(hillCirclePoints),
+    new THREE.LineBasicMaterial({color:0x75d3ff,transparent:true,opacity:.7,depthWrite:false}));
+  if (i===1) circle.rotation.x=Math.PI/2;
+  if (i===2) circle.rotation.y=Math.PI/2;
+  circle.raycast=()=>{}; hillSphere.group.add(circle);
+}
+hillSphere.group.visible=false; scene.add(hillSphere.group);
+function updateHillSphere() {
+  const info=document.getElementById('hillSphereInfo'), body=selected;
+  hillSphere.body=body && bodies.includes(body) ? body : null;
+  hillSphere.primary=null; hillSphere.group.visible=false;
+  let message='选中天体后，按最近较重天体估算希尔半径。';
+  if (document.getElementById('hillSphereToggle').checked && hillSphere.body) {
+    let best=Infinity;
+    for (const candidate of bodies) {
+      if (candidate===body || candidate.mass<=body.mass || candidate.type==='wormhole' || candidate.type==='whitehole') continue;
+      const d=body.mesh.position.distanceTo(candidate.mesh.position);
+      if (d>body.r+candidate.r && d<best) { best=d; hillSphere.primary=candidate; }
+    }
+    if (hillSphere.primary) {
+      hillSphere.radius=best*Math.cbrt(body.mass/(3*hillSphere.primary.mass));
+      hillSphere.group.position.copy(body.mesh.position);
+      hillSphere.group.scale.setScalar(hillSphere.radius); hillSphere.group.visible=Number.isFinite(hillSphere.radius) && hillSphere.radius>0;
+      message=`希尔半径约 ${hillSphere.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[hillSphere.primary.type] || hillSphere.primary.type} #${hillSphere.primary.labelNumber}；瞬时距离近似，不保证轨道稳定。`;
+    } else message='附近没有可用于估算的较重天体，暂不显示希尔球。';
+  }
+  if (info.textContent!==message) info.textContent=message;
+}
+document.getElementById('hillSphereToggle').addEventListener('change',updateHillSphere);
 const HEATERS = new Set([...LIT_TYPES, 'neutron', 'blackhole']);
 const HEATABLE = new Set(['planet', 'ringplanet', 'gasGiant', 'asteroid', 'comet', 'brownDwarf', 'redGiant']);
 const TYPE_NAMES = { redDwarf:'红矮星', orangeDwarf:'橙矮星', hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', star: '恒星', planet: '行星', ringplanet: '环行星', gasGiant: '气态巨行星', asteroid: '小行星',
@@ -2734,6 +2773,25 @@ function demoOortCloud() {
   camera.position.set(0,radius*.8,radius*2.3); controls.target.set(0,0,0); selRing.visible=false;
   showNotice('奥尔特云是围绕恒星的假想冰体云；点击“释放彗星”可让一颗彗星进入模拟。距离已压缩。');
 }
+function demoHillSphere() {
+  clearScene(); paused=false; timeScale=1;
+  document.getElementById('btnPause').textContent='⏸ 暂停';
+  document.getElementById('btnSpeed').textContent='⏱ ×1';
+  document.getElementById('btnSpeed').classList.remove('active');
+  const mode=document.getElementById('sizeMode'); mode.value='display'; mode.dispatchEvent(new Event('change'));
+  document.getElementById('hillSphereToggle').checked=true;
+  const star=spawnBody(0,0,0,0,0,0,600,'star');
+  const d=140, planetMass=40, total=star.mass+planetMass;
+  const orbitalSpeed=Math.sqrt(G*total*d*d/Math.pow(d*d+60,1.5));
+  star.vel.z=-orbitalSpeed*planetMass/total;
+  const planet=spawnBody(d,0,0,0,0,orbitalSpeed*star.mass/total,planetMass,'planet');
+  const moonDistance=15, moonMass=2;
+  const moonSpeed=Math.sqrt(G*(planetMass+moonMass)*moonDistance*moonDistance/Math.pow(moonDistance*moonDistance+60,1.5));
+  spawnBody(d,0,moonDistance,moonSpeed,0,planet.vel.z,moonMass,'asteroid');
+  camera.position.set(d,95,240); controls.target.copy(planet.mesh.position);
+  selectBody(planet); selRing.visible=false; updateHillSphere();
+  showNotice('蓝色球体是选中行星的希尔球近似；实际稳定范围还取决于卫星轨道。');
+}
 function demoNova() {
   clearScene(); paused = false; timeScale = 1;
   document.getElementById('btnPause').textContent = '⏸ 暂停';
@@ -3098,6 +3156,7 @@ document.getElementById('btnWhiteHoleDemo').addEventListener('click', () => { en
 document.getElementById('btnGalaxyCollision').addEventListener('click', () => { ensureAudio(); demoGalaxyCollision(); });
 document.getElementById('btnTidalLockDemo').addEventListener('click', () => { ensureAudio(); demoTidalLock(); });
 document.getElementById('btnOortDemo').addEventListener('click', () => { ensureAudio(); demoOortCloud(); });
+document.getElementById('btnHillDemo').addEventListener('click', () => { ensureAudio(); demoHillSphere(); });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
@@ -3410,7 +3469,8 @@ function updateCameraFarPlane() {
   }
   for (const b of bodies) {
     const extent = Math.max(b.r * 4, b.oortCloud ? b.oortCloud.outerRadius : 0,
-      habitableZone.mesh.visible && habitableZone.host===b ? habitableZone.outerRadius : 0);
+      habitableZone.mesh.visible && habitableZone.host===b ? habitableZone.outerRadius : 0,
+      hillSphere.group.visible && hillSphere.body===b ? hillSphere.radius : 0);
     required = Math.max(required, (camera.position.distanceTo(b.mesh.position) + extent) * 1.2);
   }
   if (required > camera.far || required < camera.far * 0.5) {
@@ -3546,6 +3606,7 @@ function loop() {
   }
   updateOortClouds();
   updateHabitableZone();
+  updateHillSphere();
   controls.update();
   // 跟随观察：相机锁定选中天体 + 选中环 + 温度读数
   if (selected && bodies.includes(selected)) {

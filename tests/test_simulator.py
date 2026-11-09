@@ -48,6 +48,8 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get updateGalaxyInteractions() { return typeof updateGalaxyInteractions === 'undefined' ? null : updateGalaxyInteractions; },
   get updateHabitableZone() { return typeof updateHabitableZone === 'undefined' ? null : updateHabitableZone; },
   get habitableZone() { return typeof habitableZone === 'undefined' ? null : habitableZone; },
+  get hillSphere() { return typeof hillSphere === 'undefined' ? null : hillSphere; },
+  get updateHillSphere() { return typeof updateHillSphere === 'undefined' ? null : updateHillSphere; },
   get updateSizeMarkers() { return typeof updateSizeMarkers === 'undefined' ? null : updateSizeMarkers; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
   get nebulae() { return typeof nebulae === "undefined" ? null : nebulae; },
@@ -1102,6 +1104,55 @@ loop();''')
         self.page.locator('#habitableZoneToggle').uncheck()
         self.page.evaluate('sim.updateHabitableZone()')
         self.assertFalse(self.page.evaluate('sim.habitableZone.mesh.visible'))
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_uses_relative_masses_distance_and_follows_body(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#hillSphereToggle').count(),1)
+        self.assertTrue(self.page.locator('#hillSphereToggle').is_checked())
+        result=self.page.evaluate('''() => {
+          sim.clear(); const star=sim.spawnBody(0,0,0,0,0,0,600,'star');
+          const planet=sim.spawnBody(300,0,0,0,0,0,60,'planet'); sim.selectBody(planet); sim.updateHillSphere();
+          const initial=sim.hillSphere.radius, expected=300*Math.cbrt(60/(3*600));
+          planet.mesh.position.set(600,0,0); sim.updateHillSphere();
+          return {visible:sim.hillSphere.group.visible, correct:Math.abs(initial-expected)<1e-9,
+            ratio:sim.hillSphere.radius/initial, primary:sim.hillSphere.primary===star,
+            follows:sim.hillSphere.group.position.distanceTo(planet.mesh.position)<1e-9};
+        }''')
+        self.assertTrue(result['visible'] and result['correct'] and result['primary'] and result['follows'],result)
+        self.assertAlmostEqual(result['ratio'],2)
+        self.assertIn('希尔',self.page.locator('#hillSphereInfo').inner_text())
+        self.page.locator('#hillSphereToggle').uncheck(); self.page.evaluate('sim.updateHillSphere()')
+        self.assertFalse(self.page.evaluate('sim.hillSphere.group.visible'))
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_demo_and_missing_primary(self):
+        self.open_sim()
+        self.page.locator('#btnHillDemo').click()
+        result=self.page.evaluate('''() => {
+          sim.updateHillSphere(); const p=sim.selected;
+          return {planet:p && p.type==='planet', visible:sim.hillSphere.group.visible,
+            primary:sim.hillSphere.primary && sim.hillSphere.primary.type==='star',
+            satellite:sim.bodies.some(b=>b.type==='asteroid')};
+        }''')
+        self.assertTrue(all(result.values()),result)
+        self.page.evaluate('sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,40,"planet"));sim.updateHillSphere()')
+        self.assertFalse(self.page.evaluate('sim.hillSphere.group.visible'))
+        self.assertIn('较重',self.page.locator('#hillSphereInfo').inner_text())
+        self.assertEqual(self.errors,[])
+
+    def test_hill_sphere_follows_running_demo_and_primary_removal(self):
+        self.open_sim()
+        self.page.locator('#btnHillDemo').click()
+        self.page.wait_for_timeout(1000)
+        result=self.page.evaluate('''() => {
+          sim.updateHillSphere(); const body=sim.selected, primary=sim.hillSphere.primary;
+          const follows=!!primary && sim.hillSphere.group.visible && sim.hillSphere.group.position.distanceTo(body.mesh.position)<1e-7;
+          if(primary) sim.removeBody(primary);
+          sim.updateHillSphere();
+          return {follows,hidden:!sim.hillSphere.group.visible};
+        }''')
+        self.assertTrue(all(result.values()),result)
         self.assertEqual(self.errors,[])
 
     def test_habitable_zone_uses_nearest_star_and_hides_inside_giant(self):
