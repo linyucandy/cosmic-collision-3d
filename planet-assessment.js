@@ -50,7 +50,7 @@
   const controlsBody = document.createElement('div');
   controlsBody.id = 'panelControls';
   for (const child of [...controls.children]) {
-    if (!child.matches('a, h1')) controlsBody.appendChild(child);
+    if (!child.matches('a, h1, #featuredTools')) controlsBody.appendChild(child);
   }
   const toggle = document.createElement('button');
   toggle.id = 'toggleControls';

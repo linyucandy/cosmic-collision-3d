@@ -58,6 +58,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get updateProbeTelemetry() { return typeof updateProbeTelemetry === "undefined" ? null : updateProbeTelemetry; },
   get updatePlanetaryRings() { return typeof updatePlanetaryRings === "undefined" ? null : updatePlanetaryRings; },
   get updateVariableStars() { return typeof updateVariableStars === "undefined" ? null : updateVariableStars; },
+  get simulationTime() { return simT; },
   get lensPass() { return typeof lensPass === "undefined" ? null : lensPass; },
   get lensDemoGrid() { return typeof lensDemoGrid === "undefined" ? null : lensDemoGrid; },
   get referenceGrid() { return typeof referenceGrid === "undefined" ? null : referenceGrid; },
@@ -341,8 +342,8 @@ loop();''')
 
     def test_dark_matter_gravity_overlay_and_no_solid_collision(self):
         self.open_sim()
-        self.assertEqual(self.page.locator('#tools [data-type="darkMatter"]').count(),1)
-        self.assertEqual(self.page.locator('#tools [data-type="darkHalo"]').count(),1)
+        self.assertEqual(self.page.locator('#featuredTools [data-type="darkMatter"]').count(),1)
+        self.assertEqual(self.page.locator('#featuredTools [data-type="darkHalo"]').count(),1)
         result=self.page.evaluate('''() => {
           sim.clear();
           const cloud=sim.spawnBody(0,0,0,0,0,0,1000,'darkMatter');
@@ -369,8 +370,7 @@ loop();''')
         self.assertTrue(result['halo'] and result['compact'],result)
         self.assertAlmostEqual(result['center'],0)
         self.assertGreater(result['mass'],result['galaxyMass'])
-        self.page.locator('#exoticCatalog summary').click()
-        self.page.locator('#exoticTools [data-type="gravastar"]').click()
+        self.page.locator('#featuredTools [data-type="gravastar"]').click()
         self.assertIn('假说',self.page.locator('#objectInfo').inner_text())
         self.assertEqual(self.errors,[])
 
@@ -1241,6 +1241,7 @@ loop();''')
     def test_hill_spheres_show_other_bodies_and_use_clear_visual_scale(self):
         self.open_sim()
         self.assertEqual(self.page.locator('#hillShowAll').count(),1)
+        self.page.locator('#hillFullScale').uncheck()
         result=self.page.evaluate('''() => {
           sim.clear();const a=sim.spawnBody(0,0,0,0,0,0,600,'star');
           const b=sim.spawnBody(300,0,0,0,0,0,60,'planet');
@@ -1256,6 +1257,69 @@ loop();''')
         self.assertIn('缩小',self.page.locator('#hillSphereInfo').inner_text())
         self.page.locator('#hillFullScale').check();self.page.evaluate('sim.updateHillSphere()')
         self.assertAlmostEqual(self.page.evaluate('sim.hillSphere.group.scale.x / sim.hillSphere.radius'),1)
+        self.assertEqual(self.errors,[])
+
+    def test_new_objects_are_visible_when_mobile_controls_are_collapsed(self):
+        self.open_sim();self.page.set_viewport_size({'width':390,'height':844})
+        self.page.wait_for_function('document.getElementById("panelControls").hidden')
+        for kind in ['gravastar','darkMatter','darkHalo']:
+            button=self.page.locator(f'#featuredTools [data-type="{kind}"]')
+            self.assertTrue(button.is_visible(),kind)
+            button.click()
+            self.assertIn(kind=='gravastar' and '引力真空星' or '暗物质',self.page.locator('#objectInfo').text_content())
+        self.assertEqual(self.errors,[])
+
+    def test_selected_hill_sphere_defaults_to_calculated_scale(self):
+        self.open_sim()
+        self.assertTrue(self.page.locator('#hillFullScale').is_checked())
+        result=self.page.evaluate('''() => {
+          sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');
+          sim.selectBody(sim.spawnBody(300,0,0,0,0,0,6,'planet'));sim.updateHillSphere();
+          return {ratio:sim.hillSphere.group.scale.x/sim.hillSphere.radius,
+            note:document.querySelector('#hillSphereInfo').textContent};
+        }''')
+        self.assertAlmostEqual(result['ratio'],1)
+        self.assertIn('球外',result['note'])
+        self.assertEqual(self.errors,[])
+
+    def test_cepheid_pulsation_can_be_disabled_without_losing_mass(self):
+        self.open_sim()
+        self.assertEqual(self.page.locator('#stellarPulseToggle').count(),1)
+        self.page.evaluate("sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,900,'cepheid'));sim.updateVariableStars(Math.PI/2)")
+        expanded=self.page.evaluate('sim.selected.r')
+        self.page.locator('#stellarPulseToggle').uncheck()
+        result=self.page.evaluate('''() => {
+          sim.updateVariableStars(4);const a=sim.selected.r;sim.updateVariableStars(8);
+          return {a,b:sim.selected.r,mass:sim.selected.mass};
+        }''')
+        self.assertLess(result['a'],expanded)
+        self.assertAlmostEqual(result['a'],result['b'])
+        self.assertEqual(result['mass'],900)
+        self.assertEqual(self.errors,[])
+
+    def test_isolated_new_star_keeps_radius_and_mass_while_glow_can_be_stopped(self):
+        self.open_sim()
+        self.page.evaluate("sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,600,'star'))")
+        self.page.locator('#stellarPulseToggle').uncheck()
+        self.page.locator('#btnPause').click();self.page.wait_for_timeout(1100)
+        result=self.page.evaluate('''() => ({mass:sim.selected.mass,r:sim.selected.r,
+          scale:sim.selected.mesh.scale.x,glow:sim.selected.glow.scale.x})''')
+        self.assertEqual(result['mass'],600)
+        self.assertAlmostEqual(result['r'],27.25)
+        self.assertAlmostEqual(result['scale'],27.25)
+        self.assertAlmostEqual(result['glow'],4)
+        self.assertEqual(self.errors,[])
+
+    def test_new_cepheid_starts_pulsation_from_creation_time(self):
+        self.open_sim()
+        self.page.locator('#btnPause').click();self.page.wait_for_timeout(900);self.page.locator('#btnPause').click()
+        result=self.page.evaluate('''() => {
+          sim.clear();const body=sim.spawnBody(0,0,0,0,0,0,900,'cepheid');const original=body.r;
+          sim.updateVariableStars(sim.simulationTime);
+          return {original,r:body.r,mass:body.mass};
+        }''')
+        self.assertAlmostEqual(result['r'],result['original'],places=8)
+        self.assertEqual(result['mass'],900)
         self.assertEqual(self.errors,[])
 
     def test_hill_sphere_does_not_change_gravity(self):

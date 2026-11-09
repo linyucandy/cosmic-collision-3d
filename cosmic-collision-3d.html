@@ -30,6 +30,10 @@
   .btn:hover { background:rgba(90,110,220,.35); }
   .btn.active { background:rgba(120,140,255,.45); border-color:#9db4ff; color:#fff;
     box-shadow:0 0 10px rgba(130,150,255,.45); }
+  .panel.controls-collapsed { padding:10px; }
+  .controls-collapsed .home-link { font-size:11px; margin-bottom:4px; }
+  .controls-collapsed #featuredTools { gap:3px; margin-bottom:4px; }
+  .controls-collapsed #featuredTools .btn { font-size:10px; padding:4px 2px; min-height:25px; line-height:1.1; white-space:nowrap; }
   #systems .btn { flex:1 1 calc(33.33% - 6px); font-size:11px; padding:6px 2px; }
   .slider-row { margin-bottom:10px; font-size:12px; color:#9aa8d8; }
   .slider-row label { display:flex; justify-content:space-between; margin-bottom:3px; }
@@ -78,14 +82,17 @@
 <div class="panel">
   <a class="home-link" href="index.html">← 游戏选择 / 作者信息</a>
   <h1>🌌 宇宙碰撞模拟器<span class="tag">3D</span></h1>
+  <div class="row" id="featuredTools" aria-label="新增天体快捷入口">
+    <button class="btn" type="button" data-type="darkMatter">🟣 暗物质</button>
+    <button class="btn" type="button" data-type="darkHalo">🌌 暗物质晕</button>
+    <button class="btn" type="button" data-type="gravastar" title="引力真空星，也称重力真空星（gravastar）" style="flex-basis:100%">🔮 引力真空星</button>
+  </div>
   <div class="row" id="tools">
     <div class="btn" data-type="asteroid">☄️ 小行星</div>
     <div class="btn" data-type="planet">🪐 行星</div>
     <div class="btn active" data-type="star">⭐ 恒星</div>
     <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
     <div class="btn" data-type="whitehole">⚪ 白洞</div>
-    <div class="btn" data-type="darkMatter">🟣 暗物质团</div>
-    <div class="btn" data-type="darkHalo">🌌 暗物质晕</div>
     <div class="btn" data-type="openCluster">✨ 疏散星团</div>
     <div class="btn" data-type="globularCluster">🌟 球状星团</div>
     <div class="btn" data-type="galaxySpiral">🌀 旋涡星系</div>
@@ -121,7 +128,6 @@
       <button class="btn" type="button" data-type="bosonStar">🔵 玻色子星</button>
       <button class="btn" type="button" data-type="solitonStar">🔷 孤子星</button>
       <button class="btn" type="button" data-type="qStar">🟪 Q 星</button>
-      <button class="btn" type="button" data-type="gravastar">🔮 引力真空星</button>
       <button class="btn" type="button" data-type="blackDwarf">⚫ 黑矮星</button>
       <button class="btn" type="button" data-type="blackNeutron">🌑 黑中子星</button>
     </div>
@@ -159,6 +165,8 @@
     <input id="spinSlider" type="range" min="0" max="2" step="0.05" value="0.4">
   </div>
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨道轨迹</label></div>
+  <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">造父变星的半径会周期变化；普通恒星只改变光晕，光晕不是本体。</div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
@@ -168,8 +176,8 @@
   <div id="habitableZoneInfo" style="font-size:11px;color:#a9dbb8;line-height:1.4;margin-bottom:8px">宜居带为简化光照示意，不代表存在生命。</div>
   <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
   <div class="check"><input type="checkbox" id="hillShowAll" checked><label for="hillShowAll">显示其他天体的估算范围</label></div>
-  <div class="check"><input type="checkbox" id="hillFullScale"><label for="hillFullScale">希尔球按计算比例显示</label></div>
-  <div style="font-size:11px;color:#abc;line-height:1.4">其他天体最多显示 24 个；无束缚伴星时无法估算。球体仅为显示，不改变引力；可用 G 滑块调节引力。</div>
+  <div class="check"><input type="checkbox" id="hillFullScale" checked><label for="hillFullScale">选中天体的希尔球按计算比例显示</label></div>
+  <div style="font-size:11px;color:#abc;line-height:1.4">其他范围缩小示意，最多显示 24 个。希尔球不是引力截止线，球外仍受引力；G 滑块可调节引力。</div>
   <div id="hillSphereInfo" style="font-size:11px;color:#a9d9ff;line-height:1.4;margin-bottom:8px">选中天体后，按最近较重天体估算希尔半径。</div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
@@ -223,7 +231,7 @@
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
 <script src="celestial-size.js?v=11"></script>
-<script src="planet-assessment.js?v=5"></script>
+<script src="planet-assessment.js?v=6"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -1317,6 +1325,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     spinW: 0, deform: 0, heat: 0, hot: false, tide: 0, tideT: null, tideD: 0, tideR: 0, tideCd: 0, shedCd: 0, tpCd: 0,
     ...extra
   };
+  if (type==='cepheid') b.pulsationStart=simT;
   if (type !== 'blackhole' && type !== 'whitehole' && type !== 'quasar' && type !== 'probe' && !isStarCollection(type) && !isDarkDistribution(type)) {
     // Extremely compact hypothetical models use a visual spin cap to avoid numeric instability.
     const initialSpin = spinMul * omegaBreak(mass, r) * (0.9 + Math.random() * 0.2);
@@ -1436,7 +1445,7 @@ function updateHabitableZone() {
 document.getElementById('habitableZoneToggle').addEventListener('change',updateHabitableZone);
 const hillSphere = {group:new THREE.Group(),body:null,primary:null,radius:0};
 const hillSurface=new THREE.Mesh(new THREE.SphereGeometry(1,28,16),
-  new THREE.MeshBasicMaterial({color:0x72c7ff,transparent:true,opacity:.045,side:THREE.DoubleSide,depthWrite:false}));
+  new THREE.MeshBasicMaterial({color:0x72c7ff,transparent:true,opacity:.015,side:THREE.DoubleSide,depthWrite:false}));
 hillSurface.raycast=()=>{}; hillSphere.group.add(hillSurface);
 const hillCirclePoints=[];
 for (let i=0;i<96;i++) { const a=i*Math.PI*2/96; hillCirclePoints.push(new THREE.Vector3(Math.cos(a),Math.sin(a),0)); }
@@ -1476,7 +1485,7 @@ function estimateHillSphere(body) {
   return {primary,radius:distance*(lo+hi)/2,method:'binary'};
 }
 function hillVisualRadius(body, radius) {
-  if (document.getElementById('hillFullScale').checked) return radius;
+  if (body===selected && document.getElementById('hillFullScale').checked) return radius;
   return Math.min(radius*.35,Math.max(body.r*2,camera.position.distanceTo(body.mesh.position)*.55));
 }
 function updateHillSphere() {
@@ -1495,7 +1504,7 @@ function updateHillSphere() {
       const kind=estimate.method==='hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
       const scale=visual/estimate.radius;
       const percent=scale*100<1 ? '<1%' : `${Math.round(scale*100)}%`;
-      message=`${kind}约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[estimate.primary.type] || estimate.primary.type} #${estimate.primary.labelNumber}；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}，不改变引力。`;
+      message=`${kind}约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[estimate.primary.type] || estimate.primary.type} #${estimate.primary.labelNumber}；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}。球外仍有引力，范围不是引力截止线。`;
     } else message='没有引力束缚的较重或其他合适天体，无法估算希尔球；显示不改变引力。';
   }
   if (enabled && document.getElementById('hillShowAll').checked) {
@@ -2467,6 +2476,7 @@ function updateFocusLabel() {
   if (!selected) return;
   const pct = Math.round(Math.min(2, selected.heat || 0) * 50);
   focusChip.textContent = `🔭 观察中：${TYPE_NAMES[selected.type] || selected.type} #${selected.labelNumber} · 🔥 ${pct}% · 模拟半径 ${selected.r.toPrecision(3)} · 模拟体积 ${CelestialSize.volume(selected.r).toPrecision(3)}（游戏单位）`
+    + (selected.type==='cepheid' ? (document.getElementById('stellarPulseToggle').checked ? ' · 造父变星周期脉动中' : ' · 变星脉动已暂停') : '')
     + (selected.oortCloud ? ' · ☁️ 奥尔特云' : '')
     + (selected.tidalLockTarget ? ` · 🔒 朝向${TYPE_NAMES[selected.tidalLockTarget.type] || selected.tidalLockTarget.type} #${selected.tidalLockTarget.labelNumber}` : '')
     + (selected.whiteDwarfVariant ? ` · ${WHITE_DWARF_VARIANTS[selected.whiteDwarfVariant].name}` : '')
@@ -3195,12 +3205,13 @@ const massVal = document.getElementById('massVal');
 const gSlider = document.getElementById('gSlider');
 const gVal = document.getElementById('gVal');
 
-document.querySelectorAll('#tools .btn, #exoticTools .btn').forEach(btn => {
+document.querySelectorAll('#tools .btn, #exoticTools .btn, #featuredTools .btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('#tools .btn, #exoticTools .btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#tools .btn, #exoticTools .btn, #featuredTools .btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     curType = btn.dataset.type;
     infoBody = null; updateObjectInfo(curType, TYPES[curType].base * mMul);
+    if (btn.closest('#featuredTools')) showNotice(`已选择${TYPE_NAMES[curType]}，点击空白或拖动发射来创建。`);
   });
 });
 function updateWhiteDwarfVariantInfo() {
@@ -3370,7 +3381,7 @@ document.getElementById('sizeMode').addEventListener('change', event => {
   sizeMode = event.target.value;
   for (const b of bodies) {
     const spinRatio = b.spinW / omegaBreak(b.mass, b.r);
-    b.r = radiusFor(b.type, b.mass) * (b.type === 'cepheid' ? 1 + .12 * cepheidWave(b.mass,simT) : 1);
+    b.r = radiusFor(b.type, b.mass) * (b.type === 'cepheid' && document.getElementById('stellarPulseToggle').checked ? 1 + .12 * cepheidWave(b.mass,simT-(b.pulsationStart || 0)) : 1);
     b.mesh.scale.setScalar(b.r);
     if (b.galaxyStars) b.galaxyStars.material.size = b.r * .01;
     if (b.darkMatterPoints) b.darkMatterPoints.material.size = b.r * .008;
@@ -3615,11 +3626,19 @@ function cepheidWave(mass, time) {
 }
 function updateVariableStars(time) {
   for (const b of bodies) if (b.type === 'cepheid') {
-    const wave = cepheidWave(b.mass, time);
+    const wave = document.getElementById('stellarPulseToggle').checked ? cepheidWave(b.mass, time-(b.pulsationStart || 0)) : 0;
     b.r = radiusFor('cepheid', b.mass) * (1 + .12 * wave);
     b.luminosityFactor = 1 + .35 * wave;
   }
 }
+document.getElementById('stellarPulseToggle').addEventListener('change',()=>{
+  if (document.getElementById('stellarPulseToggle').checked) {
+    for (const b of bodies) if (b.type==='cepheid') b.pulsationStart=simT;
+  }
+  updateVariableStars(simT);
+  for (const b of bodies) if (b.type==='cepheid') b.mesh.scale.set(...shapeScale(b.r,b.deform,b.tide,0));
+  updateFocusLabel();
+});
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
@@ -3633,6 +3652,7 @@ function loop() {
     simT += timeScale / 60;
     frameNo++;
     updateTrails();
+    const pulses=document.getElementById('stellarPulseToggle').checked;
     // 恒星脉动 & 吸积盘旋转 & 小行星自转
     for (const b of bodies) {
       // 自转 · 扁化形变 · 潮汐定向拉扯 · 超过解体阈值甩出碎片（黑洞除外）
@@ -3695,15 +3715,15 @@ function loop() {
         b.galaxyStars.material.size = b.r * .01;
         b.galaxyStars.rotation.y += .001 * timeScale;
       } else if ((b.type === 'redSupergiant' || b.type === 'redHypergiant') && b.glow) {
-        b.glow.scale.setScalar(4 + .2 * Math.sin(simT * 1.5 + b.spin));
-        if (b.envelope) b.envelope.scale.setScalar(1.15 + .02 * Math.sin(simT * 1.2));
+        b.glow.scale.setScalar(4 + (pulses ? .2 * Math.sin(simT * 1.5 + b.spin) : 0));
+        if (b.envelope) b.envelope.scale.setScalar(1.15 + (pulses ? .02 * Math.sin(simT * 1.2) : 0));
       } else if (b.type === 'whitehole' && b.whiteRing) {
         b.whiteRing.rotation.z += .025 * timeScale;
-        b.glow.scale.setScalar(7 + .7 * Math.sin(simT * 3));
+        b.glow.scale.setScalar(7 + (pulses ? .7 * Math.sin(simT * 3) : 0));
       } else if (b.type === 'wolfRayet' && b.wrWind) {
         b.wrWind.rotation.z += .015 * timeScale;
       } else if (b.type === 'star' && b.glow) {
-        b.glow.scale.setScalar(4 * (1 + 0.05 * Math.sin(simT * 3 + b.spin)));
+        b.glow.scale.setScalar(4 * (1 + (pulses ? 0.05 * Math.sin(simT * 3 + b.spin) : 0)));
       } else if ((b.type === 'blackhole' || b.type === 'quasar') && b.disk) {
         b.disk.rotation.z += 0.02;             // 旋转几何体，不重采样贴图 → 无闪烁
         if (b.streaks) b.streaks.rotation.z += 0.05;   // 差速：流纹层更快 → 拖尾流动
@@ -3720,9 +3740,9 @@ function loop() {
         b.clouds.rotation.y += 0.0016;         // 云层相对地表缓慢漂移
       } else if (b.type === 'neutron' && b.beams) {
         b.beams.rotation.y += 0.05;            // 光束轴进动
-        if (b.glow) b.glow.scale.setScalar(5 * (1 + 0.15 * Math.sin(simT * 8 + b.spin)));
+        if (b.glow) b.glow.scale.setScalar(5 * (1 + (pulses ? 0.15 * Math.sin(simT * 8 + b.spin) : 0)));
       } else if (b.type === 'quarkStar' && b.glow) {
-        b.glow.scale.setScalar(5 * (1 + 0.22 * Math.sin(simT * 11 + b.spin) * Math.sin(simT * 3.7)));
+        b.glow.scale.setScalar(5 * (1 + (pulses ? 0.22 * Math.sin(simT * 11 + b.spin) * Math.sin(simT * 3.7) : 0)));
       } else if (b.type === 'wormhole' && b.ringA) {
         b.ringA.rotation.z += 0.06; b.ringB.rotation.z -= 0.045;
         b.ringA.rotation.y += 0.012; b.ringB.rotation.y -= 0.014;   // 双环反向进动
