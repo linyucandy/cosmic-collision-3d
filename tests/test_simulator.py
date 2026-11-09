@@ -45,6 +45,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get applyWhiteDwarfVariant() { return typeof applyWhiteDwarfVariant === 'undefined' ? null : applyWhiteDwarfVariant; },
   get triggerIax() { return typeof triggerIax === 'undefined' ? null : triggerIax; },
   get updateTidalLocks() { return typeof updateTidalLocks === 'undefined' ? null : updateTidalLocks; },
+  get tidalStrip() { return typeof tidalStrip === 'undefined' ? null : tidalStrip; },
   get updateGalaxyInteractions() { return typeof updateGalaxyInteractions === 'undefined' ? null : updateGalaxyInteractions; },
   get updateHabitableZone() { return typeof updateHabitableZone === 'undefined' ? null : updateHabitableZone; },
   get habitableZone() { return typeof habitableZone === 'undefined' ? null : habitableZone; },
@@ -1168,6 +1169,54 @@ loop();''')
         self.assertGreater(result['count'],0,result)
         self.assertTrue(result['visible'],result)
         self.assertAlmostEqual(result['mass'],42)
+        self.assertEqual(self.errors,[])
+
+    def test_tidal_stripping_conserves_mass_and_momentum_and_starts_outside(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();const host=sim.spawnBody(100,0,0,0,0,0,1000,'star');
+          const target=sim.spawnBody(0,0,0,2,-1,3,100,'planet');
+          const before=sim.bodies.reduce((s,b)=>s+b.mass,0);
+          const momentum=sim.bodies.reduce((s,b)=>s.map((v,i)=>v+b.mass*b.vel.toArray()[i]),[0,0,0]);
+          sim.tidalStrip(target,host,.5);
+          const fragments=sim.bodies.filter(b=>b!==host && b!==target);
+          return {before,after:sim.bodies.reduce((s,b)=>s+b.mass,0),momentum,
+            afterMomentum:sim.bodies.reduce((s,b)=>s.map((v,i)=>v+b.mass*b.vel.toArray()[i]),[0,0,0]),
+            count:fragments.length,outside:fragments.every(f=>f.mesh.position.distanceTo(target.mesh.position)>target.r+f.r)};
+        }''')
+        self.assertEqual(result['count'],3,result)
+        self.assertAlmostEqual(result['before'],result['after'],places=8)
+        for before,after in zip(result['momentum'],result['afterMomentum']): self.assertAlmostEqual(before,after,places=8)
+        self.assertTrue(result['outside'],result)
+        self.assertEqual(self.errors,[])
+
+    def test_tidal_stripping_at_capacity_only_deducts_spawned_fragments(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear(); const host=sim.spawnBody(100,0,0,0,0,0,1000,'star');
+          const target=sim.spawnBody(0,0,0,0,0,0,100,'planet');
+          for(let i=0;i<317;i++) sim.spawnBody(1000+i*100,0,0,0,0,0,1,'asteroid');
+          const before=sim.bodies.reduce((s,b)=>s+b.mass,0); sim.tidalStrip(target,host,.5);
+          return {count:sim.bodies.length,before,after:sim.bodies.reduce((s,b)=>s+b.mass,0)};
+        }''')
+        self.assertEqual(result['count'],320,result)
+        self.assertAlmostEqual(result['before'],result['after'],places=7)
+        self.assertEqual(self.errors,[])
+
+    def test_black_hole_tidal_debris_is_finite_and_conserves_mass(self):
+        self.open_sim()
+        result=self.page.evaluate('''() => {
+          sim.clear();const hole=sim.spawnBody(0,100,0,0,0,0,2500,'blackhole');
+          const target=sim.spawnBody(0,0,0,1,2,3,100,'planet');
+          const before=sim.bodies.reduce((s,b)=>s+b.mass,0);sim.tidalStrip(target,hole,1);
+          const fragments=sim.bodies.filter(b=>b!==hole && b!==target);
+          return {mass:sim.bodies.reduce((s,b)=>s+b.mass,0),before,count:fragments.length,
+            valid:fragments.every(f=>f.mesh.position.toArray().every(Number.isFinite) &&
+              f.mesh.position.distanceTo(target.mesh.position)>target.r+f.r)};
+        }''')
+        self.assertAlmostEqual(result['mass'],result['before'],places=8)
+        self.assertEqual(result['count'],3,result)
+        self.assertTrue(result['valid'],result)
         self.assertEqual(self.errors,[])
 
     def test_habitable_zone_tracks_star_and_can_be_hidden(self):

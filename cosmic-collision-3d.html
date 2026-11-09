@@ -2261,36 +2261,33 @@ function updateBridge(v) {
 /* 潮汐撕裂：内侧物质坠向主星（L1 吸积流），外侧甩成潮汐尾（L2），侧向碎片入轨成盘；黑洞触发 TDE */
 function tidalStrip(v, attractor, inten) {
   const tde = attractor.type === 'blackhole' || attractor.type === 'quasar';
-  const dm = Math.max(0.8, v.mass * (0.02 + Math.random() * 0.02) * (0.5 + inten) * (tde ? 1.6 : 1));
-  if (v.mass - dm < 6) return;
+  const dm = Math.min((v.mass-6)/2.2, Math.max(0.8, v.mass * (0.02 + Math.random() * 0.02) * (0.5 + inten) * (tde ? 1.6 : 1)));
+  if (dm <= 0 || bodies.length >= 320) return;
   const dir = attractor.mesh.position.clone().sub(v.mesh.position).normalize();
-  const surf = v.r * 1.05;
+  if (dir.lengthSq()<1e-12) dir.set(1,0,0);
+  const axis = Math.abs(dir.y)<.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+  const side = new THREE.Vector3().crossVectors(dir,axis).normalize();
   const pull = tde ? 2.6 : 1.5;                 // 黑洞潮汐力更强 → 流速更快
-  spawnBody(                                  // L1：内侧流 → 飞向主星
-    v.mesh.position.x + dir.x * surf,
-    v.mesh.position.y + dir.y * surf,
-    v.mesh.position.z + dir.z * surf,
-    v.vel.x * 0.85 + dir.x * (pull + Math.random() * 2.5),
-    v.vel.y * 0.85 + dir.y * (pull + Math.random() * 2.5),
-    v.vel.z * 0.85 + dir.z * (pull + Math.random() * 2.5),
-    dm, 'asteroid', 0xd9c9a8);
-  spawnBody(                                  // L2：外侧流 → 潮汐尾
-    v.mesh.position.x - dir.x * surf,
-    v.mesh.position.y - dir.y * surf,
-    v.mesh.position.z - dir.z * surf,
-    v.vel.x - dir.x * 1.2 + (Math.random() - 0.5) * 1.5,
-    v.vel.y - dir.y * 1.2 + (Math.random() - 0.5) * 1.5,
-    v.vel.z - dir.z * 1.2 + (Math.random() - 0.5) * 1.5,
-    dm * 0.7, 'asteroid', 0xbfae90);
-  spawnBody(                                  // 侧向碎片：切向入轨 → 环绕碎片盘
-    v.mesh.position.x + dir.z * surf,
-    v.mesh.position.y + (Math.random() - 0.5) * surf,
-    v.mesh.position.z - dir.x * surf,
-    v.vel.x * 0.95 + dir.z * (2.2 + Math.random() * 2),
-    v.vel.y + (Math.random() - 0.5) * 1.5,
-    v.vel.z * 0.95 - dir.x * (2.2 + Math.random() * 2),
-    dm * 0.5, 'asteroid', 0xcbb98f);
-  v.mass -= dm * (tde ? 2.2 : 1.7);
+  const pieces=[
+    {direction:dir, mass:dm, speed:pull+Math.random()*2.5, color:0xd9c9a8},
+    {direction:dir.clone().negate(), mass:dm*.7, speed:1.2+Math.random()*.5, color:0xbfae90},
+    {direction:side, mass:dm*.5, speed:2.2+Math.random()*2, color:0xcbb98f}
+  ];
+  const originalMass=v.mass, originalVelocity=v.vel.clone(), momentum=new THREE.Vector3();
+  let ejected=0;
+  for (const piece of pieces) {
+    if (bodies.length>=320) break;
+    const fragmentRadius=radiusFor('asteroid',piece.mass);
+    const distance=v.r+fragmentRadius+Math.max(.1,v.r*.12);
+    const position=v.mesh.position.clone().addScaledVector(piece.direction,distance);
+    const velocity=originalVelocity.clone().addScaledVector(piece.direction,piece.speed);
+    const fragment=spawnBody(position.x,position.y,position.z,velocity.x,velocity.y,velocity.z,piece.mass,'asteroid',piece.color);
+    if (!fragment) break;
+    ejected+=piece.mass; momentum.addScaledVector(velocity,piece.mass);
+  }
+  if (ejected<=0) return;
+  v.mass = originalMass-ejected;
+  v.vel.copy(originalVelocity).multiplyScalar(originalMass).sub(momentum).divideScalar(v.mass);
   v.r = radiusFor(v.type, v.mass);
   v.spinW *= 1.06;                     // 潮汐力矩加转 → 可能连锁自转解体
   spark(v.mesh.position, tde ? 0xbfd8ff : v.color);
