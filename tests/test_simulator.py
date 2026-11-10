@@ -1976,6 +1976,55 @@ loop();''')
         self.assertEqual(result['method'], 'binary')
         self.assertEqual(self.errors, [])
 
+    def test_2d_binary_and_triple_star_systems_stay_bound(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => {
+          const run = (btn, expectedStars) => {
+            document.getElementById(btn).click();
+            paused = true;                       // 手动积分，排除 rAF 干扰
+            const stars = () => bodies.filter(b => b.type === 'star');
+            const nBodies = bodies.length;
+            const s0 = stars();
+            const sep0 = expectedStars >= 2
+              ? Math.hypot(s0[0].x - s0[1].x, s0[0].y - s0[1].y) : 0;
+            const massive = bodies.filter(b => !b.restricted);
+            const momentum = Math.hypot(
+              massive.reduce((s, b) => s + b.mass * b.vx, 0),
+              massive.reduce((s, b) => s + b.mass * b.vy, 0));
+            let minSep = Infinity, maxSep = 0, maxPlanetR = 0;
+            const cx = cam.x, cy = cam.y;       // 系统质心就是画面中心
+            for (let i = 0; i < 1200; i++) {
+              step();
+              const ss = stars();
+              if (ss.length >= 2) {
+                const d = Math.hypot(ss[0].x - ss[1].x, ss[0].y - ss[1].y);
+                minSep = Math.min(minSep, d); maxSep = Math.max(maxSep, d);
+              }
+              for (const b of bodies) if (b.restricted)
+                maxPlanetR = Math.max(maxPlanetR, Math.hypot(b.x - cx, b.y - cy));
+            }
+            return { stars: s0.length, starsAfter: stars().length, bodies: nBodies,
+              bodiesAfter: bodies.length, sep0, minSep, maxSep, momentum,
+              maxPlanetR, collisions };
+          };
+          return [run('btnSystem2', 1), run('btnSystem3', 2), run('btnSystem4', 3)];
+        }''')
+        single, binary, triple = result
+        self.assertEqual(single['stars'], 1)
+        self.assertEqual(binary['stars'], 2)
+        self.assertEqual(triple['stars'], 3)
+        for item in result:
+            self.assertEqual(item['starsAfter'], item['stars'], item)
+            self.assertEqual(item['bodiesAfter'], item['bodies'], item)
+            self.assertEqual(item['collisions'], 0, item)
+            self.assertLess(item['momentum'], 1e-6, item)
+            self.assertLess(item['maxPlanetR'], 1500, item)
+        for item in (binary, triple):
+            self.assertGreater(item['minSep'], item['sep0'] * 0.8, item)
+            self.assertLess(item['maxSep'], item['sep0'] * 1.2, item)
+        self.assertEqual(self.errors, [])
+
     def test_2d_demos_and_camera_roundtrip(self):
         self.page.goto(self.url + '/cosmic-collision-simulator.html')
         self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)

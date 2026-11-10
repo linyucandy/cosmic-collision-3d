@@ -336,6 +336,7 @@ class Body {
     this.age = 0; this.trail = []; this.craters = []; this.alpha = 1;
     this.locked = null; this.novaEnvelope = 0; this.tpCd = 0; this.partner = null;
     this.oort = null; this.ring = null; this.pulsationStart = 0;
+    this.restricted = false; this.spawnGrace = 0; this.impactDebris = false;
     if (type === 'asteroid' || type === 'comet') {
       this.shape = [];
       for (let i = 0; i < 9; i++) this.shape.push(0.7 + Math.random() * 0.45);
@@ -383,7 +384,10 @@ function showNotice(text) {
 }
 function spawnBody(x, y, vx, vy, mass, type) {
   if (!TYPES[type]) type = 'asteroid';
-  if (bodies.length >= MAX_BODIES) bodies.shift();
+  if (bodies.length >= MAX_BODIES) {
+    const i = bodies.findIndex(b => b.impactDebris);   // 优先淘汰碎片，别挤掉主星
+    bodies.splice(i >= 0 ? i : 0, 1);
+  }
   const b = new Body(x, y, vx, vy, Math.max(0.001, mass), type);
   b.spinW *= spinMul;
   bodies.push(b);
@@ -406,22 +410,25 @@ function computeAcceleration() {
   for (const b of bodies) { b.ax = 0; b.ay = 0; }
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i];
-    if (a.mass <= 0) continue;
-    const aSoft = isDarkDistribution(a.type) ? a.r * 0.35 : 0;
-    for (let j = i + 1; j < bodies.length; j++) {
-      const b = bodies[j];
-      if (b.mass <= 0) continue;
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const bSoft = isDarkDistribution(b.type) ? b.r * 0.35 : 0;
-      const d2 = dx * dx + dy * dy + 60 + aSoft * aSoft + bSoft * bSoft;
-      const d = Math.sqrt(d2);
-      let f = G * a.mass * b.mass / d2;
-      // 白洞近场排斥（游戏示意），远场仍为普通引力
-      if ((a.type === 'whitehole' || b.type === 'whitehole') && d < 90) f *= -0.8;
-      const fx = f * dx / d, fy = f * dy / d;
-      a.ax += fx / a.mass; a.ay += fy / a.mass;
-      b.ax -= fx / b.mass; b.ay -= fy / b.mass;
-    }
+      if (a.mass <= 0) continue;
+      const aSoft = isDarkDistribution(a.type) ? a.r * 0.35 : 0;
+      for (let j = i + 1; j < bodies.length; j++) {
+        const b = bodies[j];
+        if (b.mass <= 0) continue;
+        // 预设轨道里的测试粒子不互扰、也不反作用于恒星，避免长期混沌把演示系统拆散
+        if (a.restricted && b.restricted) continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const bSoft = isDarkDistribution(b.type) ? b.r * 0.35 : 0;
+        const d2 = dx * dx + dy * dy + 60 + aSoft * aSoft + bSoft * bSoft;
+        const d = Math.sqrt(d2);
+        let f = G * a.mass * b.mass / d2;
+        // 白洞近场排斥（游戏示意），远场仍为普通引力
+        if ((a.type === 'whitehole' || b.type === 'whitehole') && d < 90) f *= -0.8;
+        const fx = f * dx / d, fy = f * dy / d;
+        // 测试粒子：自己照常受力，但不把反作用力施加给对方（也就不扰动恒星与其他行星）
+        if (!b.restricted) { a.ax += fx / a.mass; a.ay += fy / a.mass; }
+        if (!a.restricted) { b.ax -= fx / b.mass; b.ay -= fy / b.mass; }
+      }
   }
 }
 function integrate(dt) {
@@ -431,6 +438,7 @@ function integrate(dt) {
     b.spin += b.spinW * dt;
     b.age += dt;
     if (b.tpCd > 0) b.tpCd -= dt;
+    if (b.spawnGrace > 0) b.spawnGrace--;
   }
   updateWormholes();
 }
@@ -454,7 +462,7 @@ function updateWormholes() {
   }
 }
 function step() {
-  const SUB = bodies.length > 150 ? 1 : 2, dt = timeScale / SUB;
+  const SUB = bodies.length > 120 ? 2 : 4, dt = timeScale / SUB;
   for (const b of bodies) { b.prevX = b.x; b.prevY = b.y; }
   for (let s = 0; s < SUB; s++) { computeAcceleration(); integrate(dt); }
   handleCollisions();
@@ -485,6 +493,7 @@ function handleCollisions() {
       if (dead.has(b.id)) continue;
       if (a.type === 'wormhole' || b.type === 'wormhole') continue;
       if (isDarkDistribution(a.type) || isDarkDistribution(b.type)) continue;
+      if (a.spawnGrace > 0 || b.spawnGrace > 0) continue;
       const ax0 = a.prevX - b.prevX, ay0 = a.prevY - b.prevY;
       const dx = (a.x - b.x) - ax0, dy = (a.y - b.y) - ay0;
       const denom = dx * dx + dy * dy;
@@ -537,27 +546,38 @@ function addCrater(b) {
 }
 function createImpactFragments(other, survivor, relSpeed) {
   if (relSpeed < 1.2 || bodies.length >= MAX_BODIES - 40 || other.mass < 8) return;
-  const count = Math.min(6, 1 + Math.floor(Math.sqrt(other.mass) / 6));
+  const debris = bodies.reduce((n, b) => n + (b.impactDebris ? 1 : 0), 0);
+  if (debris >= 48) return;
+  const count = Math.min(6, 48 - debris, 1 + Math.floor(Math.sqrt(other.mass) / 6));
   const take = Math.min(other.mass * 0.08, count * 1.5);
   survivor.mass = Math.max(0.001, survivor.mass - take);
   survivor.r = radiusFor(survivor.type, survivor.mass);
+  const m = take / count;
+  /* 碎片必须出生在幸存天体之外，且速度超过逃逸速度，否则下一帧会立刻再次相撞并级联 */
+  const launch = survivor.r + radiusFor('asteroid', m) + 6;
+  const escape = Math.sqrt(2 * G * survivor.mass / Math.sqrt(launch * launch + 60));
+  const speed = Math.max(1.8, relSpeed * 0.5, escape * 1.2);
+  const phase = Math.random() * TAU;
   for (let i = 0; i < count; i++) {
-    const ang = Math.random() * TAU, sp = 0.8 + relSpeed * 0.35 + Math.random();
-    const m = take / count;
-    const f = spawnBody(other.x, other.y,
-      other.vx + Math.cos(ang) * sp, other.vy + Math.sin(ang) * sp, m, 'asteroid');
-    f.heat = 0.4;
+    const ang = phase + i * TAU / count;
+    const f = spawnBody(survivor.x + Math.cos(ang) * launch, survivor.y + Math.sin(ang) * launch,
+      survivor.vx + Math.cos(ang) * speed, survivor.vy + Math.sin(ang) * speed, m, 'asteroid');
+    f.heat = 0.4; f.impactDebris = true; f.spawnGrace = 10;
   }
 }
 function tidalStrip(survivor, other, relSpeed) {
   if (bodies.length >= MAX_BODIES - 10) return;
-  const count = 3;
-  for (let i = 0; i < count; i++) {
-    const ang = Math.atan2(other.vy - survivor.vy, other.vx - survivor.vx) + (i - 1) * 0.6;
-    const f = spawnBody(other.x, other.y,
-      survivor.vx + Math.cos(ang) * (1 + relSpeed * 0.2),
-      survivor.vy + Math.sin(ang) * (1 + relSpeed * 0.2), 1.2, 'comet');
-    f.heat = 0.8;
+  const debris = bodies.reduce((n, b) => n + (b.impactDebris ? 1 : 0), 0);
+  if (debris >= 45) return;
+  const launch = survivor.r + 7;
+  const escape = Math.sqrt(2 * G * survivor.mass / Math.sqrt(launch * launch + 60));
+  const speed = Math.max(1.8, 1 + relSpeed * 0.2, escape * 1.2);
+  const base = Math.atan2(other.vy - survivor.vy, other.vx - survivor.vx);
+  for (let i = 0; i < 3; i++) {
+    const ang = base + (i - 1) * 0.6;
+    const f = spawnBody(survivor.x + Math.cos(ang) * launch, survivor.y + Math.sin(ang) * launch,
+      survivor.vx + Math.cos(ang) * speed, survivor.vy + Math.sin(ang) * speed, 1.2, 'comet');
+    f.heat = 0.8; f.impactDebris = true; f.spawnGrace = 10;
   }
 }
 function shedFragments(b) {
@@ -568,7 +588,7 @@ function shedFragments(b) {
   const ang = b.spin > 0 ? b.spin : Math.random() * TAU;
   const f = spawnBody(b.x + Math.cos(ang) * b.r * 1.5, b.y + Math.sin(ang) * b.r * 1.5,
     b.vx - Math.sin(ang) * 1.5, b.vy + Math.cos(ang) * 1.5, take, 'asteroid');
-  f.heat = 0.3;
+  f.heat = 0.3; f.impactDebris = true; f.spawnGrace = 10;
 }
 function whiteDwarfVariantKey() {
   const el = document.getElementById('whiteDwarfVariant');
@@ -1287,21 +1307,66 @@ function randomSystem() {
 function makeStarSystem(kind) {
   startDemo();
   const cx = cam.x, cy = cam.y;
-  const primary = spawnBody(cx, cy, 0, 0, 1200, 'star');
-  primary.r = radiusFor('star', 1200);
-  if (kind >= 2) {
-    const d = 190, m = 600, v = orbitSpeed(primary.mass + m, d);
-    spawnBody(cx + d, cy, 0, v, m, 'star');
-    primary.vy = -v * m / primary.mass;
+  /* 所有轨道都绕系统质心 (cx,cy)，用 orbitSpeed 保持与引力软化项一致 */
+  const orbit = (Mtot, r, ang, mass, type) => {
+    const v = orbitSpeed(Mtot, r);
+    const b = spawnBody(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r,
+      -Math.sin(ang) * v, Math.cos(ang) * v, mass, type);
+    b.restricted = true;   // 演示轨道用测试粒子近似：受恒星引力但不互扰
+    return b;
+  };
+  if (kind === 1) {
+    /* 单星系：一颗主星 + 四颗行星 + 外围小行星带 */
+    const M = 800;
+    spawnBody(cx, cy, 0, 0, M, 'star');
+    const rs = [310, 390, 480, 580], ts = ['planet','ringplanet','gasGiant','planet'];
+    const ms = [46, 66, 82, 54];
+    rs.forEach((r, i) => orbit(M, r, i * 1.7 + Math.random(), ms[i], ts[i]));
+    for (let i = 0; i < 4; i++)
+      orbit(M, 690 + i * 40 + Math.random() * 20, Math.random() * TAU, 3 + Math.random() * 4, 'asteroid');
+    cam.zoom = 0.55;
+  } else if (kind === 2) {
+    /* 双星系：两星绕共同质心，各自速度按质量比分配，总动量为零 */
+    const M1 = 650, M2 = 500, Mt = M1 + M2, d = 150;
+    const vRel = orbitSpeed(Mt, d);
+    spawnBody(cx - d * M2 / Mt, cy, 0,  vRel * M2 / Mt, M1, 'star');
+    spawnBody(cx + d * M1 / Mt, cy, 0, -vRel * M1 / Mt, M2, 'star');
+    const rs = [460, 560, 690], ts = ['gasGiant','ringplanet','planet'], ms = [80, 62, 48];
+    rs.forEach((r, i) => orbit(Mt, r, i * 2.1 + Math.random(), ms[i], ts[i]));
+    for (let i = 0; i < 3; i++)
+      orbit(Mt, 820 + i * 50 + Math.random() * 15, Math.random() * TAU, 3 + Math.random() * 3, 'asteroid');
+    cam.zoom = 0.45;
+    showNotice('双星系：两颗恒星绕共同质心，行星在 3 倍间距外的环双星轨道上运行。');
+  } else {
+    /* 三星系：紧密内双星 + 远距第三星（层级式三体，D/d≈4.9 才长期稳定） */
+    const Ma = 600, Mb = 450, Mi = Ma + Mb, d = 70;
+    const vRel = orbitSpeed(Mi, d);
+    const innerA = spawnBody(cx - d * Mb / Mi, cy, 0,  vRel * Mb / Mi, Ma, 'star');
+    const innerB = spawnBody(cx + d * Ma / Mi, cy, 0, -vRel * Ma / Mi, Mb, 'star');
+    const Mc = 700, Mt = Mi + Mc, D = 340;
+    const vOut = orbitSpeed(Mt, D);
+    const xa = -D * Mc / Mt, xc = D * Mi / Mt;
+    for (const b of [innerA, innerB]) {
+      b.x += xa;
+      b.vy += vOut * Mc / Mt;      // 内双星整体获得绕外质心的速度
+      b.prevX = b.x; b.prevY = b.y; // 平移后重置 swept 碰撞起点
+      b.trail.length = 0;
+    }
+    spawnBody(cx + xc, cy, 0, -vOut * Mi / Mt, Mc, 'star');
+    const rs = [760, 900], ts = ['gasGiant','planet'], ms = [76, 52];
+    rs.forEach((r, i) => orbit(Mt, r, i * 2.6 + Math.random(), ms[i], ts[i]));
+    for (let i = 0; i < 4; i++)
+      orbit(Mt, 1000 + Math.random() * 160, Math.random() * TAU, 2 + Math.random() * 2, 'comet');
+    cam.zoom = 0.32;
+    showNotice('三星系：内双星紧密互绕，第三颗星在约 5 倍间距外绕行，避免三体混沌飞散。');
   }
-  if (kind >= 3) {
-    const d = 320, m = 300, v = orbitSpeed(primary.mass + m, d);
-    spawnBody(cx - d, cy, 0, -v, m, 'redDwarf');
-  }
-  for (let i = 0; i < 3; i++) {
-    const d = 90 + i * 48, v = orbitSpeed(primary.mass, d);
-    spawnBody(cx, cy - d, v, 0, 20 + i * 8, 'planet');
-  }
+  /* 只校正「有引力质量」的天体：恒星之间动量归零，质心停在画面中心。
+     测试粒子不施加反作用力，把它们算进动量反而会给主星一个虚假初速。 */
+  const massive = bodies.filter(b => !b.restricted);
+  const M = massive.reduce((s, b) => s + b.mass, 0);
+  const px = massive.reduce((s, b) => s + b.mass * b.vx, 0) / M;
+  const py = massive.reduce((s, b) => s + b.mass * b.vy, 0) / M;
+  for (const b of massive) { b.vx -= px; b.vy -= py; }
 }
 function demoNova() {
   startDemo();
