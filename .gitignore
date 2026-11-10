@@ -4,3 +4,15 @@ community_data/
 .venv/
 .env
 /community-test-results.log
+
+# 本地验证截图与临时脚本（README：不随代码提交）
+.screenshots/
+# HTML 分享打包产物
+.trae-html-share-packages/
+# TapTap 上架工作区（含 node_modules、构建脚本与接口响应）
+taptap-release/
+# 本地项目记忆与工作日志
+.workbuddy/
+# 早期对话导出（含内部开发过程，不进入公开仓库）
+/制作猫眼星云.md
+/宇宙碰撞模拟器开发.md
