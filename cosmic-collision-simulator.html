@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>宇宙碰撞模拟器</title>
+<title>宇宙碰撞模拟器 · 2D 平面实验室</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="game-overlays.css">
 <style>
@@ -11,12 +11,12 @@
   html,body { width:100%; height:100%; overflow:hidden; background:#04060f;
     font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; color:#dfe6ff; }
   #space { position:fixed; inset:0; display:block; touch-action:none; cursor:crosshair; }
-
   .panel {
-    position:fixed; top:14px; left:14px; z-index:10; width:230px;
-    background:rgba(10,14,30,.72); border:1px solid rgba(140,160,255,.18);
+    position:fixed; top:14px; left:14px; z-index:10; width:248px;
+    background:rgba(10,14,30,.78); border:1px solid rgba(140,160,255,.18);
     border-radius:14px; padding:14px 14px 12px; backdrop-filter:blur(10px);
     box-shadow:0 8px 30px rgba(0,0,0,.45); user-select:none;
+    max-height:calc(100dvh - 28px); overflow-y:auto;
   }
   .panel h1 { font-size:15px; letter-spacing:1px; margin-bottom:10px; color:#aebfff; font-weight:600; }
   .row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
@@ -31,20 +31,37 @@
   .slider-row { margin-bottom:10px; font-size:12px; color:#9aa8d8; }
   .slider-row label { display:flex; justify-content:space-between; margin-bottom:3px; }
   .slider-row input { width:100%; accent-color:#7d93ff; }
-  .check { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa8d8; margin-bottom:10px; }
+  .check { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa8d8; margin-bottom:6px; }
   .check input { accent-color:#7d93ff; }
   .stats { font-size:12px; color:#8f9cd0; border-top:1px solid rgba(140,160,255,.15); padding-top:8px;
     display:flex; justify-content:space-between; }
   .stats b { color:#e6ebff; font-weight:600; }
-
+  .group { border-top:1px solid rgba(140,160,255,.12); padding-top:8px; margin-top:8px; }
+  .group > summary { font-size:12px; color:#aebfff; cursor:pointer; margin-bottom:6px; }
+  .group .btn { flex:1 1 calc(33% - 6px); font-size:11px; padding:5px 2px; }
+  .info { font-size:11px; color:#a9d9ff; line-height:1.45; margin-bottom:8px; }
+  .info.amber { color:#e8cf9f; }
+  .info.violet { color:#c6b8ff; }
+  .tag { display:inline-block; padding:1px 6px; border:1px solid rgba(140,160,255,.3);
+    border-radius:10px; font-size:10px; color:#9fb0e8; margin-bottom:8px; }
   .hint {
     position:fixed; bottom:12px; left:50%; transform:translateX(-50%); z-index:10;
     font-size:12px; color:rgba(190,200,240,.65); background:rgba(10,14,30,.5);
     padding:6px 14px; border-radius:20px; border:1px solid rgba(140,160,255,.12);
     backdrop-filter:blur(6px); white-space:nowrap; user-select:none; pointer-events:none;
   }
-  .panel{max-height:calc(100dvh - 65px);overflow-y:auto}
-  @media (max-width:640px){ .panel{ width:170px; padding:10px; } .hint{ font-size:10px;white-space:normal;width:95%;text-align:center; } }
+  #launchNotice { position:fixed; left:50%; top:18px; transform:translateX(-50%); z-index:20;
+    font-size:12px; color:#dfe9ff; background:rgba(20,32,64,.9); border:1px solid rgba(140,170,255,.35);
+    border-radius:20px; padding:7px 16px; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #launchNotice.show { opacity:1; }
+  #gridLegend { position:fixed; right:14px; bottom:14px; z-index:10; font-size:11px;
+    color:#9fb0e8; background:rgba(10,14,30,.6); border:1px solid rgba(140,160,255,.15);
+    border-radius:8px; padding:6px 10px; pointer-events:none; }
+  @media (max-width:640px){
+    .panel{ width:180px; padding:10px; }
+    .hint{ font-size:10px;white-space:normal;width:95%;text-align:center; }
+    #gridLegend{ display:none; }
+  }
 </style>
 </head>
 <body>
@@ -52,28 +69,75 @@
 
 <div class="panel">
   <a href="index.html" style="display:block;color:#cfd8ff;text-decoration:none;font-size:12px;margin-bottom:12px">← 游戏选择 / 作者信息</a>
-  <h1>🌌 宇宙碰撞模拟器</h1>
+  <h1>🌌 宇宙碰撞模拟器 · 2D</h1>
+  <div class="tag">纯二维平面 · 无三维视角</div>
   <div class="row" id="tools">
     <div class="btn" data-type="asteroid">☄️ 小行星</div>
     <div class="btn" data-type="planet">🪐 行星</div>
     <div class="btn active" data-type="star">⭐ 恒星</div>
     <div class="btn" data-type="blackhole">🕳️ 黑洞</div>
   </div>
+
+  <details class="group" id="typeCatalog">
+    <summary>全部天体类型（41 种）</summary>
+    <div class="row" data-type-group="stars"></div>
+    <div class="row" data-type-group="remnants"></div>
+    <div class="row" data-type-group="exotic"></div>
+    <div class="row" data-type-group="collections"></div>
+    <div class="row" data-type-group="small"></div>
+  </details>
+  <div class="info violet" id="objectInfo">选中天体可查看科学状态说明。</div>
+
   <div class="slider-row">
-    <label><span>质量倍率（滚轮可调）</span><span id="massVal">×1.0</span></label>
+    <label><span>质量倍率（Shift+滚轮）</span><span id="massVal">×1.0</span></label>
     <input id="massSlider" type="range" min="0.2" max="5" step="0.1" value="1">
   </div>
   <div class="slider-row">
     <label><span>引力常数 G</span><span id="gVal">3.0</span></label>
     <input id="gSlider" type="range" min="0.5" max="8" step="0.1" value="3">
   </div>
+  <div class="slider-row">
+    <label><span>初始自转</span><span id="spinVal">0.40</span></label>
+    <input id="spinSlider" type="range" min="0" max="2" step="0.05" value="0.4">
+  </div>
+  <div class="row"><label style="font-size:12px;color:#9aa8d8">天体大小
+    <select id="sizeMode" style="background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px">
+      <option value="display" selected>易观察</option><option value="reference">参考大小</option>
+    </select></label></div>
+
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨迹尾迹</label></div>
+  <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示标签与距离</label></div>
+  <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示平面距离网格</label></div>
+  <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
+  <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
+  <div class="check"><input type="checkbox" id="hillShowAll" checked><label for="hillShowAll">显示其他天体估算范围</label></div>
+  <div class="check"><input type="checkbox" id="hillFullScale" checked><label for="hillFullScale">选中球体按计算比例</label></div>
+  <div class="info" id="hillSphereInfo">选中天体后，按最近较重天体估算希尔半径。</div>
+  <div class="info amber" id="habitableZoneInfo">宜居带为简化光照示意，不代表存在生命。</div>
+  <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ X 射线伪彩</label></div>
+  <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 暗物质伪彩分布</label></div>
+  <div class="check"><input type="checkbox" id="cmeToggle" checked><label for="cmeToggle">☀️ 恒星日冕抛射</label></div>
+  <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
+  <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 致密星平面光环</label></div>
+
+  <details class="group">
+    <summary>物理演示与场景</summary>
+    <div class="row" id="demos"></div>
+  </details>
+  <details class="group">
+    <summary>选中天体操作</summary>
+    <div class="row" id="bodyActions"></div>
+  </details>
+
   <div class="row">
     <div class="btn" id="btnDemo">💥 演示碰撞</div>
     <div class="btn" id="btnSystem">✨ 随机星系</div>
     <div class="btn" id="btnPause">⏸ 暂停</div>
+    <div class="btn" id="btnSpeed">⏱ ×1</div>
+    <div class="btn" id="btnStep">⏭ 单步</div>
     <div class="btn" id="btnReset">🗑 清空</div>
     <div class="btn" id="btnSound">🔊 声音开</div>
+    <div class="btn" id="btnSave">🖼 导出 PNG</div>
   </div>
   <div class="stats">
     <span>天体 <b id="statBodies">0</b></span>
@@ -82,119 +146,293 @@
   </div>
 </div>
 
-<div class="hint">按住并拖动以发射天体（拖动方向 = 飞行方向） · 滚轮调整质量 · 看它们相撞吧</div>
+<div class="hint">拖动空白处发射天体 · 点击选中 · 右键/中键拖动平移 · 滚轮缩放 · Shift+滚轮调质量 · 空格暂停 / T 倍速 / S 单步 / Esc 取消选择</div>
+<div id="launchNotice"></div>
+<div id="gridLegend">平面网格 · 1 格 = <b id="gridStepLabel">100</b> 距离单位</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
+<script src="celestial-size.js"></script>
 <script src="planet-assessment.js"></script>
 
 <script>
 "use strict";
-/* ================= 基础 ================= */
+/* ================= 基础与二维相机 ================= */
 const canvas = document.getElementById('space');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
-
-let stars = [];
+const cam = { x: 0, y: 0, zoom: 1 };
+let camInitialised = false, stars = [];
+function worldToScreen(x, y) {
+  return { x: (x - cam.x) * cam.zoom + W / 2, y: (y - cam.y) * cam.zoom + H / 2 };
+}
+function screenToWorld(x, y) {
+  return { x: (x - W / 2) / cam.zoom + cam.x, y: (y - H / 2) / cam.zoom + cam.y };
+}
 function resize() {
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = W * DPR; canvas.height = H * DPR;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (!camInitialised) { cam.x = W / 2; cam.y = H / 2; camInitialised = true; }
   stars = [];
   const n = Math.floor(W * H / 3500);
   for (let i = 0; i < n; i++) stars.push({
     x: Math.random() * W, y: Math.random() * H,
-    r: Math.random() * 1.3 + 0.3,
-    p: Math.random() * Math.PI * 2, s: 0.5 + Math.random() * 2
+    r: Math.random() * 1.3 + 0.3, p: Math.random() * Math.PI * 2, s: 0.5 + Math.random() * 2
   });
 }
 window.addEventListener('resize', resize);
 resize();
 
-/* ================= 天体定义 ================= */
-const TYPES = {
-  asteroid:  { base: 3,    rk: 2.0, color: '#b9b3a8' },
-  planet:    { base: 40,   rk: 1.7, color: '#5fb2ff' },
-  star:      { base: 600,  rk: 2.2, color: '#ffd27d' },
-  blackhole: { base: 2500, rk: 0.85,color: '#8a5cff' }
+/* ================= 天体数据表（与 3D 版一致，颜色转为 CSS） ================= */
+const RAW_TYPES = {
+  asteroid:{base:3,rk:2.0,color:0xb9b3a8}, planet:{base:40,rk:1.7,color:0x5fb2ff},
+  star:{base:600,rk:2.2,color:0xffd27d}, redDwarf:{base:180,rk:1.3,color:0xff705d},
+  orangeDwarf:{base:450,rk:1.8,color:0xffad63}, hotSubdwarf:{base:300,rk:1.6,color:0xb5dbff},
+  wolfRayet:{base:2200,rk:3,color:0xb5eaff}, blackhole:{base:2500,rk:0.85,color:0x8a5cff},
+  whitehole:{base:2500,rk:0.85,color:0xdffaff}, darkMatter:{base:1000,rk:80,color:0x8e7cf0},
+  darkHalo:{base:4000,rk:1800,color:0x7a91ef}, gravastar:{base:2500,rk:.85,color:0x8cd9ff},
+  openCluster:{base:1000,rk:100,color:0xb7d8ff}, globularCluster:{base:2000,rk:200,color:0xffd5a0},
+  galaxySpiral:{base:2400,rk:1200,color:0xb6d8ff}, galaxyElliptical:{base:2400,rk:1200,color:0xffd6a0},
+  galaxyIrregular:{base:2400,rk:1200,color:0x96dfff}, comet:{base:2,rk:1.6,color:0xaee6ff},
+  neutron:{base:6000,rk:0.18,color:0x9fd8ff}, ringplanet:{base:55,rk:1.7,color:0xe8c98b},
+  gasGiant:{base:70,rk:3.4,color:0xd9b98a}, brownDwarf:{base:90,rk:1.15,color:0xc96a3a},
+  whiteDwarf:{base:3000,rk:0.30,color:0xdfeeff}, redGiant:{base:350,rk:4.6,color:0xff7a55},
+  redSupergiant:{base:1800,rk:6,color:0xff7946}, redHypergiant:{base:2600,rk:8,color:0xf65b39},
+  blueGiant:{base:1500,rk:2.6,color:0x86b8ff}, quarkStar:{base:9000,rk:0.16,color:0xd18aff},
+  wormhole:{base:1500,rk:0.95,color:0x59ffd8}, probe:{base:0.02,rk:1,color:0x9edcff},
+  sakurai:{base:500,rk:4.0,color:0xe88c58}, cepheid:{base:900,rk:3.1,color:0xffd582},
+  quasar:{base:12000,rk:1.2,color:0x9edbff}, strangeStar:{base:9000,rk:.16,color:0xff68a4},
+  electroweakStar:{base:10000,rk:.15,color:0x71edff}, preonStar:{base:11000,rk:.12,color:0xffe495},
+  bosonStar:{base:7000,rk:.25,color:0x96a5ff}, solitonStar:{base:7500,rk:.23,color:0x77e7c5},
+  qStar:{base:8000,rk:.18,color:0xd597ff}, blackDwarf:{base:3000,rk:.30,color:0x344250},
+  blackNeutron:{base:6000,rk:.18,color:0x344564}
+};
+const TYPES = {};
+for (const key in RAW_TYPES) {
+  const raw = RAW_TYPES[key];
+  TYPES[key] = { base: raw.base, rk: raw.rk, color: '#' + raw.color.toString(16).padStart(6, '0') };
+}
+const TYPE_NAMES = {
+  redDwarf:'红矮星',orangeDwarf:'橙矮星',hotSubdwarf:'热亚矮星',wolfRayet:'沃尔夫–拉叶星',
+  star:'恒星',planet:'行星',ringplanet:'环行星',gasGiant:'气态巨行星',asteroid:'小行星',comet:'彗星',
+  blackhole:'黑洞',whitehole:'白洞',darkMatter:'暗物质团',darkHalo:'暗物质晕',gravastar:'引力真空星',
+  openCluster:'疏散星团',globularCluster:'球状星团',galaxySpiral:'旋涡星系',galaxyElliptical:'椭圆星系',
+  galaxyIrregular:'不规则星系',neutron:'中子星',brownDwarf:'褐矮星',whiteDwarf:'白矮星',
+  redGiant:'红巨星',redSupergiant:'红超巨星',redHypergiant:'红特超巨星',blueGiant:'蓝巨星',
+  quarkStar:'夸克星',wormhole:'虫洞',probe:'探测器',sakurai:'樱井天体',cepheid:'造父变星',
+  quasar:'类星体',strangeStar:'奇异星',electroweakStar:'电弱星',preonStar:'先子星',
+  bosonStar:'玻色子星',solitonStar:'孤子星',qStar:'Q 星',blackDwarf:'黑矮星',blackNeutron:'黑中子星'
+};
+const EXOTIC_INFO = {
+  darkMatter:['观测证据','暗物质由引力效应推断，微观组成未确定；紫色分布为伪彩示意。'],
+  darkHalo:['观测证据','暗物质晕是包围星系的扩展质量分布；密度为游戏示意。'],
+  gravastar:['假说','引力真空星是替代黑洞的假说模型，尚未确认。'],
+  openCluster:['已观测','疏散星团由引力联系较松散的恒星组成；星点为轻量化示意。'],
+  globularCluster:['已观测','球状星团通常呈中心密集的分布；星点为轻量化示意。'],
+  galaxySpiral:['已观测','旋涡星系由恒星、气体和尘埃构成；旋臂为示意，星点不是独立物理天体。'],
+  galaxyElliptical:['已观测','椭圆星系具有近椭圆形的恒星分布。'],
+  galaxyIrregular:['已观测','不规则星系没有整齐外形；结构为游戏示意。'],
+  redSupergiant:['已观测','红超巨星是演化膨胀的大质量恒星，例如参宿四。'],
+  redHypergiant:['已观测','红特超巨星极大且常有强烈失质量，例如大犬座 VY。'],
+  whitehole:['理论概念','白洞是某些时空解中黑洞的时间反演，无确认观测证据。'],
+  redDwarf:['已观测','低质量 M 型主序星，较冷且寿命很长。'],
+  orangeDwarf:['已观测','K 型主序星，通常比太阳更冷、更小。'],
+  hotSubdwarf:['已观测','此处以热亚矮星为例；亚矮星包含多种类别。'],
+  wolfRayet:['已观测','炽热的大质量演化恒星，通常有强恒星风。'],
+  sakurai:['已观测','樱井天体是经历极晚期热脉冲的恒星残骸。'],
+  cepheid:['已观测','造父变星周期性膨胀和变亮；这里使用加快的模拟周期。'],
+  quasar:['已观测','类星体由超大质量黑洞吸积供能，喷流为示意。'],
+  strangeStar:['假说','假想由奇异夸克物质构成的致密星，尚未确认。'],
+  electroweakStar:['假说','极端高密度物质与电弱过程的理论模型。'],
+  preonStar:['假说','假设夸克和轻子还有更小组成，尚无实验证据。'],
+  bosonStar:['假说','由假设的玻色场引力束缚形成，无确认观测。'],
+  solitonStar:['假说','某些自相互作用场形成的理论致密天体。'],
+  qStar:['假说','基于特定物质或场模型提出的致密天体。'],
+  blackDwarf:['假说','白矮星极长时间冷却后的理论状态。'],
+  blackNeutron:['游戏设定','冷暗致密星的想象示意，无统一分类。'],
+  whiteDwarf:['已观测','这里用碳氧白矮星的简化模型演示钱德拉塞卡极限。']
 };
 const PLANET_COLORS = ['#5fb2ff','#7de0a3','#e0a35f','#c98bff','#ff8b8b','#8be0dd'];
-const radiusFor = (type, mass) => Math.max(1.8, Math.cbrt(mass) * TYPES[type].rk);
+const WHITE_DWARF_SOLAR_UNIT = 3000, CHANDRASEKHAR_LIMIT = 4200;
+const NOVA_THRESHOLD = 18, NOVA_RATE = 8;
+const LIT_TYPES = new Set(['star','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet','blueGiant',
+  'redGiant','redSupergiant','redHypergiant','whiteDwarf','cepheid','quasar','sakurai']);
+const DENSE_TYPES = new Set(['blackhole','neutron','quarkStar','quasar','strangeStar','electroweakStar',
+  'preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron','gravastar']);
+const MAX_BODIES = 320;
+const isStarCollection = t => t.startsWith('galaxy') || t === 'openCluster' || t === 'globularCluster';
+const isDarkDistribution = t => t === 'darkMatter' || t === 'darkHalo';
+let sizeMode = 'display';
+function radiusFor(type, mass) {
+  if (!TYPES[type]) return 2;
+  if (sizeMode === 'display') return Math.max(1.8, Math.cbrt(Math.max(0.001, mass)) * TYPES[type].rk);
+  const reference = CelestialSize.radiusFor(type, Math.max(0.001, mass), TYPES, 'reference');
+  return Math.max(0.8, Math.min(220, reference));
+}
+function hexA(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+const TAU = Math.PI * 2;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+/* ================= 天体对象（全部状态为二维） ================= */
 let nextId = 1;
+const typeCounters = {};
 class Body {
   constructor(x, y, vx, vy, mass, type) {
     this.id = nextId++;
-    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-    this.ax = 0; this.ay = 0;
-    this.mass = mass; this.type = type;
-    this.heat = 0;
+    typeCounters[type] = (typeCounters[type] || 0) + 1;
+    this.labelNumber = typeCounters[type];
+    this.x = x; this.y = y; this.prevX = x; this.prevY = y;
+    this.vx = vx; this.vy = vy; this.ax = 0; this.ay = 0;
+    this.mass = mass; this.type = type; this.heat = 0;
     this.r = radiusFor(type, mass);
     this.color = type === 'planet'
-      ? PLANET_COLORS[(Math.random() * PLANET_COLORS.length) | 0]
-      : TYPES[type].color;
-    this.spin = Math.random() * Math.PI * 2;
-    if (type === 'asteroid') {
+      ? PLANET_COLORS[(Math.random() * PLANET_COLORS.length) | 0] : TYPES[type].color;
+    this.spin = Math.random() * TAU; this.spinW = (Math.random() - 0.5) * 0.02;
+    this.age = 0; this.trail = []; this.craters = []; this.alpha = 1;
+    this.locked = null; this.novaEnvelope = 0; this.tpCd = 0; this.partner = null;
+    this.oort = null; this.ring = null; this.pulsationStart = 0;
+    if (type === 'asteroid' || type === 'comet') {
       this.shape = [];
-      const n = 8;
-      for (let i = 0; i < n; i++) this.shape.push(0.7 + Math.random() * 0.45);
+      for (let i = 0; i < 9; i++) this.shape.push(0.7 + Math.random() * 0.45);
     }
-    if (type === 'blackhole') {
-      // 吸积盘流纹（内密外疏）
+    if (DENSE_TYPES.has(type) || type === 'whitehole') {
       this.disk = [];
-      for (let i = 0; i < 38; i++) {
-        const rf = Math.pow(Math.random(), 0.7);
-        this.disk.push({
-          rf,                                  // 0=内缘 1=外缘
-          a0: Math.random() * Math.PI * 2,
-          spd: 1.5 + Math.random() * 2.0,
-          len: 0.25 + Math.random() * 0.7,
-          w: 0.5 + Math.random() * 1.0
-        });
+      for (let i = 0; i < 26; i++) this.disk.push({
+        rf: Math.pow(Math.random(), 0.7), a0: Math.random() * TAU,
+        spd: 1.5 + Math.random() * 2, len: 0.25 + Math.random() * 0.7, w: 0.5 + Math.random()
+      });
+    }
+    if (type === 'ringplanet' || type === 'gasGiant') this.ring = { tilt: 0.32, phase: Math.random() * TAU };
+    if (isStarCollection(type) || isDarkDistribution(type)) {
+      this.points = [];
+      const count = type === 'galaxySpiral' ? 70 : 48;
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * TAU;
+        const rr = type === 'galaxySpiral'
+          ? 0.15 + 0.85 * Math.pow(Math.random(), 0.65) + ang / TAU * 0.12
+          : Math.pow(Math.random(), 0.55);
+        this.points.push({ a: ang + (type === 'galaxySpiral' ? rr * 5 : 0), r: Math.min(1, rr) });
       }
     }
   }
+  get name() { return (TYPE_NAMES[this.type] || this.type) + ' #' + this.labelNumber; }
 }
 
-/* ================= 状态 ================= */
-let bodies = [], particles = [], shockwaves = [];
-let G = 3, mMul = 1, curType = 'star';
-let paused = false, showTrails = true, muted = false;
-let collisions = 0, simTime = 0;
-let shockwaveReplay = false, nextShockwaveAt = 0, inspectedBody = null, lastAssessmentAt = 0;
+/* ================= 全局状态 ================= */
+let bodies = [], particles = [], shockwaves = [], nebulae = [], cmeEvents = [];
+let G = 3, mMul = 1, spinMul = 0.4, curType = 'star';
+let paused = false, timeScale = 1, muted = false;
+let collisions = 0, simTime = 0, frameNo = 0;
+let showTrails = true;
+let selected = null, inspectedBody = null, lastAssessmentAt = 0;
+let shockwaveReplay = false, nextShockwaveAt = 0;
+const hillState = { body: null, primary: null, radius: 0, visual: 0, method: 'hill' };
+const otherHills = [];
+let noticeTimer = 0;
 
-/* ================= 物理 ================= */
+function showNotice(text) {
+  const el = document.getElementById('launchNotice');
+  el.textContent = text; el.classList.add('show');
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => el.classList.remove('show'), 4200);
+}
+function spawnBody(x, y, vx, vy, mass, type) {
+  if (!TYPES[type]) type = 'asteroid';
+  if (bodies.length >= MAX_BODIES) bodies.shift();
+  const b = new Body(x, y, vx, vy, Math.max(0.001, mass), type);
+  b.spinW *= spinMul;
+  bodies.push(b);
+  return b;
+}
+function removeBody(b) {
+  const i = bodies.indexOf(b);
+  if (i >= 0) bodies.splice(i, 1);
+  if (selected === b) selected = null;
+  if (inspectedBody === b) inspectedBody = null;
+}
+function clearScene() {
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  collisions = 0; selected = null; inspectedBody = null;
+  for (const b of bodies) if (b.partner) b.partner = null;
+}
+
+/* ================= 物理：二维 N 体 ================= */
+function computeAcceleration() {
+  for (const b of bodies) { b.ax = 0; b.ay = 0; }
+  for (let i = 0; i < bodies.length; i++) {
+    const a = bodies[i];
+    if (a.mass <= 0) continue;
+    const aSoft = isDarkDistribution(a.type) ? a.r * 0.35 : 0;
+    for (let j = i + 1; j < bodies.length; j++) {
+      const b = bodies[j];
+      if (b.mass <= 0) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const bSoft = isDarkDistribution(b.type) ? b.r * 0.35 : 0;
+      const d2 = dx * dx + dy * dy + 60 + aSoft * aSoft + bSoft * bSoft;
+      const d = Math.sqrt(d2);
+      let f = G * a.mass * b.mass / d2;
+      // 白洞近场排斥（游戏示意），远场仍为普通引力
+      if ((a.type === 'whitehole' || b.type === 'whitehole') && d < 90) f *= -0.8;
+      const fx = f * dx / d, fy = f * dy / d;
+      a.ax += fx / a.mass; a.ay += fy / a.mass;
+      b.ax -= fx / b.mass; b.ay -= fy / b.mass;
+    }
+  }
+}
+function integrate(dt) {
+  for (const b of bodies) {
+    b.vx += b.ax * dt; b.vy += b.ay * dt;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    b.spin += b.spinW * dt;
+    b.age += dt;
+    if (b.tpCd > 0) b.tpCd -= dt;
+  }
+  updateWormholes();
+}
+function updateWormholes() {
+  const holes = bodies.filter(b => b.type === 'wormhole' && b.tpCd <= 0);
+  if (holes.length < 2) return;
+  const a = holes[0], b = holes[1];
+  a.partner = b; b.partner = a;
+  for (const body of bodies) {
+    if (body === a || body === b || body.tpCd > 0) continue;
+    const d = Math.hypot(body.x - a.x, body.y - a.y);
+    if (d < body.r + a.r * 1.4) {
+      const sp = Math.hypot(body.vx, body.vy) || 1;
+      body.x = b.x + body.vx / sp * (b.r * 2 + 12);
+      body.y = b.y + body.vy / sp * (b.r * 2 + 12);
+      body.prevX = body.x; body.prevY = body.y;
+      body.trail.length = 0;
+      body.tpCd = 2; b.tpCd = 0.4; a.tpCd = 0.4;
+      break;
+    }
+  }
+}
 function step() {
-  const SUB = 2, dt = 1 / SUB;
-  for (let s = 0; s < SUB; s++) {
-    for (const b of bodies) { b.ax = 0; b.ay = 0; }
-    for (let i = 0; i < bodies.length; i++) {
-      const a = bodies[i];
-      for (let j = i + 1; j < bodies.length; j++) {
-        const b = bodies[j];
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const d2 = dx * dx + dy * dy + 60;           // 软化因子防奇点
-        const d = Math.sqrt(d2);
-        const f = G * a.mass * b.mass / d2;
-        const fx = f * dx / d, fy = f * dy / d;
-        a.ax += fx / a.mass; a.ay += fy / a.mass;
-        b.ax -= fx / b.mass; b.ay -= fy / b.mass;
-      }
-    }
-    for (const b of bodies) {
-      b.vx += b.ax * dt; b.vy += b.ay * dt;
-      b.x += b.vx * dt;  b.y += b.vy * dt;
-    }
-  }
+  const SUB = bodies.length > 150 ? 1 : 2, dt = timeScale / SUB;
+  for (const b of bodies) { b.prevX = b.x; b.prevY = b.y; }
+  for (let s = 0; s < SUB; s++) { computeAcceleration(); integrate(dt); }
   handleCollisions();
-  for (const b of bodies) b.heat *= 0.985;
-  // 移除飞太远的天体
-  const lim = Math.max(W, H) * 4, cx = W / 2, cy = H / 2;
-  bodies = bodies.filter(b => {
-    const dx = b.x - cx, dy = b.y - cy;
-    return dx * dx + dy * dy < lim * lim;
-  });
+  updateNovaAccretion();
+  checkEvolution();
+  for (const b of bodies) {
+    b.heat *= 0.985;
+    if (b.type === 'cepheid' && document.getElementById('stellarPulseToggle').checked) {
+      b.r = radiusFor(b.type, b.mass) * (1 + 0.12 * cepheidWave(b.mass, simTime - b.pulsationStart));
+    }
+    // 自转过快时甩出碎片（离心解体）
+    const breakW = Math.sqrt(G * b.mass / Math.max(1, b.r * b.r * b.r));
+    if (Math.abs(b.spinW) > breakW && b.mass > 20 && bodies.length < MAX_BODIES - 2) shedFragments(b);
+  }
+  const lim = Math.max(W, H) * 6 / cam.zoom, cx = cam.x, cy = cam.y;
+  bodies = bodies.filter(b => Math.abs(b.x - cx) < lim && Math.abs(b.y - cy) < lim);
 }
+function cepheidWave(mass, t) { return Math.sin(t * (2.2 + mass / 900)); }
 
+/* 扫掠碰撞检测：用上一帧与当前帧的相对位移求最近接近点 */
 function handleCollisions() {
   const dead = new Set();
   for (let i = 0; i < bodies.length; i++) {
@@ -203,72 +441,184 @@ function handleCollisions() {
     for (let j = i + 1; j < bodies.length; j++) {
       const b = bodies[j];
       if (dead.has(b.id)) continue;
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const rr = (a.r + b.r) * 0.8;
-      if (dx * dx + dy * dy < rr * rr) {
-        const big = a.mass >= b.mass ? a : b;
-        const small = big === a ? b : a;
-        // 黑洞总是存活；否则大质量存活
-        const survivor = small.type === 'blackhole' ? small : big;
-        const other = survivor === big ? small : big;
-        const M = survivor.mass + other.mass;
-        survivor.heat = Math.min(2, survivor.heat + other.mass / M);
-        survivor.vx = (survivor.vx * survivor.mass + other.vx * other.mass) / M;
-        survivor.vy = (survivor.vy * survivor.mass + other.vy * other.mass) / M;
-        survivor.x = (survivor.x * survivor.mass + other.x * other.mass) / M;
-        survivor.y = (survivor.y * survivor.mass + other.y * other.mass) / M;
-        survivor.mass = M;
-        survivor.r = radiusFor(survivor.type, M);
-        explode(other.x, other.y, other);
-        dead.add(other.id);
-        collisions++;
+      if (a.type === 'wormhole' || b.type === 'wormhole') continue;
+      if (isDarkDistribution(a.type) || isDarkDistribution(b.type)) continue;
+      const ax0 = a.prevX - b.prevX, ay0 = a.prevY - b.prevY;
+      const dx = (a.x - b.x) - ax0, dy = (a.y - b.y) - ay0;
+      const denom = dx * dx + dy * dy;
+      let t = denom > 1e-9 ? -(ax0 * dx + ay0 * dy) / denom : 0;
+      t = clamp(t, 0, 1);
+      const cx = ax0 + dx * t, cy = ay0 + dy * t;
+      const rr = (a.r + b.r) * (isStarCollection(a.type) || isStarCollection(b.type) ? 0.22 : 0.8);
+      if (cx * cx + cy * cy >= rr * rr) continue;
+      // 白洞反弹，不合并
+      if (a.type === 'whitehole' || b.type === 'whitehole') {
+        const hole = a.type === 'whitehole' ? a : b, other = hole === a ? b : a;
+        const nx = (other.x - hole.x) || 1, ny = (other.y - hole.y) || 0;
+        const nl = Math.hypot(nx, ny) || 1;
+        other.vx += nx / nl * 2.5; other.vy += ny / nl * 2.5;
+        other.x = hole.x + nx / nl * (hole.r + other.r + 2);
+        other.y = hole.y + ny / nl * (hole.r + other.r + 2);
+        continue;
       }
+      const relSpeed = Math.hypot(a.vx - b.vx, a.vy - b.vy);
+      const big = a.mass >= b.mass ? a : b;
+      const small = big === a ? b : a;
+      const survivor = (small.type === 'blackhole' || small.type === 'quasar') ? small : big;
+      const other = survivor === big ? small : big;
+      const M = survivor.mass + other.mass;
+      survivor.heat = Math.min(2, survivor.heat + other.mass / M);
+      survivor.vx = (survivor.vx * survivor.mass + other.vx * other.mass) / M;
+      survivor.vy = (survivor.vy * survivor.mass + other.vy * other.mass) / M;
+      survivor.x = (survivor.x * survivor.mass + other.x * other.mass) / M;
+      survivor.y = (survivor.y * survivor.mass + other.y * other.mass) / M;
+      survivor.mass = M;
+      survivor.r = radiusFor(survivor.type, M);
+      survivor.spinW += (other.x - survivor.x) * (other.vy - survivor.vy) / (M * Math.max(1, survivor.r)) * 0.01;
+      if (survivor.type === 'planet' || survivor.type === 'ringplanet') addCrater(survivor);
+      createImpactFragments(other, survivor, relSpeed);
+      if (M > 120) tidalStrip(survivor, other, relSpeed);
+      explode(other.x, other.y, other);
+      dead.add(other.id);
+      collisions++;
     }
   }
-  if (dead.size) bodies = bodies.filter(b => !dead.has(b.id));
+  if (dead.size) {
+    bodies = bodies.filter(b => !dead.has(b.id));
+    if (selected && dead.has(selected.id)) selected = null;
+    if (inspectedBody && dead.has(inspectedBody.id)) inspectedBody = null;
+  }
+}
+function addCrater(b) {
+  b.craters.push({ a: Math.random() * TAU, r: 0.2 + Math.random() * 0.55, s: 0.08 + Math.random() * 0.14 });
+  if (b.craters.length > 12) b.craters.shift();
+}
+function createImpactFragments(other, survivor, relSpeed) {
+  if (relSpeed < 1.2 || bodies.length >= MAX_BODIES - 40 || other.mass < 8) return;
+  const count = Math.min(6, 1 + Math.floor(Math.sqrt(other.mass) / 6));
+  const take = Math.min(other.mass * 0.08, count * 1.5);
+  survivor.mass = Math.max(0.001, survivor.mass - take);
+  survivor.r = radiusFor(survivor.type, survivor.mass);
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * TAU, sp = 0.8 + relSpeed * 0.35 + Math.random();
+    const m = take / count;
+    const f = spawnBody(other.x, other.y,
+      other.vx + Math.cos(ang) * sp, other.vy + Math.sin(ang) * sp, m, 'asteroid');
+    f.heat = 0.4;
+  }
+}
+function tidalStrip(survivor, other, relSpeed) {
+  if (bodies.length >= MAX_BODIES - 10) return;
+  const count = 3;
+  for (let i = 0; i < count; i++) {
+    const ang = Math.atan2(other.vy - survivor.vy, other.vx - survivor.vx) + (i - 1) * 0.6;
+    const f = spawnBody(other.x, other.y,
+      survivor.vx + Math.cos(ang) * (1 + relSpeed * 0.2),
+      survivor.vy + Math.sin(ang) * (1 + relSpeed * 0.2), 1.2, 'comet');
+    f.heat = 0.8;
+  }
+}
+function shedFragments(b) {
+  const take = Math.min(b.mass * 0.03, 4);
+  b.mass = Math.max(0.001, b.mass - take);
+  b.r = radiusFor(b.type, b.mass);
+  b.spinW *= 0.72;
+  const ang = b.spin > 0 ? b.spin : Math.random() * TAU;
+  const f = spawnBody(b.x + Math.cos(ang) * b.r * 1.5, b.y + Math.sin(ang) * b.r * 1.5,
+    b.vx - Math.sin(ang) * 1.5, b.vy + Math.cos(ang) * 1.5, take, 'asteroid');
+  f.heat = 0.3;
+}
+function transformBody(b, type, keepMass) {
+  b.type = type;
+  b.color = TYPES[type].color;
+  b.mass = keepMass === undefined ? b.mass : keepMass;
+  b.r = radiusFor(type, b.mass);
+  b.pulsationStart = simTime;
+}
+function checkEvolution() {
+  for (const b of [...bodies]) {
+    if (!bodies.includes(b)) continue;
+    const m = b.mass;
+    if (b.type === 'star' && m >= 2400) transformBody(b, 'blueGiant');
+    else if (b.type === 'blueGiant' && m >= 5200) transformBody(b, 'blackhole');
+    else if (b.type === 'redGiant' && m >= 900) { transformBody(b, 'whiteDwarf'); createNebula(b.x, b.y, 'planetary'); }
+    else if (b.type === 'whiteDwarf' && m >= CHANDRASEKHAR_LIMIT) { createNebula(b.x, b.y, 'supernova'); removeBody(b); }
+    else if (b.type === 'neutron' && m >= 12000) transformBody(b, 'blackhole');
+    else if (b.type === 'gasGiant' && m >= 90) transformBody(b, 'brownDwarf');
+    else if (b.type === 'brownDwarf' && m >= 600) transformBody(b, 'star');
+  }
+}
+function updateNovaAccretion() {
+  for (const dwarf of bodies) {
+    if (dwarf.type !== 'whiteDwarf') continue;
+    let donor = null, best = Infinity;
+    for (const b of bodies) {
+      if (b === dwarf || b.mass <= dwarf.mass) continue;
+      const d = Math.hypot(b.x - dwarf.x, b.y - dwarf.y);
+      if (d < 180 && d < best) { best = d; donor = b; }
+    }
+    if (!donor) continue;
+    const amount = Math.min(NOVA_RATE * 0.016, donor.mass * 0.02);
+    donor.mass -= amount; dwarf.mass += amount; dwarf.novaEnvelope += amount;
+    donor.r = radiusFor(donor.type, donor.mass);
+    dwarf.r = radiusFor(dwarf.type, dwarf.mass);
+    if (dwarf.novaEnvelope >= NOVA_THRESHOLD) {
+      dwarf.novaEnvelope = 0;
+      createNebula(dwarf.x, dwarf.y, 'nova');
+      explode(dwarf.x, dwarf.y, dwarf);
+    }
+  }
 }
 
-/* ================= 爆炸特效 ================= */
-function hexA(hex, a) {
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${a})`;
-}
+/* ================= 特效与音效（全部 Canvas 2D） ================= */
 function explode(x, y, body) {
-  const power = Math.min(1, Math.cbrt(body.mass) / 9);
-  const count = Math.round(Math.min(140, 12 + Math.sqrt(body.mass) * 4));
-  const isStar = body.type === 'star';
+  const power = Math.min(1, Math.cbrt(Math.max(0.001, body.mass)) / 9);
+  const count = Math.round(Math.min(120, 12 + Math.sqrt(body.mass) * 4));
+  const isStar = LIT_TYPES.has(body.type);
   for (let i = 0; i < count; i++) {
-    const ang = Math.random() * Math.PI * 2;
+    const ang = Math.random() * TAU;
     const sp = (0.4 + Math.random() * 2.6) * (0.6 + power * 1.6);
     const life = 0.7 + Math.random() * 1.2;
-    particles.push({
-      x, y,
-      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-      life, maxLife: life,
-      size: 1 + Math.random() * (isStar ? 3.5 : 2.2),
-      color: Math.random() < 0.35 ? '#ffffff' : body.color
-    });
+    particles.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      life, maxLife: life, size: 1 + Math.random() * (isStar ? 3.5 : 2.2),
+      color: Math.random() < 0.35 ? '#ffffff' : body.color });
   }
-  // 闪光
   particles.push({ x, y, vx: 0, vy: 0, life: 0.25, maxLife: 0.25,
     size: body.r * (3 + power * 3), color: '#ffffff', flash: true });
   shockwaves.push({ x, y, r: body.r * 0.5, vr: 2.5 + power * 4, alpha: 0.85, width: 2 + power * 3 });
   if (isStar) shockwaves.push({ x, y, r: body.r * 0.3, vr: 1.5 + power * 2, alpha: 0.6, width: 6 });
   boom(0.1 + power * 0.9);
 }
-
+function createNebula(x, y, kind) {
+  const palette = { nova:'#b9d6ff', planetary:'#7de0c0', iax:'#ffc48b', supernova:'#ff9a6b' };
+  nebulae.push({ x, y, r: 6, vr: 1.4 + Math.random(), alpha: 0.8,
+    color: palette[kind] || '#ffffff', life: 1, maxLife: 1 });
+}
+function emitCME(b) {
+  if (!b || !LIT_TYPES.has(b.type) || cmeEvents.length > 12) return false;
+  const ang = Math.random() * TAU;
+  cmeEvents.push({ x: b.x, y: b.y, dx: Math.cos(ang), dy: Math.sin(ang),
+    r: b.r * 0.8, vr: 1.6, alpha: 0.85, width: Math.max(2, b.r * 0.35) });
+  return true;
+}
 function updateEffects() {
   for (const p of particles) {
-    p.x += p.vx; p.y += p.vy;
-    p.vx *= 0.985; p.vy *= 0.985;
-    p.life -= 0.016;
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.985; p.vy *= 0.985; p.life -= 0.016;
   }
   particles = particles.filter(p => p.life > 0);
   for (const s of shockwaves) { s.r += s.vr; s.vr *= 0.965; s.alpha *= 0.945; }
   shockwaves = shockwaves.filter(s => s.alpha > 0.02);
+  for (const n of nebulae) { n.r += n.vr; n.alpha *= 0.982; n.life -= 0.006; }
+  nebulae = nebulae.filter(n => n.life > 0 && n.alpha > 0.02);
+  for (const c of cmeEvents) {
+    c.x += c.dx * c.vr; c.y += c.dy * c.vr; c.r += c.vr * 0.35; c.alpha *= 0.955;
+  }
+  cmeEvents = cmeEvents.filter(c => c.alpha > 0.02);
+  if (document.getElementById('cmeToggle').checked && frameNo % 420 === 0) {
+    const stars = bodies.filter(b => LIT_TYPES.has(b.type) && b.mass > 200);
+    if (stars.length) emitCME(stars[(Math.random() * stars.length) | 0]);
+  }
 }
-
-/* ================= 音效 ================= */
 let audioCtx = null;
 function ensureAudio() {
   if (!audioCtx) {
@@ -292,365 +642,902 @@ function boom(strength) {
   src.start();
 }
 
-/* ================= 渲染 ================= */
+/* ================= 希尔球：二维虚线圆估算 ================= */
+function estimateHillSphere(body) {
+  if (!body || body.mass <= 0 || body.type === 'wormhole' ||
+      body.type === 'whitehole' || isDarkDistribution(body.type)) return null;
+  let heavier = null, fallback = null, heavyDistance = Infinity, fallbackDistance = Infinity;
+  for (const candidate of bodies) {
+    if (candidate === body || candidate.mass <= 0 || candidate.type === 'wormhole' ||
+        candidate.type === 'whitehole' || isDarkDistribution(candidate.type)) continue;
+    const d = Math.hypot(body.x - candidate.x, body.y - candidate.y);
+    if (d <= body.r + candidate.r) continue;
+    const relativeSpeedSq = (body.vx - candidate.vx) ** 2 + (body.vy - candidate.vy) ** 2;
+    if (0.5 * relativeSpeedSq >= G * (body.mass + candidate.mass) / Math.sqrt(d * d + 60)) continue;
+    if (candidate.mass > body.mass && d < heavyDistance) { heavier = candidate; heavyDistance = d; }
+    if (d < fallbackDistance) { fallback = candidate; fallbackDistance = d; }
+  }
+  const primary = heavier || fallback, distance = heavier ? heavyDistance : fallbackDistance;
+  if (!primary) return null;
+  const ratio = body.mass / primary.mass;
+  if (ratio < 0.02) return { primary, radius: distance * Math.cbrt(ratio / 3), method: 'hill' };
+  let lo = 1e-8, hi = 1 - 1e-8;
+  const m = body.mass, M = primary.mass, barycenter = M / (m + M);
+  for (let i = 0; i < 48; i++) {
+    const x = (lo + hi) / 2;
+    const force = -m / (x * x) + M / ((1 - x) * (1 - x)) + (m + M) * (x - barycenter);
+    if (force > 0) hi = x; else lo = x;
+  }
+  return { primary, radius: distance * (lo + hi) / 2, method: 'binary' };
+}
+function hillVisualRadius(body, radius) {
+  if (body === selected && document.getElementById('hillFullScale').checked) return radius;
+  return Math.min(radius * 0.35, Math.max(body.r * 2, 180 / cam.zoom));
+}
+function updateHillSphere() {
+  const info = document.getElementById('hillSphereInfo');
+  hillState.body = null; hillState.primary = null; hillState.radius = 0; hillState.visual = 0;
+  otherHills.length = 0;
+  const enabled = document.getElementById('hillSphereToggle').checked;
+  let message = '选中天体可查看希尔半径估算；图形只用于显示，不改变引力。';
+  const body = bodies.includes(selected) ? selected : null;
+  if (enabled && body) {
+    const estimate = estimateHillSphere(body);
+    if (estimate && Number.isFinite(estimate.radius) && estimate.radius > 0) {
+      hillState.body = body; hillState.primary = estimate.primary;
+      hillState.radius = estimate.radius; hillState.method = estimate.method;
+      hillState.visual = hillVisualRadius(body, estimate.radius);
+      const kind = estimate.method === 'hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
+      const scale = hillState.visual / estimate.radius;
+      const percent = scale * 100 < 1 ? '<1%' : Math.round(scale * 100) + '%';
+      message = kind + '约 ' + estimate.radius.toPrecision(3) + ' 距离单位 · 参考 ' +
+        estimate.primary.name + '；' + (scale < 0.999 ? '图形缩小至 ' + percent : '按计算比例显示') +
+        '。球外仍有引力，范围不是引力截止线。';
+    } else message = '没有引力束缚的较重或其他合适天体，无法估算希尔球；显示不改变引力。';
+  }
+  if (enabled && document.getElementById('hillShowAll').checked) {
+    for (const other of bodies) {
+      if (other === body || otherHills.length >= 24) continue;
+      const estimate = estimateHillSphere(other);
+      if (!estimate || !Number.isFinite(estimate.radius) || estimate.radius <= 0) continue;
+      otherHills.push({ body: other, radius: hillVisualRadius(other, estimate.radius) });
+    }
+  }
+  if (info.textContent !== message) info.textContent = message;
+}
+
+/* ================= 宜居带 / 网格 / 标签 ================= */
+function habitableRange(b) {
+  const scale = 110 * Math.pow(Math.max(1, b.mass) / 600, 0.5);
+  return { inner: 0.95 * scale, outer: 1.67 * scale };
+}
+function niceGridSpacing(target) {
+  const exp = Math.pow(10, Math.floor(Math.log10(Math.max(1, target))));
+  const f = target / exp;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * exp;
+}
+let gridSpacing = 100;
+function drawGrid() {
+  if (!document.getElementById('gridToggle').checked) return;
+  gridSpacing = niceGridSpacing(110 / cam.zoom);
+  document.getElementById('gridStepLabel').textContent = gridSpacing;
+  const tl = screenToWorld(0, 0), br = screenToWorld(W, H);
+  const x0 = Math.floor(tl.x / gridSpacing) * gridSpacing;
+  const y0 = Math.floor(tl.y / gridSpacing) * gridSpacing;
+  ctx.lineWidth = 1 / cam.zoom;
+  ctx.strokeStyle = 'rgba(120,150,220,0.10)';
+  ctx.beginPath();
+  for (let x = x0; x < br.x; x += gridSpacing) { ctx.moveTo(x, tl.y); ctx.lineTo(x, br.y); }
+  for (let y = y0; y < br.y; y += gridSpacing) { ctx.moveTo(tl.x, y); ctx.lineTo(br.x, y); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(140,175,255,0.22)';
+  ctx.beginPath(); ctx.moveTo(0, tl.y); ctx.lineTo(0, br.y); ctx.moveTo(tl.x, 0); ctx.lineTo(br.x, 0); ctx.stroke();
+}
+function drawHabitableZones() {
+  if (!document.getElementById('habitableZoneToggle').checked) return;
+  for (const b of bodies) {
+    if (!LIT_TYPES.has(b.type) || b.mass < 80) continue;
+    const range = habitableRange(b);
+    ctx.setLineDash([6 / cam.zoom, 6 / cam.zoom]);
+    ctx.strokeStyle = 'rgba(120,220,160,0.28)'; ctx.lineWidth = 1.4 / cam.zoom;
+    ctx.beginPath(); ctx.arc(b.x, b.y, range.inner, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,220,160,0.16)';
+    ctx.beginPath(); ctx.arc(b.x, b.y, range.outer, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function drawHillCircles() {
+  if (!document.getElementById('hillSphereToggle').checked) return;
+  const circles = [];
+  if (hillState.body) circles.push({ body: hillState.body, radius: hillState.visual, main: true });
+  for (const item of otherHills) circles.push({ body: item.body, radius: item.radius, main: false });
+  for (const c of circles) {
+    ctx.setLineDash(c.main ? [8 / cam.zoom, 5 / cam.zoom] : [4 / cam.zoom, 6 / cam.zoom]);
+    ctx.strokeStyle = c.main ? 'rgba(117,211,255,0.85)' : 'rgba(117,211,255,0.32)';
+    ctx.lineWidth = (c.main ? 1.6 : 0.9) / cam.zoom;
+    ctx.beginPath(); ctx.arc(c.body.x, c.body.y, c.radius, 0, TAU); ctx.stroke();
+    if (c.main) {
+      ctx.fillStyle = 'rgba(114,199,255,0.045)';
+      ctx.beginPath(); ctx.arc(c.body.x, c.body.y, c.radius, 0, TAU); ctx.fill();
+    }
+  }
+  ctx.setLineDash([]);
+}
+function drawLabels() {
+  if (!document.getElementById('labelsToggle').checked) return;
+  const taken = [];
+  const limit = W < 640 ? 18 : 46;
+  let drawn = 0;
+  ctx.font = '11px "Segoe UI",sans-serif';
+  for (const b of bodies) {
+    if (drawn >= limit) break;
+    const p = worldToScreen(b.x, b.y);
+    if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) continue;
+    const text = b.name;
+    const w = ctx.measureText(text).width + 10;
+    const box = { x: p.x + Math.max(8, b.r * cam.zoom + 4), y: p.y - 8, w, h: 16 };
+    if (taken.some(t => Math.abs(t.x - box.x) < (t.w + box.w) / 2 && Math.abs(t.y - box.y) < 18)) continue;
+    taken.push(box); drawn++;
+    ctx.fillStyle = 'rgba(10,16,34,0.7)';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.fillStyle = b === selected ? '#ffffff' : '#b9cdff';
+    ctx.fillText(text, box.x + 5, box.y + 12);
+    if (selected && b !== selected) {
+      const d = Math.hypot(b.x - selected.x, b.y - selected.y);
+      ctx.fillStyle = '#8fa8e0';
+      ctx.fillText(d.toFixed(0), box.x + 5, box.y + 27);
+    }
+  }
+}
+
+/* ================= 二维渲染 ================= */
 function drawNebula() {
   ctx.globalCompositeOperation = 'lighter';
-  const n1 = ctx.createRadialGradient(W*0.22, H*0.3, 0, W*0.22, H*0.3, W*0.35);
+  const n1 = ctx.createRadialGradient(W * 0.22, H * 0.3, 0, W * 0.22, H * 0.3, W * 0.35);
   n1.addColorStop(0, 'rgba(70,50,160,0.10)'); n1.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = n1; ctx.fillRect(0, 0, W, H);
-  const n2 = ctx.createRadialGradient(W*0.8, H*0.7, 0, W*0.8, H*0.7, W*0.3);
+  const n2 = ctx.createRadialGradient(W * 0.8, H * 0.7, 0, W * 0.8, H * 0.7, W * 0.3);
   n2.addColorStop(0, 'rgba(30,90,150,0.08)'); n2.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = n2; ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'source-over';
 }
-
 function drawStars(t) {
   ctx.fillStyle = '#cdd6ff';
   for (const s of stars) {
     ctx.globalAlpha = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
-
-function drawBody(b, t) {
-  if (b.type === 'star') {
-    const pulse = 1 + 0.06 * Math.sin(t * 3 + b.id);
-    const gr = b.r * 5 * pulse;
-    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, gr);
-    g.addColorStop(0, 'rgba(255,245,220,0.95)');
-    g.addColorStop(0.18, hexA(b.color, 0.6));
-    g.addColorStop(1, 'rgba(255,150,50,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(b.x, b.y, gr, 0, 7); ctx.fill();
-    ctx.fillStyle = '#fff7e8';
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.75, 0, 7); ctx.fill();
-  } else if (b.type === 'blackhole') {
-    const tilt = 0.4;                            // 盘面倾角
-    const rot = b.spin + t * 0.3;                // 盘面缓慢进动
-    const innerR = b.r * 1.3, outerR = b.r * 3.4;
-    const TAU = Math.PI * 2;
-
-    // 外围紫色光晕
-    const halo = ctx.createRadialGradient(b.x, b.y, b.r * 0.5, b.x, b.y, outerR * 1.7);
-    halo.addColorStop(0, 'rgba(150,100,255,0.28)');
-    halo.addColorStop(0.5, 'rgba(110,70,220,0.10)');
-    halo.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = halo;
-    ctx.beginPath(); ctx.arc(b.x, b.y, outerR * 1.7, 0, 7); ctx.fill();
-
-    // ---- 吸积盘整体（背面先画） ----
-    ctx.save();
-    ctx.translate(b.x, b.y);
-    ctx.rotate(rot);
-    ctx.scale(1, tilt);
-    ctx.globalCompositeOperation = 'lighter';
-
-    // 同心渐变环：内缘白热 → 橙 → 外缘暗紫红
-    const RINGS = 26;
-    const lw = (outerR - innerR) / RINGS * 1.9;
-    for (let k = 0; k < RINGS; k++) {
-      const f = k / (RINGS - 1);
-      const rr = innerR + (outerR - innerR) * f;
-      const heat = Math.pow(1 - f, 1.7);
-      let cr, cg, cb;
-      if (f < 0.45) {
-        const u = f / 0.45;
-        cr = 255; cg = Math.round(244 - 90 * u); cb = Math.round(224 - 160 * u);
-      } else {
-        const u = (f - 0.45) / 0.55;
-        cr = Math.round(255 - 150 * u); cg = Math.round(154 - 104 * u); cb = Math.round(64 + 60 * u);
-      }
-      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.14 + 0.55 * heat) * (1 - f * 0.75)})`;
-      ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.stroke();
+function drawStar(b, t) {
+  const pulses = document.getElementById('stellarPulseToggle').checked;
+  const wave = b.type === 'cepheid' && pulses ? 1 + 0.12 * cepheidWave(b.mass, simTime - b.pulsationStart)
+    : pulses ? 1 + 0.04 * Math.sin(t * 3 + b.id) : 1;
+  const gr = b.r * 4.6 * wave;
+  const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, gr);
+  g.addColorStop(0, 'rgba(255,248,228,0.92)');
+  g.addColorStop(0.18, hexA(b.color, 0.55));
+  g.addColorStop(1, hexA(b.color, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(b.x, b.y, gr, 0, TAU); ctx.fill();
+  const core = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.1, b.x, b.y, b.r);
+  core.addColorStop(0, '#ffffff'); core.addColorStop(0.5, b.color); core.addColorStop(1, hexA(b.color, 0.85));
+  ctx.fillStyle = core;
+  ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+}
+function drawCompact(b, t) {
+  const R = Math.max(2, b.r);
+  const innerR = R * 1.35, outerR = R * 3.4;
+  const halo = ctx.createRadialGradient(b.x, b.y, R * 0.5, b.x, b.y, outerR * 1.8);
+  halo.addColorStop(0, hexA(b.color, 0.3)); halo.addColorStop(1, hexA(b.color, 0));
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(b.x, b.y, outerR * 1.8, 0, TAU); ctx.fill();
+  ctx.save();
+  ctx.translate(b.x, b.y); ctx.rotate(b.spin); ctx.scale(1, 0.4);
+  ctx.globalCompositeOperation = 'lighter';
+  const lw = (outerR - innerR) / 20 * 1.8;
+  for (let k = 0; k < 20; k++) {
+    const f = k / 19, rr = innerR + (outerR - innerR) * f;
+    const heat = Math.pow(1 - f, 1.7);
+    ctx.strokeStyle = 'rgba(255,' + Math.round(150 + 90 * heat) + ',' +
+      Math.round(90 + 130 * heat) + ',' + (0.12 + 0.5 * heat) * (1 - f * 0.7) + ')';
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+  }
+  if (b.disk) for (const s of b.disk) {
+    const rr = innerR + (outerR - innerR) * s.rf;
+    const ang = s.a0 + t * s.spd / (0.35 + s.rf * 1.4);
+    ctx.strokeStyle = 'rgba(255,220,170,' + (0.45 * (1 - s.rf * 0.6)) + ')';
+    ctx.lineWidth = Math.max(0.6, s.w * R * 0.14);
+    ctx.beginPath(); ctx.arc(0, 0, rr, ang, ang + s.len); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = b.type === 'whitehole' ? hexA(b.color, 0.92) : '#000';
+  ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
+  ctx.strokeStyle = b.type === 'whitehole' ? '#ffffff' : 'rgba(255,232,190,0.9)';
+  ctx.lineWidth = Math.max(1, R * 0.13);
+  ctx.beginPath(); ctx.arc(b.x, b.y, R * 1.1, 0, TAU); ctx.stroke();
+  if (document.getElementById('lensToggle').checked) {
+    ctx.strokeStyle = hexA(b.color, 0.22); ctx.lineWidth = 1.2;
+    for (let k = 1; k <= 3; k++) {
+      ctx.beginPath(); ctx.ellipse(b.x, b.y, R * (1.6 + k * 0.55), R * (0.6 + k * 0.2), b.spin, 0, TAU); ctx.stroke();
     }
-
-    // 多普勒增亮：转向观测者的一侧更亮
-    const dop = ctx.createLinearGradient(-outerR, 0, outerR, 0);
-    dop.addColorStop(0, 'rgba(255,232,190,0.15)');
-    dop.addColorStop(0.55, 'rgba(255,255,255,0)');
-    dop.addColorStop(1, 'rgba(70,45,110,0.10)');
-    ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, outerR, 0, 7); ctx.clip();
-    ctx.fillStyle = dop;
-    ctx.fillRect(-outerR, -outerR, outerR * 2, outerR * 2);
+  }
+  if (b.type === 'quasar') {
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin + 0.4);
+    ctx.strokeStyle = 'rgba(160,220,255,0.5)'; ctx.lineWidth = Math.max(1.5, R * 0.35);
+    ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(0, -R * 7); ctx.moveTo(0, R); ctx.lineTo(0, R * 7); ctx.stroke();
     ctx.restore();
-
-    // 旋转流纹（内侧角速度更快）
-    for (const s of b.disk) {
-      const rr = innerR + (outerR - innerR) * s.rf;
-      const ang = s.a0 + t * s.spd / (0.35 + s.rf * 1.4);
-      const heat = 1 - s.rf;
-      ctx.strokeStyle = `rgba(255,${Math.round(175 + 65 * heat)},${Math.round(95 + 135 * heat)},${0.5 * (1 - s.rf * 0.55)})`;
-      ctx.lineWidth = Math.max(0.6, s.w * b.r * 0.14);
-      ctx.beginPath(); ctx.arc(0, 0, rr, ang, ang + s.len); ctx.stroke();
-    }
-    ctx.restore();
-
-    // 事件视界（遮住盘面背面，形成空间层次）
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
-
-    // 光子环
-    ctx.save();
-    ctx.shadowColor = 'rgba(255,214,150,0.9)';
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = 'rgba(255,242,218,0.95)';
-    ctx.lineWidth = Math.max(1.2, b.r * 0.12);
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.07, 0, 7); ctx.stroke();
-    ctx.restore();
-
-    // ---- 盘面前半部：从视界前方掠过 ----
-    ctx.save();
-    ctx.translate(b.x, b.y);
-    ctx.rotate(rot);
-    ctx.scale(1, tilt);
-    ctx.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 4; k++) {
-      const f = k / 3 * 0.45;
-      const rr = innerR + (outerR - innerR) * f;
-      const heat = Math.pow(1 - f, 1.7);
-      ctx.strokeStyle = `rgba(255,${Math.round(205 + 35 * heat)},${Math.round(140 + 70 * heat)},${0.30 + 0.32 * heat})`;
-      ctx.lineWidth = lw * 1.15;
-      ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI); ctx.stroke();
-    }
-    for (const s of b.disk) {
-      const ang = ((s.a0 + t * s.spd / (0.35 + s.rf * 1.4)) % TAU + TAU) % TAU;
-      const mid = ((ang + s.len / 2) % TAU + TAU) % TAU;
-      // 靠近前半圆两端时平滑淡入淡出，避免流纹越过视界边缘时突现突隐（闪烁）
-      const fade = Math.min(1, Math.max(0, Math.min(mid, Math.PI - mid) / 0.5));
-      const a0c = Math.max(0, ang), a1c = Math.min(Math.PI, ang + s.len);
-      if (fade <= 0.01 || a1c <= a0c) continue;   // 只画前半部分
-      const rr = innerR + (outerR - innerR) * s.rf;
-      const heat = 1 - s.rf;
-      ctx.strokeStyle = `rgba(255,${Math.round(185 + 60 * heat)},${Math.round(105 + 125 * heat)},${0.45 * fade * (1 - s.rf * 0.5)})`;
-      ctx.lineWidth = Math.max(0.6, s.w * b.r * 0.14);
-      ctx.beginPath(); ctx.arc(0, 0, rr, a0c, a1c); ctx.stroke();
-    }
-    ctx.restore();
-    ctx.globalCompositeOperation = 'source-over';
-  } else if (b.type === 'asteroid') {
-    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin + t * 0.5);
-    ctx.fillStyle = b.color;
-    ctx.beginPath();
-    for (let i = 0; i < b.shape.length; i++) {
-      const ang = i / b.shape.length * Math.PI * 2;
-      const rr = b.r * b.shape[i];
-      i === 0 ? ctx.moveTo(Math.cos(ang) * rr, Math.sin(ang) * rr)
-              : ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.arc(-b.r*0.2, -b.r*0.1, b.r*0.25, 0, 7); ctx.fill();
-    ctx.restore();
-  } else { // planet
-    const g = ctx.createRadialGradient(b.x - b.r*0.4, b.y - b.r*0.4, b.r*0.1, b.x, b.y, b.r);
-    g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, b.color); g.addColorStop(1, 'rgba(10,15,40,1)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
-    ctx.strokeStyle = hexA(b.color, 0.35); ctx.lineWidth = b.r * 0.5;
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.35, 0, 7); ctx.stroke();
-    ctx.globalAlpha = 1;
   }
 }
-
-function render(t) {
-  if (showTrails) {
-    ctx.fillStyle = 'rgba(4,6,15,0.28)';
-    ctx.fillRect(0, 0, W, H);
-  } else {
-    ctx.fillStyle = '#04060f';
-    ctx.fillRect(0, 0, W, H);
+function drawCollection(b, t) {
+  const dark = isDarkDistribution(b.type);
+  const R = Math.min(b.r, 180);
+  const glow = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, R);
+  glow.addColorStop(0, hexA(b.color, dark ? 0.16 : 0.24));
+  glow.addColorStop(1, hexA(b.color, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
+  const show = !dark || document.getElementById('darkMatterToggle').checked;
+  if (!show || !b.points) return;
+  ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin * 0.25);
+  for (const p of b.points) {
+    const a = p.a + (dark ? 0 : t * 0.02 / (0.3 + p.r));
+    const rr = p.r * R;
+    ctx.globalAlpha = dark ? 0.35 : 0.8 - p.r * 0.4;
+    ctx.fillStyle = dark ? b.color : '#ffffff';
+    ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr * (b.type === 'galaxyElliptical' ? 0.7 : 1),
+      Math.max(0.6, R * 0.012), 0, TAU); ctx.fill();
   }
-  drawNebula();
-  drawStars(t);
-
+  ctx.globalAlpha = 1; ctx.restore();
+}
+function drawTerrestrial(b, t) {
+  const g = ctx.createRadialGradient(b.x - b.r * 0.4, b.y - b.r * 0.4, b.r * 0.1, b.x, b.y, b.r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, b.color); g.addColorStop(1, 'rgba(10,15,40,1)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+  if (b.type === 'gasGiant') {
+    ctx.save(); ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,240,210,0.18)'; ctx.lineWidth = Math.max(1, b.r * 0.14);
+    for (let k = -2; k <= 2; k++) {
+      ctx.beginPath(); ctx.ellipse(b.x, b.y + k * b.r * 0.33, b.r, b.r * 0.12, 0, 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (const c of b.craters) {
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.arc(b.x + Math.cos(c.a) * c.r * b.r, b.y + Math.sin(c.a) * c.r * b.r,
+      Math.max(0.8, c.s * b.r), 0, TAU); ctx.fill();
+  }
+  if (b.heat > 0.15) {
+    ctx.strokeStyle = 'rgba(255,' + Math.round(160 - b.heat * 90) + ',60,' + Math.min(0.8, b.heat) + ')';
+    ctx.lineWidth = Math.max(1, b.r * 0.18);
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.94, 0, TAU); ctx.stroke();
+  }
+  if (b.ring) {
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.ring.phase + t * 0.05);
+    ctx.strokeStyle = hexA(b.color, 0.55); ctx.lineWidth = Math.max(1.2, b.r * 0.16);
+    ctx.beginPath(); ctx.ellipse(0, 0, b.r * 1.9, b.r * 0.55, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = hexA(b.color, 0.25); ctx.lineWidth = Math.max(1, b.r * 0.1);
+    ctx.beginPath(); ctx.ellipse(0, 0, b.r * 2.35, b.r * 0.75, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawSmallBody(b, t) {
+  if (b.type === 'probe') {
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+    ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -3.5); ctx.lineTo(-4, 3.5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(158,220,255,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 18, 0, TAU); ctx.stroke();
+    return;
+  }
+  ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin);
+  ctx.fillStyle = b.color;
+  ctx.beginPath();
+  const shape = b.shape || [1, 0.9, 1.05, 0.85, 1, 0.95, 0.9, 1.05, 0.95];
+  for (let i = 0; i < shape.length; i++) {
+    const ang = i / shape.length * TAU, rr = b.r * shape[i];
+    i === 0 ? ctx.moveTo(Math.cos(ang) * rr, Math.sin(ang) * rr)
+            : ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.arc(-b.r * 0.2, -b.r * 0.1, Math.max(0.6, b.r * 0.25), 0, TAU); ctx.fill();
+  ctx.restore();
+  if (b.type === 'comet') {
+    let host = null, best = Infinity;
+    for (const s of bodies) {
+      if (!LIT_TYPES.has(s.type) || s === b) continue;
+      const d = Math.hypot(s.x - b.x, s.y - b.y);
+      if (d < best) { best = d; host = s; }
+    }
+    if (host) {
+      const ang = Math.atan2(b.y - host.y, b.x - host.x);
+      const len = Math.min(90, 600 / Math.max(20, best));
+      const tail = ctx.createLinearGradient(b.x, b.y, b.x + Math.cos(ang) * len, b.y + Math.sin(ang) * len);
+      tail.addColorStop(0, 'rgba(190,235,255,0.6)'); tail.addColorStop(1, 'rgba(190,235,255,0)');
+      ctx.strokeStyle = tail; ctx.lineWidth = Math.max(2, b.r * 1.5);
+      ctx.beginPath(); ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x + Math.cos(ang) * len, b.y + Math.sin(ang) * len); ctx.stroke();
+    }
+  }
+}
+function drawWormhole(b, t) {
+  for (let k = 0; k < 3; k++) {
+    ctx.strokeStyle = hexA(b.color, 0.6 - k * 0.15);
+    ctx.lineWidth = Math.max(1, b.r * (0.22 - k * 0.05));
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * (1.2 + k * 0.4), b.r * (0.8 + k * 0.3),
+      t * 0.4 + k, 0, TAU); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(5,15,25,0.9)';
+  ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.7, 0, TAU); ctx.fill();
+}
+function drawBody(b, t) {
+  if (b.xrayGlow && document.getElementById('xrayToggle').checked) {
+    const g = ctx.createRadialGradient(b.x, b.y, b.r, b.x, b.y, b.r * 8);
+    g.addColorStop(0, 'rgba(150,120,255,0.28)'); g.addColorStop(1, 'rgba(150,120,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 8, 0, TAU); ctx.fill();
+  }
+  if (b.type === 'wormhole') drawWormhole(b, t);
+  else if (LIT_TYPES.has(b.type) || b.type === 'sakurai') drawStar(b, t);
+  else if (DENSE_TYPES.has(b.type) || b.type === 'whitehole') drawCompact(b, t);
+  else if (isStarCollection(b.type) || isDarkDistribution(b.type)) drawCollection(b, t);
+  else if (b.type === 'planet' || b.type === 'ringplanet' || b.type === 'gasGiant') drawTerrestrial(b, t);
+  else drawSmallBody(b, t);
+  if (b.oort) {
+    ctx.strokeStyle = 'rgba(170,210,255,0.22)'; ctx.lineWidth = 1;
+    ctx.setLineDash([2, 7]);
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.oort, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(190,225,255,0.5)';
+    for (let i = 0; i < 60; i++) {
+      const a = i * 2.399 + b.id;
+      const rr = b.oort * (0.86 + 0.14 * ((i * 37) % 13) / 13);
+      ctx.beginPath(); ctx.arc(b.x + Math.cos(a) * rr, b.y + Math.sin(a) * rr, 0.8, 0, TAU); ctx.fill();
+    }
+  }
+  if (b.locked && bodies.includes(b.locked)) {
+    const ang = Math.atan2(b.locked.y - b.y, b.locked.x - b.x);
+    ctx.strokeStyle = 'rgba(255,220,140,0.45)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x + Math.cos(ang) * b.r * 2, b.y + Math.sin(ang) * b.r * 2); ctx.stroke();
+  }
+}
+function drawTrails() {
+  if (!showTrails) return;
+  ctx.lineWidth = 1 / cam.zoom;
+  for (const b of bodies) {
+    if (b.trail.length < 2) continue;
+    ctx.strokeStyle = hexA(b.color, 0.32);
+    ctx.beginPath();
+    b.trail.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+  }
+}
+function drawWorldEffects() {
+  for (const n of nebulae) {
+    const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, Math.max(2, n.r));
+    g.addColorStop(0, hexA(n.color, n.alpha * 0.5)); g.addColorStop(1, hexA(n.color, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(2, n.r), 0, TAU); ctx.fill();
+  }
+  for (const c of cmeEvents) {
+    ctx.strokeStyle = 'rgba(255,190,110,' + c.alpha + ')'; ctx.lineWidth = c.width;
+    ctx.beginPath(); ctx.arc(c.x, c.y, Math.max(1, c.r), 0, TAU); ctx.stroke();
+  }
   for (const s of shockwaves) {
-    ctx.strokeStyle = `rgba(255,220,170,${s.alpha})`;
+    ctx.strokeStyle = 'rgba(255,220,170,' + s.alpha + ')';
     ctx.lineWidth = s.width;
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.stroke();
   }
-
-  for (const b of bodies) drawBody(b, t);
-
   ctx.globalCompositeOperation = 'lighter';
   for (const p of particles) {
     const a = Math.max(0, p.life / p.maxLife);
     if (p.flash) {
       const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
-      g.addColorStop(0, `rgba(255,255,255,${a})`);
-      g.addColorStop(1, 'rgba(255,200,120,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+      g.addColorStop(0, 'rgba(255,255,255,' + a + ')'); g.addColorStop(1, 'rgba(255,200,120,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill();
     } else {
-      ctx.globalAlpha = a;
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+      ctx.globalAlpha = a; ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill();
     }
   }
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
-
-  if (bodies.includes(inspectedBody)) {
-    ctx.strokeStyle = '#8cc9ff'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(inspectedBody.x, inspectedBody.y, inspectedBody.r + 6, 0, Math.PI * 2); ctx.stroke();
-  }
-  drawPreview();
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 }
-
-/* ================= 交互：拖拽发射 ================= */
-let dragStart = null, dragCur = null;
-canvas.addEventListener('pointerdown', e => {
-  stopShockwaveReplay();
-  ensureAudio();
-  dragStart = { x: e.clientX, y: e.clientY };
-  dragCur = { ...dragStart };
-});
-canvas.addEventListener('pointermove', e => {
-  if (dragStart) dragCur = { x: e.clientX, y: e.clientY };
-});
-window.addEventListener('pointerup', () => {
-  if (!dragStart) return;
-  const dx = dragCur.x - dragStart.x, dy = dragCur.y - dragStart.y;
-  const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
-  let vx = dx * 0.055, vy = dy * 0.055;
-  const sp = Math.hypot(vx, vy), maxSp = 13;
-  if (sp > maxSp) { vx *= maxSp / sp; vy *= maxSp / sp; }
-  spawnBody(dragStart.x, dragStart.y, vx, vy, mass, curType);
-  dragStart = null;
-});
-canvas.addEventListener('wheel', e => {
-  e.preventDefault();
-  mMul = Math.min(5, Math.max(0.2, mMul + (e.deltaY < 0 ? 0.2 : -0.2)));
-  massSlider.value = mMul;
-  massVal.textContent = '×' + mMul.toFixed(1);
-}, { passive: false });
-
-function spawnBody(x, y, vx, vy, mass, type) {
-  if (bodies.length >= 300) bodies.shift();
-  bodies.push(new Body(x, y, vx, vy, mass, type));
+function drawSelection() {
+  if (!selected || !bodies.includes(selected)) return;
+  const p = worldToScreen(selected.x, selected.y);
+  const r = Math.max(10, selected.r * cam.zoom + 6);
+  ctx.strokeStyle = '#8cc9ff'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
 }
-
 function drawPreview() {
-  if (!dragStart) return;
+  if (!dragStart || dragPan) return;
   const mass = TYPES[curType].base * mMul;
-  const r = radiusFor(curType, mass);
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = TYPES[curType].color;
-  ctx.beginPath(); ctx.arc(dragStart.x, dragStart.y, r, 0, 7); ctx.fill();
+  const r = Math.max(3, radiusFor(curType, mass) * cam.zoom);
+  ctx.globalAlpha = 0.55; ctx.fillStyle = TYPES[curType].color;
+  ctx.beginPath(); ctx.arc(dragStart.x, dragStart.y, r, 0, TAU); ctx.fill();
   ctx.globalAlpha = 1;
   const dx = dragCur.x - dragStart.x, dy = dragCur.y - dragStart.y;
   if (Math.hypot(dx, dy) > 4) {
-    ctx.strokeStyle = 'rgba(160,180,255,0.9)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(160,180,255,0.9)'; ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(dragStart.x, dragStart.y); ctx.lineTo(dragCur.x, dragCur.y); ctx.stroke();
     ctx.setLineDash([]);
     const ang = Math.atan2(dy, dx);
     ctx.fillStyle = 'rgba(160,180,255,0.9)';
-    ctx.beginPath();
-    ctx.moveTo(dragCur.x, dragCur.y);
+    ctx.beginPath(); ctx.moveTo(dragCur.x, dragCur.y);
     ctx.lineTo(dragCur.x - 10 * Math.cos(ang - 0.4), dragCur.y - 10 * Math.sin(ang - 0.4));
     ctx.lineTo(dragCur.x - 10 * Math.cos(ang + 0.4), dragCur.y - 10 * Math.sin(ang + 0.4));
     ctx.closePath(); ctx.fill();
   }
 }
-
-/* ================= 预设场景 ================= */
-function demoCollision() {
-  stopShockwaveReplay();
-  const y = H * 0.5 + (Math.random() - 0.5) * H * 0.2;
-  const m1 = 500 + Math.random() * 300, m2 = 400 + Math.random() * 300;
-  spawnBody(W * 0.12, y - 20,  2.4, 0.15, m1, 'star');
-  spawnBody(W * 0.88, y + 20, -2.4, -0.15, m2, 'star');
-  for (let i = 0; i < 6; i++) {
-    spawnBody(W * (0.3 + Math.random() * 0.4), H * (0.2 + Math.random() * 0.6),
-      (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5, 3 + Math.random() * 6, 'asteroid');
+function render(t) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = showTrails ? 'rgba(4,6,15,0.32)' : '#04060f';
+  ctx.fillRect(0, 0, W, H);
+  drawNebula(); drawStars(t);
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
+  drawGrid();
+  drawHabitableZones();
+  drawHillCircles();
+  drawTrails();
+  for (const b of bodies) {
+    b.xrayGlow = DENSE_TYPES.has(b.type) && document.getElementById('xrayToggle').checked;
+    drawBody(b, t);
   }
+  drawWorldEffects();
+  ctx.restore();
+  drawSelection();
+  drawLabels();
+  drawPreview();
 }
 
+/* ================= 交互：全部在二维平面 ================= */
+let dragStart = null, dragCur = null, dragPan = false, panLast = null;
+function pickBody(sx, sy) {
+  const w = screenToWorld(sx, sy);
+  let best = null, bestD = Infinity;
+  for (const b of bodies) {
+    const d = Math.hypot(b.x - w.x, b.y - w.y);
+    if (d <= Math.max(b.r, 8 / cam.zoom) && d < bestD) { best = b; bestD = d; }
+  }
+  return best;
+}
+function updateObjectInfo() {
+  const el = document.getElementById('objectInfo');
+  if (!selected) { el.textContent = '选中天体可查看科学状态说明。'; return; }
+  const extra = EXOTIC_INFO[selected.type];
+  el.textContent = extra ? '[' + extra[0] + '] ' + extra[1] :
+    selected.name + ' · 质量 ' + selected.mass.toFixed(1) + ' · 半径 ' + selected.r.toFixed(1) + ' 距离单位。';
+}
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  ensureAudio();
+  if (e.button === 2 || e.button === 1 || e.shiftKey && e.buttons === 1) {
+    dragPan = true; panLast = { x: e.clientX, y: e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (!e.isPrimary) return;
+  stopShockwaveReplay();
+  dragStart = { x: e.clientX, y: e.clientY };
+  dragCur = { x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (dragPan && panLast) {
+    cam.x -= (e.clientX - panLast.x) / cam.zoom;
+    cam.y -= (e.clientY - panLast.y) / cam.zoom;
+    panLast = { x: e.clientX, y: e.clientY };
+  } else if (dragStart) dragCur = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('pointerup', e => {
+  if (dragPan) { dragPan = false; panLast = null; return; }
+  if (!dragStart) return;
+  const dx = dragCur.x - dragStart.x, dy = dragCur.y - dragStart.y;
+  if (Math.hypot(dx, dy) > 6) {
+    const p = screenToWorld(dragStart.x, dragStart.y);
+    const mass = TYPES[curType].base * mMul * (0.85 + Math.random() * 0.3);
+    let vx = dx * 0.055 / cam.zoom, vy = dy * 0.055 / cam.zoom;
+    const sp = Math.hypot(vx, vy), maxSp = 13;
+    if (sp > maxSp) { vx *= maxSp / sp; vy *= maxSp / sp; }
+    selected = spawnBody(p.x, p.y, vx, vy, mass, curType);
+    selected.spinW = spinMul * 0.05 * (Math.random() < 0.5 ? -1 : 1);
+    updateObjectInfo();
+  } else {
+    selected = pickBody(dragStart.x, dragStart.y);
+    updateObjectInfo();
+  }
+  dragStart = null;
+});
+window.addEventListener('pointercancel', () => { dragStart = null; dragPan = false; panLast = null; });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.shiftKey) {
+    mMul = clamp(mMul + (e.deltaY < 0 ? 0.2 : -0.2), 0.2, 5);
+    document.getElementById('massSlider').value = mMul;
+    document.getElementById('massVal').textContent = '×' + mMul.toFixed(1);
+    return;
+  }
+  const before = screenToWorld(e.clientX, e.clientY);
+  cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.12, 6);
+  const after = screenToWorld(e.clientX, e.clientY);
+  cam.x += before.x - after.x; cam.y += before.y - after.y;
+}, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); document.getElementById('btnPause').click(); }
+  else if (e.code === 'KeyT') cycleSpeed();
+  else if (e.code === 'KeyS') singleStep();
+  else if (e.code === 'KeyR') document.getElementById('btnReset').click();
+  else if (e.code === 'Escape') { selected = null; updateObjectInfo(); }
+});
+
+/* ================= 二维场景与演示 ================= */
+function startDemo() {
+  stopShockwaveReplay(); clearScene();
+  paused = false; timeScale = 1;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('btnSpeed').textContent = '⏱ ×1';
+  cam.x = W / 2; cam.y = H / 2; cam.zoom = 1;
+  selected = null; updateObjectInfo();
+}
+function orbitSpeed(M, d) { return Math.sqrt(G * M * d * d / Math.pow(d * d + 60, 1.5)); }
+function demoCollision() {
+  startDemo();
+  const y = H * 0.5 + (Math.random() - 0.5) * H * 0.2;
+  spawnBody(W * 0.12, y - 20, 2.4, 0.15, 500 + Math.random() * 300, 'star');
+  spawnBody(W * 0.88, y + 20, -2.4, -0.15, 400 + Math.random() * 300, 'star');
+  for (let i = 0; i < 5; i++) spawnBody(W * (0.3 + Math.random() * 0.4), H * (0.2 + Math.random() * 0.6),
+    (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5, 3 + Math.random() * 6, 'asteroid');
+}
 function randomSystem() {
   stopShockwaveReplay();
-  bodies = []; particles = []; shockwaves = []; collisions = 0;
-  const cx = W / 2, cy = H / 2;
-  const M = 700 + Math.random() * 500;
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  collisions = 0; selected = null; inspectedBody = null;
+  const cx = W / 2, cy = H / 2, M = 700 + Math.random() * 500;
   spawnBody(cx, cy, 0, 0, M, 'star');
   const planets = 4 + (Math.random() * 5 | 0);
   const dir = Math.random() < 0.5 ? 1 : -1;
   for (let i = 0; i < planets; i++) {
     const r = 110 + i * (45 + Math.random() * 35) + Math.random() * 25;
-    const ang = Math.random() * Math.PI * 2;
+    const ang = Math.random() * TAU;
     const v = Math.sqrt(G * M / r) * (0.92 + Math.random() * 0.16);
     const px = cx + Math.cos(ang) * r, py = cy + Math.sin(ang) * r;
-    const vx = -Math.sin(ang) * v * dir, vy = Math.cos(ang) * v * dir;
     const type = Math.random() < 0.22 ? 'asteroid' : 'planet';
     const mass = type === 'planet' ? 12 + Math.random() * 45 : 2 + Math.random() * 5;
-    spawnBody(px, py, vx, vy, mass, type);
+    spawnBody(px, py, -Math.sin(ang) * v * dir, Math.cos(ang) * v * dir, mass, type);
   }
 }
+function makeStarSystem(kind) {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const primary = spawnBody(cx, cy, 0, 0, 1200, 'star');
+  primary.r = radiusFor('star', 1200);
+  if (kind >= 2) {
+    const d = 190, m = 600, v = orbitSpeed(primary.mass + m, d);
+    spawnBody(cx + d, cy, 0, v, m, 'star');
+    primary.vy = -v * m / primary.mass;
+  }
+  if (kind >= 3) {
+    const d = 320, m = 300, v = orbitSpeed(primary.mass + m, d);
+    spawnBody(cx - d, cy, 0, -v, m, 'redDwarf');
+  }
+  for (let i = 0; i < 3; i++) {
+    const d = 90 + i * 48, v = orbitSpeed(primary.mass, d);
+    spawnBody(cx, cy - d, v, 0, 20 + i * 8, 'planet');
+  }
+}
+function demoNova() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx - 60, cy, 0, -0.6, 900, 'redGiant');
+  const dwarf = spawnBody(cx + 60, cy, 0, 0.6, 3000, 'whiteDwarf');
+  dwarf.novaEnvelope = NOVA_THRESHOLD - 2;
+  showNotice('白矮星从伴星吸积，达到阈值触发新星；白矮星本身保留。');
+}
+function demoIax() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const dwarf = spawnBody(cx, cy, 0, 0, 3000, 'whiteDwarf');
+  dwarf.mass = CHANDRASEKHAR_LIMIT - 60;
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * TAU;
+    spawnBody(cx + Math.cos(a) * 120, cy + Math.sin(a) * 120,
+      -Math.cos(a) * 0.8, -Math.sin(a) * 0.8, 40, 'asteroid');
+  }
+  showNotice('Iax 型超新星演示：接近钱德拉塞卡极限的白矮星抛射物质。');
+}
+function demoWhiteHole() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx, cy, 0, 0, 2500, 'whitehole');
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * TAU;
+    spawnBody(cx + Math.cos(a) * 160, cy + Math.sin(a) * 160,
+      -Math.cos(a) * 1.2, -Math.sin(a) * 1.2, 30, 'planet');
+  }
+}
+function demoGalaxyCollision() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx - 210, cy - 60, 1.1, 0.2, 2400, 'galaxySpiral');
+  spawnBody(cx + 210, cy + 60, -1.1, -0.2, 2400, 'galaxySpiral');
+  cam.zoom = 0.8;
+}
+function demoTidalLock() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const star = spawnBody(cx, cy, 0, 0, 900, 'star');
+  const d = 150, v = orbitSpeed(star.mass, d);
+  const planet = spawnBody(cx + d, cy, 0, v, 40, 'planet');
+  planet.locked = star; selected = planet; updateObjectInfo();
+}
+function demoOortCloud() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const star = spawnBody(cx, cy, 0, 0, 900, 'star');
+  star.oort = 260;
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * TAU;
+    spawnBody(cx + Math.cos(a) * 250, cy + Math.sin(a) * 250,
+      -Math.sin(a) * 1.2, Math.cos(a) * 1.2, 2, 'comet');
+  }
+  cam.zoom = 0.85;
+  showNotice('奥尔特云是围绕恒星的假想冰体云；距离已压缩为平面圆环。');
+}
+function demoHillSphere() {
+  startDemo();
+  const cx = cam.x, cy = cam.y, d = 150, planetMass = 40;
+  const star = spawnBody(cx, cy, 0, 0, 600, 'star');
+  const v = orbitSpeed(star.mass + planetMass, d);
+  star.vy = -v * planetMass / (star.mass + planetMass);
+  const planet = spawnBody(cx + d, cy, 0, v * star.mass / (star.mass + planetMass), planetMass, 'planet');
+  const moonV = orbitSpeed(planetMass + 2, 18);
+  spawnBody(cx + d + 18, cy, 0, planet.vy + moonV, 2, 'asteroid');
+  selected = planet; updateObjectInfo();
+  showNotice('蓝色虚线圆是选中行星的希尔球近似；二维平面下不再是球面。');
+}
+function demoDarkMatter() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx, cy, 0, 0, 4000, 'darkHalo');
+  spawnBody(cx + 150, cy, 0, 1.1, 2400, 'galaxySpiral');
+  cam.zoom = 0.75;
+}
+function demoStellarEvolution(kind) {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const type = kind === 'supernova' ? 'blueGiant' : 'redGiant';
+  const star = spawnBody(cx, cy, 0, 0, kind === 'supernova' ? 5000 : 880, type);
+  createNebula(cx, cy, kind === 'supernova' ? 'supernova' : 'planetary');
+  selected = star; updateObjectInfo();
+}
+function demoChandrasekhar() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const dwarf = spawnBody(cx, cy, 0, 0, 3000, 'whiteDwarf');
+  selected = dwarf; updateObjectInfo();
+  showNotice('钱德拉塞卡极限约 1.4 倍太阳质量；本演示把 3000 游戏质量单位记作 1 个太阳质量。');
+}
+function demoBlackHole() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx, cy, 0, 0, 4200, 'blackhole');
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * TAU;
+    spawnBody(cx + Math.cos(a) * 190, cy + Math.sin(a) * 190,
+      -Math.sin(a) * 1.5, Math.cos(a) * 1.5, 25, 'planet');
+  }
+}
+function demoRingTides() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  spawnBody(cx, cy, 0, 0, 800, 'star');
+  const d = 170, v = orbitSpeed(800, d);
+  const ring = spawnBody(cx + d, cy, 0, v, 55, 'ringplanet');
+  selected = ring; updateObjectInfo();
+}
+function demoCME() {
+  startDemo();
+  const cx = cam.x, cy = cam.y;
+  const star = spawnBody(cx, cy, 0, 0, 900, 'star');
+  emitCME(star); emitCME(star);
+  selected = star; updateObjectInfo();
+}
+function setAutomaticOrbit() {
+  if (!selected) { showNotice('请先选中一个天体。'); return; }
+  let host = null, best = Infinity;
+  for (const b of bodies) {
+    if (b === selected || b.mass <= selected.mass) continue;
+    const d = Math.hypot(b.x - selected.x, b.y - selected.y);
+    if (d < best) { best = d; host = b; }
+  }
+  if (!host) { showNotice('附近没有更重的天体可环绕。'); return; }
+  const v = orbitSpeed(host.mass + selected.mass, best);
+  const nx = -(selected.y - host.y) / best, ny = (selected.x - host.x) / best;
+  selected.vx = host.vx + nx * v; selected.vy = host.vy + ny * v;
+  showNotice('已按平面圆轨道设置初速度；软化引力下轨道仍会逐渐进动。');
+}
+function toggleTidalLock() {
+  if (!selected) { showNotice('请先选中一个天体。'); return; }
+  if (selected.locked) { selected.locked = null; showNotice('已解除潮汐锁定。'); return; }
+  let host = null, best = Infinity;
+  for (const b of bodies) {
+    if (b === selected || b.mass <= selected.mass) continue;
+    const d = Math.hypot(b.x - selected.x, b.y - selected.y);
+    if (d < best) { best = d; host = b; }
+  }
+  if (!host) { showNotice('附近没有更重的天体可锁定。'); return; }
+  selected.locked = host;
+  showNotice('已将朝向锁定到 ' + host.name + '；二维下用一条短线表示。');
+}
+function toggleOortCloud() {
+  if (!selected) { showNotice('请先选中一个天体。'); return; }
+  if (selected.oort) { selected.oort = null; showNotice('已移除奥尔特云。'); return; }
+  selected.oort = Math.max(120, selected.r * 8);
+  showNotice('已添加平面奥尔特云圆环。');
+}
+function releaseOortComet() {
+  const host = selected && selected.oort ? selected : bodies.find(b => b.oort);
+  if (!host) { showNotice('请先给恒星添加奥尔特云。'); return; }
+  const a = Math.random() * TAU, r = host.oort;
+  const c = spawnBody(host.x + Math.cos(a) * r, host.y + Math.sin(a) * r,
+    -Math.sin(a) * 0.8, Math.cos(a) * 0.8, 2, 'comet');
+  selected = c; updateObjectInfo();
+}
+function findNextBody() {
+  if (!bodies.length) return;
+  const i = bodies.indexOf(selected);
+  selected = bodies[(i + 1) % bodies.length];
+  cam.x += (selected.x - cam.x) * 0.5; cam.y += (selected.y - cam.y) * 0.5;
+  updateObjectInfo();
+}
 
-/* ================= UI 绑定 ================= */
-const massSlider = document.getElementById('massSlider');
-const massVal = document.getElementById('massVal');
-const gSlider = document.getElementById('gSlider');
-const gVal = document.getElementById('gVal');
-
-document.querySelectorAll('#tools .btn').forEach(btn => {
+/* ================= UI 生成与绑定 ================= */
+const TYPE_GROUPS = {
+  stars: ['redDwarf','orangeDwarf','hotSubdwarf','wolfRayet','blueGiant','redGiant','redSupergiant','redHypergiant','brownDwarf','sakurai','cepheid'],
+  remnants: ['whiteDwarf','neutron','quarkStar','whitehole','gravastar','quasar','blackDwarf','blackNeutron'],
+  exotic: ['wormhole','strangeStar','electroweakStar','preonStar','bosonStar','solitonStar','qStar'],
+  collections: ['openCluster','globularCluster','galaxySpiral','galaxyElliptical','galaxyIrregular','darkMatter','darkHalo'],
+  small: ['comet','ringplanet','gasGiant','probe']
+};
+for (const group in TYPE_GROUPS) {
+  const host = document.querySelector('[data-type-group="' + group + '"]');
+  for (const type of TYPE_GROUPS[group]) {
+    const btn = document.createElement('div');
+    btn.className = 'btn'; btn.dataset.type = type;
+    btn.textContent = TYPE_NAMES[type] || type;
+    btn.title = TYPES[type].base + ' 质量单位';
+    host.appendChild(btn);
+  }
+}
+const DEMOS = [
+  ['btnNovaDemo','💫 新星爆发',demoNova], ['btnIaxDemo','💥 Iax 超新星',demoIax],
+  ['btnWhiteHoleDemo','⚪ 白洞排斥',demoWhiteHole], ['btnGalaxyCollision','🌌 星系碰撞',demoGalaxyCollision],
+  ['btnTidalLockDemo','🌗 潮汐锁定',demoTidalLock], ['btnOortDemo','☄️ 奥尔特云',demoOortCloud],
+  ['btnHillDemo','🔵 希尔球',demoHillSphere], ['btnDarkMatterDemo','🟣 暗物质晕',demoDarkMatter],
+  ['btnSupernova','💥 超新星',() => demoStellarEvolution('supernova')],
+  ['btnPlanetaryNebula','🌫 行星状星云',() => demoStellarEvolution('planetary')],
+  ['btnRingTides','💍 星环潮汐',demoRingTides], ['btnChandraDemo','⚖️ 钱德拉塞卡',demoChandrasekhar],
+  ['btnLensDemo','🕳️ 黑洞吸积',demoBlackHole], ['btnCme','☀️ 日冕抛射',demoCME],
+  ['btnSystem2','🪐 单星系',() => makeStarSystem(1)],
+  ['btnSystem3','🌟 双星系',() => makeStarSystem(2)],
+  ['btnSystem4','✨ 三星系',() => makeStarSystem(3)]
+];
+const demosHost = document.getElementById('demos');
+for (const [id, label, fn] of DEMOS) {
+  const btn = document.createElement('div');
+  btn.className = 'btn'; btn.id = id; btn.textContent = label;
+  btn.addEventListener('click', () => { ensureAudio(); fn(); });
+  demosHost.appendChild(btn);
+}
+const BODY_ACTIONS = [
+  ['btnFindBody','🔎 寻找天体',findNextBody], ['btnAutoOrbit','🪐 自动轨道',setAutomaticOrbit],
+  ['btnTidalLock','🔒 潮汐锁定',toggleTidalLock], ['btnOortCloud','☁️ 添加奥尔特云',toggleOortCloud],
+  ['btnOortComet','☄️ 释放彗星',releaseOortComet], ['btnCmeSelected','☀️ 触发抛射',() => {
+    if (!selected || !emitCME(selected)) showNotice('请选中一颗恒星后再触发日冕抛射。');
+  }]
+];
+const actionsHost = document.getElementById('bodyActions');
+for (const [id, label, fn] of BODY_ACTIONS) {
+  const btn = document.createElement('div');
+  btn.className = 'btn'; btn.id = id; btn.textContent = label;
+  btn.addEventListener('click', fn);
+  actionsHost.appendChild(btn);
+}
+document.querySelectorAll('[data-type]').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('#tools .btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     curType = btn.dataset.type;
   });
 });
+const massSlider = document.getElementById('massSlider');
+const massVal = document.getElementById('massVal');
+const gSlider = document.getElementById('gSlider');
+const gVal = document.getElementById('gVal');
 massSlider.addEventListener('input', () => {
-  mMul = parseFloat(massSlider.value);
-  massVal.textContent = '×' + mMul.toFixed(1);
+  mMul = parseFloat(massSlider.value); massVal.textContent = '×' + mMul.toFixed(1);
 });
 gSlider.addEventListener('input', () => {
-  G = parseFloat(gSlider.value);
-  gVal.textContent = G.toFixed(1);
+  G = parseFloat(gSlider.value); gVal.textContent = G.toFixed(1);
 });
-document.getElementById('trails').addEventListener('change', e => showTrails = e.target.checked);
-
+document.getElementById('spinSlider').addEventListener('input', e => {
+  spinMul = parseFloat(e.target.value);
+  document.getElementById('spinVal').textContent = spinMul.toFixed(2);
+});
+document.getElementById('sizeMode').addEventListener('change', e => {
+  sizeMode = e.target.value;
+  for (const b of bodies) b.r = radiusFor(b.type, b.mass);
+});
+document.getElementById('trails').addEventListener('change', e => {
+  showTrails = e.target.checked;
+  if (!showTrails) for (const b of bodies) b.trail.length = 0;
+});
+['hillSphereToggle','hillShowAll','hillFullScale'].forEach(id =>
+  document.getElementById(id).addEventListener('change', updateHillSphere));
+document.getElementById('habitableZoneToggle').addEventListener('change', () => {
+  const info = document.getElementById('habitableZoneInfo');
+  info.textContent = document.getElementById('habitableZoneToggle').checked
+    ? '绿色虚线环为简化光照示意，不代表存在生命。' : '宜居带显示已关闭。';
+});
 const btnPause = document.getElementById('btnPause');
 btnPause.addEventListener('click', () => {
-  paused = !paused;
-  btnPause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+  paused = !paused; btnPause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
 });
+function cycleSpeed() {
+  timeScale = timeScale >= 8 ? 1 : timeScale * 2;
+  document.getElementById('btnSpeed').textContent = '⏱ ×' + timeScale;
+}
+document.getElementById('btnSpeed').addEventListener('click', cycleSpeed);
+function singleStep() {
+  paused = true; btnPause.textContent = '▶ 继续';
+  step(); updateEffects(); simTime += 0.016;
+}
+document.getElementById('btnStep').addEventListener('click', singleStep);
 document.getElementById('btnReset').addEventListener('click', () => {
   stopShockwaveReplay();
-  bodies = []; particles = []; shockwaves = []; collisions = 0;
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  collisions = 0; selected = null; inspectedBody = null; updateObjectInfo();
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
 document.getElementById('btnSystem').addEventListener('click', () => { ensureAudio(); randomSystem(); });
 const btnSound = document.getElementById('btnSound');
 btnSound.addEventListener('click', () => {
-  muted = !muted;
-  btnSound.textContent = muted ? '🔇 声音关' : '🔊 声音开';
+  muted = !muted; btnSound.textContent = muted ? '🔇 声音关' : '🔊 声音开';
 });
-
+document.getElementById('btnSave').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'cosmic-collision-2d.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showNotice('已导出当前二维画面为 PNG。');
+});
 const statBodies = document.getElementById('statBodies');
 const statCollisions = document.getElementById('statCollisions');
 const statParticles = document.getElementById('statParticles');
 function stopShockwaveReplay() {
   shockwaveReplay = false;
-  setShockwaveReplayUI(false);
+  if (typeof setShockwaveReplayUI === 'function') setShockwaveReplayUI(false);
 }
 window.addEventListener('stop-shockwave-replay', stopShockwaveReplay);
 function demoShockwave() {
-  bodies = []; particles = []; shockwaves = []; collisions = 0;
-  paused = false;
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  collisions = 0; paused = false;
   document.getElementById('btnPause').textContent = '⏸ 暂停';
   const x = W * 0.57, y = H * 0.55;
-  spawnBody(x - 3,y,0.1,0,40,'planet');
-  spawnBody(x + 3,y,-0.1,0,40,'planet');
+  spawnBody(x - 3, y, 0.1, 0, 40, 'planet');
+  spawnBody(x + 3, y, -0.1, 0, 40, 'planet');
   shockwaveReplay = true;
   nextShockwaveAt = performance.now() + 3000;
   setShockwaveReplayUI(true);
 }
-document.getElementById('btnShockwave').addEventListener('click', () => {ensureAudio(); demoShockwave();});
+document.getElementById('btnShockwave').addEventListener('click', () => { ensureAudio(); demoShockwave(); });
 document.getElementById('nextPlanet').addEventListener('click', () => {
   const planets = bodies.filter(b => b.type === 'planet');
   const list = planets.length ? planets : bodies;
@@ -660,23 +1547,28 @@ document.getElementById('nextPlanet').addEventListener('click', () => {
 
 /* ================= 主循环 ================= */
 function loop() {
+  frameNo++;
   if (!paused) {
     if (shockwaveReplay && performance.now() >= nextShockwaveAt && bodies.length) {
       explode(bodies[0].x, bodies[0].y, bodies[0]);
       nextShockwaveAt = performance.now() + 3000;
     }
-    step();
-    updateEffects();
-    simTime += 0.016;
+    step(); updateEffects(); simTime += 0.016 * timeScale;
+    if (frameNo % 3 === 0) for (const b of bodies) {
+      b.trail.push({ x: b.x, y: b.y });
+      if (b.trail.length > 60) b.trail.shift();
+    }
   }
+  updateHillSphere();
   render(simTime);
   if (performance.now() - lastAssessmentAt > 200) {
-    const observed = bodies.includes(inspectedBody) ? inspectedBody : bodies.find(b => b.type === 'planet') || bodies[0];
-    const sources = observed ? bodies.filter(b => b.type === 'star').map(b => ({
-      type:b.type, mass:b.mass, distance:Math.hypot(b.x - observed.x, b.y - observed.y)
+    const observed = bodies.includes(inspectedBody) ? inspectedBody
+      : bodies.find(b => b.type === 'planet') || bodies[0];
+    const sources = observed ? bodies.filter(b => LIT_TYPES.has(b.type) && b !== observed).map(b => ({
+      type: b.type, mass: b.mass, distance: Math.hypot(b.x - observed.x, b.y - observed.y)
     })) : [];
-    const names = {planet:'行星',star:'恒星',asteroid:'小行星',blackhole:'黑洞'};
-    renderPlanetAssessment(observed, sources, observed ? `${names[observed.type]} ${bodies.indexOf(observed) + 1}` : '');
+    if (observed) observed.earthReferenceRadius = radiusFor('planet', 40);
+    renderPlanetAssessment(observed, sources, observed ? observed.name : '');
     lastAssessmentAt = performance.now();
   }
   statBodies.textContent = bodies.length;
@@ -685,9 +1577,16 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-/* 初始场景 */
-randomSystem();
-if (new URLSearchParams(location.search).get('scene') === 'shockwave') demoShockwave();
+/* 初始场景与 URL 深链 */
+const SCENES = {
+  shockwave: demoShockwave, demo: demoCollision, bh: demoBlackHole,
+  galaxy: demoGalaxyCollision, nova: demoNova, hill: demoHillSphere,
+  oort: demoOortCloud, planets: () => makeStarSystem(1), zoo: demoDarkMatter
+};
+const initialScene = new URLSearchParams(location.search).get('scene');
+if (initialScene && SCENES[initialScene]) SCENES[initialScene]();
+else randomSystem();
+updateObjectInfo();
 loop();
 </script>
 </body>

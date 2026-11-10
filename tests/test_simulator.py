@@ -1882,6 +1882,78 @@ loop();''')
         self.assertLessEqual(int(self.page.locator('#statBodies').inner_text()), 9)
         self.assertEqual(self.errors, [])
 
+    def test_2d_flat_simulator_keeps_a_plane_and_all_body_types(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => ({
+          types: Object.keys(TYPES).length,
+          catalog: document.querySelectorAll('#typeCatalog [data-type]').length,
+          three: typeof window.THREE !== 'undefined',
+          cameraKeys: Object.keys(cam).sort(),
+          grid: Number(document.getElementById('gridStepLabel').textContent),
+          bodies: bodies.length
+        })''')
+        self.assertEqual(result['types'], 41)
+        self.assertEqual(result['catalog'], 37)
+        self.assertFalse(result['three'], '2D page must not load Three.js')
+        self.assertEqual(result['cameraKeys'], ['x', 'y', 'zoom'])
+        self.assertGreater(result['grid'], 0)
+        self.assertLessEqual(result['bodies'], 9)
+        failures = self.page.evaluate('''() => {
+          const fail = [];
+          for (const t of Object.keys(TYPES)) {
+            try {
+              const b = spawnBody(60, 60, 0, 0, TYPES[t].base, t);
+              if (!b || !(b.r > 0)) fail.push(t);
+            } catch (e) { fail.push(t + ': ' + e.message); }
+          }
+          render(0);
+          return fail;
+        }''')
+        self.assertEqual(failures, [])
+        self.assertEqual(self.errors, [])
+
+    def test_2d_hill_sphere_is_a_flat_circle_estimate(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const star = spawnBody(500, 400, 0, 0, 600, 'star');
+          const planet = spawnBody(650, 400, 0, orbitSpeed(600, 150), 6, 'planet');
+          selected = planet; updateHillSphere();
+          const hill = { radius: hillState.radius, visual: hillState.visual,
+            primary: hillState.primary === star, method: hillState.method,
+            note: document.getElementById('hillSphereInfo').textContent };
+          const a = spawnBody(300, 300, 0, 0, 600, 'star');
+          spawnBody(360, 300, 0, 0, 600, 'star');
+          const binary = estimateHillSphere(a);
+          return { hill, method: binary && binary.method };
+        }''')
+        self.assertGreater(result['hill']['radius'], 0)
+        self.assertTrue(result['hill']['primary'])
+        self.assertEqual(result['hill']['method'], 'hill')
+        self.assertIn('希尔半径', result['hill']['note'])
+        self.assertEqual(result['method'], 'binary')
+        self.assertEqual(self.errors, [])
+
+    def test_2d_demos_and_camera_roundtrip(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => {
+          const ids = ['btnNovaDemo','btnIaxDemo','btnWhiteHoleDemo','btnGalaxyCollision',
+            'btnTidalLockDemo','btnOortDemo','btnHillDemo','btnDarkMatterDemo','btnSupernova',
+            'btnPlanetaryNebula','btnRingTides','btnChandraDemo','btnLensDemo','btnCme'];
+          for (const id of ids) document.getElementById(id).click();
+          cam.zoom = 1.7; cam.x += 25;
+          const p = worldToScreen(120, 90), w = screenToWorld(p.x, p.y);
+          return { count: ids.length, roundTrip: Math.abs(w.x - 120) < 1e-6 && Math.abs(w.y - 90) < 1e-6,
+            bodies: bodies.length };
+        }''')
+        self.assertEqual(result['count'], 14)
+        self.assertTrue(result['roundTrip'])
+        self.assertGreater(result['bodies'], 0)
+        self.assertEqual(self.errors, [])
+
 
 if __name__ == '__main__':
     unittest.main()
