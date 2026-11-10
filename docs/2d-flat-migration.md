@@ -15,7 +15,7 @@
 
 | 类别 | 内容 |
 | --- | --- |
-| 天体类型 | 41 种，参数表与 3D 版一致；`#tools` 保留 4 个基础类型，其余 37 个在「全部天体类型」分组中 |
+| 天体类型 | 41 种，参数表与 3D 版一致；面板布局也对齐 3D：`#featuredTools` 快捷 3 种（暗物质、暗物质晕、引力真空星）、`#tools` 主面板 27 种、`#exoticCatalog` 特殊与假想天体 11 种，全部带图标与悬浮说明 |
 | 尺寸模型 | 复用 `CelestialSize.radiusFor`，提供「易观察 / 参考大小」两种模式，切换时重算全部半径 |
 | 物理 | 二维 N 体积分、扫掠碰撞检测、白洞近场排斥、暗物质软化引力、虫洞配对传送、动量守恒合并、撞击碎片、潮汐撕扯、离心解体、恒星演化、白矮星吸积新星、钱德拉塞卡极限 |
 | 叠加层 | 希尔球（含双体 L1 估计与最多 24 个其他天体）、宜居带、平面距离网格与刻度、标签与距离、轨迹、X 射线/暗物质伪彩、致密星平面光环、奥尔特云、彗尾、撞击坑 |
@@ -23,6 +23,8 @@
 | 评估 | 复用 `planet-assessment.js`，光源覆盖全部发光类型，参考半径按当前尺寸模式计算 |
 | 场景 | 17 个物理演示按钮、单/双/三星恒星系、随机星系、冲击波自动重播、`?scene=` 深链 |
 | 操作 | 拖动发射、点击选中、寻找天体、自动圆轨道、潮汐锁定、添加奥尔特云、释放彗星、触发日冕抛射、暂停/倍速/单步、PNG 导出 |
+| 白矮星样例 | 8 颗真实光谱型（`#whiteDwarfVariant` + `#whiteDwarfGallery`），颜色由光谱推算近似；新建白矮星即采用所选样例，选中后信息栏标注名称与光谱型 |
+| Iax 爆发 | `triggerIax()` 让选中的白矮星抛出约 45% 质量、留下受损残骸并生成 `iax` 抛射壳；`#btnIaxSelected` 与 Iax 演示按钮都走同一逻辑，非白矮星会被拒绝 |
 
 ## 3D 专属项的二维等价物
 
@@ -47,4 +49,6 @@
 
 ## 验证
 
-`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、41 种类型、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。
+`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_2d_white_dwarf_samples_and_iax_eruption`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、41 种类型与面板一一对应、白矮星样例与 Iax 残骸、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。
+
+本地用 Chrome + `puppeteer-core` 做过一轮真实浏览器回归（22 项）：41 个按钮逐一点击都能切换类型、41 种天体都能创建与绘制、8 个白矮星样例与 Iax 两个分支、随机星系 ≤ 9、折叠后露出画布且面板高度 127px、零运行时错误。

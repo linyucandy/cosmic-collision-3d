@@ -1885,16 +1885,28 @@ loop();''')
     def test_2d_flat_simulator_keeps_a_plane_and_all_body_types(self):
         self.page.goto(self.url + '/cosmic-collision-simulator.html')
         self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
-        result = self.page.evaluate('''() => ({
-          types: Object.keys(TYPES).length,
-          catalog: document.querySelectorAll('#typeCatalog [data-type]').length,
-          three: typeof window.THREE !== 'undefined',
-          cameraKeys: Object.keys(cam).sort(),
-          grid: Number(document.getElementById('gridStepLabel').textContent),
-          bodies: bodies.length
-        })''')
+        result = self.page.evaluate('''() => {
+          const buttons = [...document.querySelectorAll('#tools [data-type], #featuredTools [data-type], #exoticTools [data-type]')];
+          const types = buttons.map(b => b.dataset.type);
+          return {
+            types: Object.keys(TYPES).length,
+            catalog: types.length,
+            unique: new Set(types).size,
+            missing: Object.keys(TYPES).filter(t => !types.includes(t)),
+            wdVariantOptions: document.querySelectorAll('#whiteDwarfVariant option').length,
+            wdGallery: document.querySelectorAll('#whiteDwarfGallery button').length,
+            three: typeof window.THREE !== 'undefined',
+            cameraKeys: Object.keys(cam).sort(),
+            grid: Number(document.getElementById('gridStepLabel').textContent),
+            bodies: bodies.length
+          };
+        }''')
         self.assertEqual(result['types'], 41)
-        self.assertEqual(result['catalog'], 37)
+        self.assertEqual(result['catalog'], 41)
+        self.assertEqual(result['unique'], 41)
+        self.assertEqual(result['missing'], [])
+        self.assertEqual(result['wdVariantOptions'], 8)
+        self.assertEqual(result['wdGallery'], 8)
         self.assertFalse(result['three'], '2D page must not load Three.js')
         self.assertEqual(result['cameraKeys'], ['x', 'y', 'zoom'])
         self.assertGreater(result['grid'], 0)
@@ -1911,6 +1923,34 @@ loop();''')
           return fail;
         }''')
         self.assertEqual(failures, [])
+        self.assertEqual(self.errors, [])
+
+    def test_2d_white_dwarf_samples_and_iax_eruption(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        self.page.locator('#whiteDwarfGallery [data-variant="j1330"]').click()
+        self.assertEqual(self.page.locator('#whiteDwarfVariant').input_value(), 'j1330')
+        self.assertIn('WD J1330+6435', self.page.locator('#whiteDwarfInfo').inner_text())
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const dwarf = spawnBody(0, 0, 0, 0, 3900, 'whiteDwarf');
+          const applied = { variant: dwarf.whiteDwarfVariant, color: dwarf.color };
+          selected = dwarf; updateObjectInfo();
+          document.getElementById('btnIaxSelected').click();
+          const erupted = { remnant: dwarf.iaxRemnant, mass: dwarf.mass,
+            shell: nebulae.some(n => n.type === 'iax'), label: document.getElementById('objectInfo').textContent };
+          clearScene();
+          const star = spawnBody(0, 0, 0, 0, 600, 'star');
+          selected = star; updateObjectInfo();
+          document.getElementById('btnIaxSelected').click();
+          return { applied, erupted, starUntouched: !star.iaxRemnant && !nebulae.some(n => n.type === 'iax') };
+        }''')
+        self.assertEqual(result['applied']['variant'], 'j1330')
+        self.assertEqual(result['applied']['color'], '#d0ffb4')
+        self.assertTrue(result['erupted']['remnant'] and result['erupted']['shell'])
+        self.assertLess(result['erupted']['mass'], 3900)
+        self.assertIn('Iax 遗留白矮星', result['erupted']['label'])
+        self.assertTrue(result['starUntouched'])
         self.assertEqual(self.errors, [])
 
     def test_2d_hill_sphere_is_a_flat_circle_estimate(self):
