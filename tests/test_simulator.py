@@ -67,6 +67,19 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get lensDemoGrid() { return typeof lensDemoGrid === "undefined" ? null : lensDemoGrid; },
   get referenceGrid() { return typeof referenceGrid === "undefined" ? null : referenceGrid; },
   get gridSpacing() { return typeof gridSpacing === "undefined" ? null : gridSpacing; },
+  get simPaused() { return paused; },
+  get controlsEnabled() { return controls.enabled; },
+  get landing() { return landing ? { state: landing.state, t: landing.t,
+    type: landing.body.type, camDist: camera.position.distanceTo(landing.body.mesh.position),
+    r: landing.body.r } : null; },
+  get landingUi() { return { cardOpen: document.getElementById('surfaceCard').classList.contains('open'),
+    leaveOpen: document.getElementById('btnLeaveSurface').classList.contains('open'),
+    bodyClass: document.body.classList.contains('landing-active'),
+    hill: hillSphere.group.visible,
+    otherHills: otherHillSpheres.filter(item => item.group.visible).length,
+    trails: bodies.filter(b => b.trail.line.visible).length,
+    referenceGrid: referenceGrid.visible }; },
+  openLanding3D, closeLanding3D, updateLanding3D,
   clear: () => { while (bodies.length) removeBody(bodies[0]); },
   frame: () => renderer.render(scene, camera), ghost, selectBody, focusChip, camera, controls,
   get ghostMarker() { return typeof ghostMarker === "undefined" ? null : ghostMarker; },
@@ -2110,6 +2123,240 @@ loop();''')
         self.assertEqual(result['count'], 14)
         self.assertTrue(result['roundTrip'])
         self.assertGreater(result['bodies'], 0)
+        self.assertEqual(self.errors, [])
+
+    def test_2d_galaxy_radius_collision_and_merger_stay_bounded(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const a = spawnBody(0, 0, 0, 0, 2400, 'galaxySpiral');
+          const b = spawnBody(600, 0, 0, 0, 2400, 'galaxyIrregular');
+          const radii = [a.r, b.r];
+          const separation = Math.hypot(b.x - a.x, b.y - a.y) - (a.r + b.r);
+          const pa = worldToScreen(a.x, a.y), pe = worldToScreen(300, 320);
+          const pickA = pickBody(pa.x, pa.y) === a;
+          const pickEmpty = !pickBody(pe.x, pe.y);
+
+          clearScene();
+          const x = spawnBody(0, 0, 0, 0, 2400, 'galaxySpiral');
+          const y = spawnBody(40, 0, 0, 0, 2400, 'galaxyIrregular');
+          x.prevX = x.x; x.prevY = x.y;
+          y.prevX = y.x; y.prevY = y.y;
+          handleCollisions();
+          const survivor = bodies[0];
+          const merge = {
+            count: bodies.length, collisions, type: survivor.type, mass: survivor.mass,
+            radius: survivor.r, merger: !!survivor.galaxyMerger,
+            nebula: nebulae.some(n => n.type === 'nova'), wave: shockwaves.length > 0,
+            fragments: bodies.filter(body => body.impactDebris ||
+              body.type === 'asteroid' || body.type === 'comet').length,
+            points: survivor.points.length
+          };
+
+          clearScene();
+          demoGalaxyCollision();
+          paused = true;
+          const demo = bodies.filter(body => body.type.startsWith('galaxy'));
+          return {
+            radii, separation, pickA, pickEmpty, merge,
+            demo: {
+              count: demo.length, types: demo.map(body => body.type).sort(),
+              radii: demo.map(body => body.r),
+              gap: demo.length === 2
+                ? Math.hypot(demo[1].x - demo[0].x, demo[1].y - demo[0].y) - (demo[0].r + demo[1].r) : -1,
+              zoom: cam.zoom, collisions
+            }
+          };
+        }''')
+        self.assertTrue(all(100 <= r <= 220 for r in result['radii']), result)
+        self.assertGreater(result['separation'], 0, result)
+        self.assertTrue(result['pickA'] and result['pickEmpty'], result)
+        merge = result['merge']
+        self.assertEqual(merge['count'], 1, merge)
+        self.assertEqual(merge['collisions'], 1, merge)
+        self.assertTrue(merge['type'].startswith('galaxy'), merge)
+        self.assertEqual(merge['mass'], 4800, merge)
+        self.assertLess(merge['radius'], 220, merge)
+        self.assertTrue(merge['merger'] and merge['nebula'] and merge['wave'], merge)
+        self.assertEqual(merge['fragments'], 0, merge)
+        self.assertGreater(merge['points'], 100, merge)
+        demo = result['demo']
+        self.assertEqual(demo['count'], 2, demo)
+        self.assertEqual(demo['types'], ['galaxyIrregular', 'galaxySpiral'], demo)
+        self.assertTrue(all(100 <= r <= 220 for r in demo['radii']), demo)
+        self.assertGreater(demo['gap'], 0, demo)
+        self.assertAlmostEqual(demo['zoom'], 0.62)
+        self.assertEqual(demo['collisions'], 0, demo)
+        self.assertEqual(self.errors, [])
+
+    def test_2d_landing_button_and_flat_surface_view(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        button = self.page.locator('#btnLand')
+        self.assertTrue(button.is_visible())
+        box = button.bounding_box()
+        self.assertIsNotNone(box)
+        self.assertLess(box['y'], 120)
+        self.page.set_viewport_size({'width': 390, 'height': 844})
+        self.page.wait_for_function("document.getElementById('panelControls').hidden")
+        self.assertTrue(button.is_visible())
+        self.assertFalse(self.page.locator('#tools').is_visible())
+        self.page.set_viewport_size({'width': 1440, 'height': 900})
+
+        self.page.evaluate("""() => {
+          clearScene();
+          const b = spawnBody(0, 0, 0, 0, 40, 'planet');
+          selected = b; cam.x = 100; cam.y = 200; cam.zoom = 3;
+        }""")
+        button.click()
+        opened = self.page.evaluate("""() => ({
+          open: surfaceView.classList.contains('open'), hasLanding: !!landing,
+          type: landing && landing.body.type, paused,
+          title: document.querySelector('#surfaceCard h2').textContent,
+          facts: document.getElementById('surfaceFacts').children.length,
+          canvasWidth: surfaceCanvas.width, category: surfaceCategory(landing.body.type)
+        })""")
+        self.assertTrue(opened['open'] and opened['hasLanding'], opened)
+        self.assertEqual(opened['type'], 'planet', opened)
+        self.assertEqual(opened['category'], 'rocky', opened)
+        self.assertTrue(opened['paused'], opened)
+        self.assertIn('🛬', opened['title'], opened)
+        self.assertEqual(opened['facts'], 6, opened)
+        self.assertGreater(opened['canvasWidth'], 0, opened)
+
+        cards = self.page.evaluate("""() => {
+          const out = [];
+          for (const type of ['planet', 'gasGiant', 'star', 'blackhole', 'galaxySpiral', 'neutron', 'comet']) {
+            closeLanding(); clearScene();
+            selected = spawnBody(0, 0, 0, 0, TYPES[type].base, type);
+            openLanding();
+            for (let i = 0; i < 40; i++) updateLanding();
+            drawLanding(1);
+            out.push({ type, open: surfaceView.classList.contains('open'),
+              facts: document.getElementById('surfaceFacts').children.length,
+              title: document.querySelector('#surfaceCard h2').textContent,
+              category: surfaceCategory(type) });
+          }
+          closeLanding();
+          return out;
+        }""")
+        for card in cards:
+            self.assertTrue(card['open'], card)
+            self.assertIn('🛬', card['title'], card)
+            self.assertEqual(card['facts'], 6, card)
+        self.assertEqual({card['category'] for card in cards},
+                         {'rocky', 'gas', 'star', 'hole', 'diffuse', 'degenerate'})
+
+        self.page.evaluate("""() => {
+          clearScene();
+          selected = spawnBody(0, 0, 0, 0, 40, 'planet');
+          cam.x = 100; cam.y = 200; cam.zoom = 3;
+        }""")
+        button.click()
+        self.page.keyboard.press('Escape')
+        self.page.wait_for_function("!document.getElementById('surfaceView').classList.contains('open')")
+        restored = self.page.evaluate("""() => ({
+          open: surfaceView.classList.contains('open'), hasLanding: !!landing,
+          cam: { x: cam.x, y: cam.y, zoom: cam.zoom }, paused,
+          pauseText: document.getElementById('btnPause').textContent
+        })""")
+        self.assertFalse(restored['open'] or restored['hasLanding'], restored)
+        self.assertEqual(restored['cam'], {'x': 100, 'y': 200, 'zoom': 3}, restored)
+        self.assertFalse(restored['paused'], restored)
+        self.assertEqual(restored['pauseText'], '⏸ 暂停', restored)
+
+        self.page.evaluate("""() => {
+          clearScene(); selected = spawnBody(0, 0, 0, 0, 40, 'planet'); openLanding();
+        }""")
+        self.page.locator('#btnLeaveSurface').click()
+        self.assertFalse(self.page.evaluate("""() =>
+          surfaceView.classList.contains('open') || !!landing"""))
+        self.assertEqual(self.errors, [])
+
+    def test_3d_landing_descends_to_surface_and_restores_orbit(self):
+        self.open_sim()
+        button = self.page.locator('#btnLand')
+        self.assertTrue(button.is_visible())
+        box = button.bounding_box()
+        self.assertIsNotNone(box)
+        self.assertLess(box['y'], 120)
+        self.page.set_viewport_size({'width': 390, 'height': 844})
+        self.page.wait_for_function("document.getElementById('panelControls').hidden")
+        self.assertTrue(button.is_visible())
+        self.assertFalse(self.page.locator('#tools').is_visible())
+        self.page.set_viewport_size({'width': 1440, 'height': 900})
+
+        result = self.page.evaluate("""() => {
+          sim.clearScene();
+          const b = sim.spawnBody(0, 0, 0, 0, 0, 0, 40, 'planet');
+          sim.selectBody(b);
+          const before = { paused: sim.simPaused, controls: sim.controlsEnabled,
+            cam: sim.camera.position.toArray(), target: sim.controls.target.toArray() };
+          sim.openLanding3D();
+          const during = { paused: sim.simPaused, controls: sim.controlsEnabled,
+            ui: sim.landingUi,
+            title: document.querySelector('#surfaceCard h2').textContent,
+            facts: document.getElementById('surfaceFacts').children.length };
+          for (let i = 0; i < 60; i++) sim.updateLanding3D();
+          const landed = { landing: sim.landing, ui: sim.landingUi };
+          sim.closeLanding3D(true);
+          const after = { landing: sim.landing, paused: sim.simPaused,
+            controls: sim.controlsEnabled, ui: sim.landingUi,
+            cam: sim.camera.position.toArray(), target: sim.controls.target.toArray() };
+          return { before, during, landed, after };
+        }""")
+        during = result['during']
+        self.assertTrue(during['paused'] and not during['controls'], during)
+        self.assertIn('🛬', during['title'], during)
+        self.assertEqual(during['facts'], 6, during)
+        ui = during['ui']
+        self.assertTrue(ui['cardOpen'] and ui['leaveOpen'] and ui['bodyClass'], ui)
+        self.assertFalse(ui['hill'] or ui['otherHills'] or ui['trails'] or ui['referenceGrid'], ui)
+        landed = result['landed']['landing']
+        self.assertTrue(landed, result['landed'])
+        self.assertEqual(landed['state'], 'landed', landed)
+        self.assertLessEqual(landed['camDist'] / max(0.05, landed['r']), 2.2, landed)
+        self.assertGreaterEqual(landed['camDist'] / max(0.05, landed['r']), 1.0, landed)
+        self.assertFalse(result['landed']['ui']['referenceGrid'], result['landed']['ui'])
+        after = result['after']
+        self.assertIsNone(after['landing'], after)
+        self.assertTrue(after['controls'], after)
+        self.assertEqual(after['paused'], result['before']['paused'], after)
+        self.assertFalse(after['ui']['cardOpen'] or after['ui']['leaveOpen'] or after['ui']['bodyClass'], after)
+        self.assertEqual(after['cam'], result['before']['cam'], after)
+        self.assertEqual(after['target'], result['before']['target'], after)
+
+        self.page.wait_for_timeout(100)
+        self.assertTrue(self.page.evaluate('sim.landingUi.referenceGrid'))
+
+        self.page.evaluate("""() => {
+          sim.clearScene();
+          sim.selectBody(sim.spawnBody(0, 0, 0, 0, 0, 0, 40, 'planet'));
+          sim.openLanding3D();
+          for (let i = 0; i < 60; i++) sim.updateLanding3D();
+        }""")
+        self.page.keyboard.press('Escape')
+        self.page.wait_for_function('window.sim.landing === null', timeout=5000)
+        self.assertFalse(self.page.evaluate('sim.landingUi.bodyClass'))
+
+        cards = self.page.evaluate("""() => {
+          const out = [];
+          for (const type of ['star', 'blackhole', 'galaxySpiral', 'neutron', 'gasGiant']) {
+            sim.clearScene();
+            sim.spawnBody(0, 0, 0, 0, 0, 0, sim.defs.types[type].base, type);
+            sim.openLanding3D();
+            out.push({ type, open: document.getElementById('surfaceCard').classList.contains('open'),
+              title: document.querySelector('#surfaceCard h2').textContent,
+              facts: document.getElementById('surfaceFacts').children.length });
+            sim.closeLanding3D(true);
+          }
+          return out;
+        }""")
+        for card in cards:
+            self.assertTrue(card['open'], card)
+            self.assertIn('🛬', card['title'], card)
+            self.assertEqual(card['facts'], 6, card)
         self.assertEqual(self.errors, [])
 
 

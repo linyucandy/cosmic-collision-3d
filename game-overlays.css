@@ -3,6 +3,7 @@
 #btnStopShockwave{border:1px solid #8798b766;border-radius:9px;background:#162139;color:#dce6ff;padding:8px 10px;cursor:pointer;font:12px "Microsoft YaHei",sans-serif}
 #toggleControls{display:block;width:100%;margin:0 0 10px;padding:7px;border:1px solid #829bdd44;border-radius:7px;background:#243251;color:#c6d6ff;font:12px "Microsoft YaHei",sans-serif;cursor:pointer}
 .controls-collapsed h1{display:none}.controls-collapsed #toggleControls{margin-bottom:0}
+.controls-collapsed #landBar{margin:0 0 6px}.controls-collapsed #landBar .btn{font-size:10px;padding:4px 2px;min-height:25px;line-height:1.1}
 .planet-inspector details{margin-top:10px;border-top:1px solid #ffffff15;padding-top:9px}.planet-inspector summary{font-size:10px;color:#a8bdea;cursor:pointer}.planet-inspector details p{margin:9px 0;font-size:10px}
 .shockwave-trigger:hover{background:#684024}.shockwave-trigger:focus-visible,.planet-inspector button:focus-visible{outline:2px solid #bdd2ff;outline-offset:3px}
 .planet-inspector{position:fixed;right:14px;top:68px;z-index:15;width:240px;padding:16px;border:1px solid #8aabdd44;border-radius:14px;background:#0c1429ed;color:#dfe7ff;font:12px "Microsoft YaHei",sans-serif;box-shadow:0 8px 30px #0004}

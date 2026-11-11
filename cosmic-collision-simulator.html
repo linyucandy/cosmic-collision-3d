@@ -63,10 +63,38 @@
     font-size:12px; color:#dfe9ff; background:rgba(20,32,64,.9); border:1px solid rgba(140,170,255,.35);
     border-radius:20px; padding:7px 16px; pointer-events:none; opacity:0; transition:opacity .25s; }
   #launchNotice.show { opacity:1; }
+
   #gridLegend { position:fixed; right:14px; bottom:14px; z-index:10; font-size:11px;
     color:#9fb0e8; background:rgba(10,14,30,.6); border:1px solid rgba(140,160,255,.15);
     border-radius:8px; padding:6px 10px; pointer-events:none; }
+  /* 登陆星球：面板顶部入口 */
+  #landBar { display:flex; gap:6px; margin:2px 0 12px; }
+  #landBar .btn { flex:1 1 auto; background:linear-gradient(135deg,rgba(90,150,255,.32),rgba(150,110,255,.22));
+    border-color:rgba(160,190,255,.5); color:#eaf1ff; font-weight:600; letter-spacing:.5px; }
+  #landBar .btn:hover { background:linear-gradient(135deg,rgba(110,170,255,.5),rgba(170,130,255,.36)); }
+  /* 地表视图覆盖层：完全用 Canvas 2D 绘制，保持纯二维平面 */
+  #surfaceView { position:fixed; inset:0; z-index:30; display:none; }
+  #surfaceView.open { display:block; }
+  #surfaceView canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #surfaceCard { position:absolute; left:50%; top:26px; transform:translateX(-50%);
+    width:min(560px,calc(100% - 40px)); background:rgba(9,14,28,.82); border:1px solid rgba(150,180,255,.3);
+    border-radius:14px; padding:14px 18px; backdrop-filter:blur(8px); color:#e6eeff; pointer-events:none; }
+  #surfaceCard h2 { margin:0 0 4px; font-size:17px; font-weight:600; letter-spacing:1px; }
+  #surfaceCard .sub { font-size:11px; color:#9fb2d8; margin-bottom:10px; }
+  #surfaceFacts { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 14px; font-size:11px; }
+  #surfaceFacts div { border-top:1px solid rgba(150,180,255,.16); padding-top:6px; }
+  #surfaceFacts b { display:block; color:#cfe0ff; font-size:13px; font-weight:600; margin-top:2px; }
+  #surfaceCard .note { font-size:10px; color:#7f92b6; line-height:1.6; margin-top:10px; }
+  #btnLeaveSurface { position:absolute; right:18px; bottom:18px; z-index:31; padding:10px 18px;
+    background:rgba(30,44,80,.9); border:1px solid rgba(160,190,255,.5); border-radius:10px;
+    color:#eaf1ff; font-size:13px; cursor:pointer; }
+  #btnLeaveSurface:hover { background:rgba(60,84,140,.95); }
   @media (max-width:640px){
+    #surfaceCard{ top:14px; padding:10px 13px; }
+    #surfaceCard h2{ font-size:14px; }
+    #surfaceFacts{ grid-template-columns:repeat(2,1fr); gap:6px 10px; }
+    #surfaceCard .note{ display:none; }
+    #landBar .btn{ font-size:11px; }
     .panel{ width:180px; padding:10px; }
     .panel h1{ font-size:13px; margin-bottom:6px; }
     #featuredTools{ gap:4px; margin-bottom:6px; }
@@ -80,8 +108,22 @@
 <body>
 <canvas id="space"></canvas>
 
+<div id="surfaceView" aria-label="地表视图">
+  <canvas id="surfaceCanvas"></canvas>
+  <div id="surfaceCard">
+    <h2></h2>
+    <div class="sub"></div>
+    <div id="surfaceFacts"></div>
+    <div class="note"></div>
+  </div>
+  <button id="btnLeaveSurface" type="button">↩ 返回轨道</button>
+</div>
+
 <div class="panel">
   <a href="index.html" style="display:block;color:#cfd8ff;text-decoration:none;font-size:12px;margin-bottom:12px">← 游戏选择 / 作者信息</a>
+  <div class="row" id="landBar">
+    <div class="btn" id="btnLand" role="button" tabindex="0" title="拉近并降落到选中天体的表面">🛬 登陆星球</div>
+  </div>
   <h1>🌌 宇宙碰撞模拟器 · 2D</h1>
   <div class="tag">纯二维平面 · 无三维视角</div>
   <div class="row" id="featuredTools" aria-label="新增天体快捷入口">
@@ -305,9 +347,18 @@ const isDarkDistribution = t => t === 'darkMatter' || t === 'darkHalo';
 let sizeMode = 'display';
 function radiusFor(type, mass) {
   if (!TYPES[type]) return 2;
-  if (sizeMode === 'display') return Math.max(1.8, Math.cbrt(Math.max(0.001, mass)) * TYPES[type].rk);
-  const reference = CelestialSize.radiusFor(type, Math.max(0.001, mass), TYPES, 'reference');
-  return Math.max(0.8, Math.min(220, reference));
+  const m = Math.max(0.001, mass);
+  // 星系/星团/暗物质晕是弥散的扩展天体，物理半径必须同时用于绘制、点选与碰撞。
+  // 早期沿用 ∛质量 × rk 会让星系达到约 16066（视觉却截断到 180），
+  // 结果两星系一生成就重叠合并、点选命中半径吞掉整个画布。这里给有界的二维盘面半径。
+  if (isStarCollection(type) || isDarkDistribution(type)) {
+    const rel = Math.pow(m / TYPES[type].base, 1 / 3);
+    const base = type.startsWith('galaxy') ? 150 : isDarkDistribution(type) ? 185 : 90;
+    if (sizeMode === 'display') return clamp(base * rel, base * 0.4, base * 1.35);
+    return clamp(CelestialSize.radiusFor(type, m, TYPES, 'reference'), 36, 220);
+  }
+  if (sizeMode === 'display') return Math.max(1.8, Math.cbrt(m) * TYPES[type].rk);
+  return Math.max(0.8, Math.min(220, CelestialSize.radiusFor(type, m, TYPES, 'reference')));
 }
 function hexA(hex, a) {
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
@@ -353,13 +404,23 @@ class Body {
     if (type === 'ringplanet' || type === 'gasGiant') this.ring = { tilt: 0.32, phase: Math.random() * TAU };
     if (isStarCollection(type) || isDarkDistribution(type)) {
       this.points = [];
-      const count = type === 'galaxySpiral' ? 70 : 48;
-      for (let i = 0; i < count; i++) {
-        const ang = Math.random() * TAU;
-        const rr = type === 'galaxySpiral'
-          ? 0.15 + 0.85 * Math.pow(Math.random(), 0.65) + ang / TAU * 0.12
-          : Math.pow(Math.random(), 0.55);
-        this.points.push({ a: ang + (type === 'galaxySpiral' ? rr * 5 : 0), r: Math.min(1, rr) });
+      if (type === 'galaxySpiral') {
+        // 双对数旋臂 + 中心核球 + 少量盘面弥散星，平面投影下也能看出旋涡结构
+        for (let i = 0; i < 24; i++)
+          this.points.push({ a: Math.random() * TAU, r: Math.pow(Math.random(), 1.7) * 0.3, s: 0.7 + Math.random() * 0.6 });
+        for (let arm = 0; arm < 2; arm++) {
+          for (let i = 0; i < 46; i++) {
+            const t = Math.pow(Math.random(), 0.72);
+            this.points.push({ a: arm * Math.PI + t * 3.5 + (Math.random() - 0.5) * 0.4,
+              r: 0.16 + t * 0.84, s: 0.5 + Math.random() * 0.6 });
+          }
+        }
+      } else {
+        const count = type === 'galaxyIrregular' ? 62 : 54;
+        for (let i = 0; i < count; i++)
+          this.points.push({ a: Math.random() * TAU,
+            r: Math.min(1, Math.pow(Math.random(), type === 'galaxyIrregular' ? 0.42 : 0.62)),
+            s: 0.6 + Math.random() * 0.5 });
       }
     }
   }
@@ -439,6 +500,10 @@ function integrate(dt) {
     b.x += b.vx * dt; b.y += b.vy * dt;
     b.spin += b.spinW * dt;
     b.age += dt;
+    if (b.galaxyMerger) {
+      b.galaxyMerger.age += dt;
+      if (b.galaxyMerger.age >= b.galaxyMerger.duration) b.galaxyMerger = null;
+    }
     if (b.tpCd > 0) b.tpCd -= dt;
     if (b.spawnGrace > 0) b.spawnGrace--;
   }
@@ -527,13 +592,21 @@ function handleCollisions() {
       survivor.y = (survivor.y * survivor.mass + other.y * other.mass) / M;
       survivor.mass = M;
       survivor.r = radiusFor(survivor.type, M);
+      const galaxyMerge = survivor.type.startsWith('galaxy') && other.type.startsWith('galaxy');
       survivor.spinW += (other.x - survivor.x) * (other.vy - survivor.vy) / (M * Math.max(1, survivor.r)) * 0.01;
       if (survivor.type === 'planet' || survivor.type === 'ringplanet') addCrater(survivor);
-      createImpactFragments(other, survivor, relSpeed);
-      if (M > 120) tidalStrip(survivor, other, relSpeed);
-      explode(other.x, other.y, other);
+      if (galaxyMerge) {
+        // 星系并合是恒星群体的潮汐融合，不是恒星碰撞：不抛射大量碎片与彗星。
+        // 把被并星系的盘面星点并入幸存者，做一段短暂拉伸动画后再归一。
+        startGalaxyMerger(survivor, other);
+      } else {
+        createImpactFragments(other, survivor, relSpeed);
+        if (M > 120) tidalStrip(survivor, other, relSpeed);
+        explode(other.x, other.y, other);
+      }
       dead.add(other.id);
       collisions++;
+      if (galaxyMerge) showNotice('星系并合：两个星系的星点正通过潮汐拉伸融合为更大的星系。');
     }
   }
   if (dead.size) {
@@ -545,6 +618,28 @@ function handleCollisions() {
 function addCrater(b) {
   b.craters.push({ a: Math.random() * TAU, r: 0.2 + Math.random() * 0.55, s: 0.08 + Math.random() * 0.14 });
   if (b.craters.length > 12) b.craters.shift();
+}
+function startGalaxyMerger(survivor, other) {
+  // 盘面点数按质量比例合并；记录两次并合的朝向作为拉伸方向，随时间衰减回圆面。
+  const take = Math.max(24, Math.round((other.points ? other.points.length : 54) * 0.7));
+  if (survivor.points) {
+    for (let i = 0; i < take; i++) {
+      const src = other.points && other.points[i % other.points.length];
+      survivor.points.push({
+        a: src ? src.a : Math.random() * TAU,
+        r: src ? src.r * 0.94 : Math.random(),
+        s: src ? (src.s || 1) * 0.85 : 0.8
+      });
+    }
+    if (survivor.points.length > 240) {
+      survivor.points.splice(0, survivor.points.length - 240);
+    }
+  }
+  const ang = Math.atan2(other.y - survivor.y, other.x - survivor.x);
+  survivor.galaxyMerger = { age: 0, duration: 3.2, ang, strength: 0.55 };
+  createNebula(other.x, other.y, 'nova');
+  shockwaves.push({ x: survivor.x, y: survivor.y, r: survivor.r * 0.4,
+    vr: 1.2, alpha: 0.5, width: 3 });
 }
 function createImpactFragments(other, survivor, relSpeed) {
   if (relSpeed < 1.2 || bodies.length >= MAX_BODIES - 40 || other.mass < 8) return;
@@ -959,22 +1054,39 @@ function drawCompact(b, t) {
 }
 function drawCollection(b, t) {
   const dark = isDarkDistribution(b.type);
-  const R = Math.min(b.r, 180);
-  const glow = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, R);
-  glow.addColorStop(0, hexA(b.color, dark ? 0.16 : 0.24));
+  const R = b.r;
+  const glow = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, R * 1.05);
+  glow.addColorStop(0, hexA(b.color, dark ? 0.2 : 0.3));
+  glow.addColorStop(0.55, hexA(b.color, dark ? 0.09 : 0.13));
   glow.addColorStop(1, hexA(b.color, 0));
   ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(b.x, b.y, R * 1.05, 0, TAU); ctx.fill();
   const show = !dark || document.getElementById('darkMatterToggle').checked;
   if (!show || !b.points) return;
   ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin * 0.25);
+  // 并合潮汐拉伸：沿并合方向拉长、垂直方向压缩，随动画衰减回圆面
+  if (b.galaxyMerger) {
+    const p = 1 - b.galaxyMerger.age / b.galaxyMerger.duration;
+    const k = b.galaxyMerger.strength * Math.max(0, p);
+    ctx.rotate(-b.spin * 0.25); ctx.rotate(b.galaxyMerger.ang);
+    ctx.scale(1 + k, 1 - k * 0.55);
+  }
+  const flat = b.type === 'galaxyElliptical' ? 0.62 : 1;
+  const spiral = b.type === 'galaxySpiral';
+  if (spiral) { // 暖色核球
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
+    core.addColorStop(0, 'rgba(255,236,196,0.75)');
+    core.addColorStop(1, hexA(b.color, 0));
+    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(0, 0, R * 0.32, 0, TAU); ctx.fill();
+  }
   for (const p of b.points) {
     const a = p.a + (dark ? 0 : t * 0.02 / (0.3 + p.r));
     const rr = p.r * R;
-    ctx.globalAlpha = dark ? 0.35 : 0.8 - p.r * 0.4;
-    ctx.fillStyle = dark ? b.color : '#ffffff';
-    ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr * (b.type === 'galaxyElliptical' ? 0.7 : 1),
-      Math.max(0.6, R * 0.012), 0, TAU); ctx.fill();
+    ctx.globalAlpha = dark ? 0.35 : 0.92 - p.r * 0.35;
+    // 旋臂外缘偏蓝、核心偏暖，与 3D 版一致
+    ctx.fillStyle = dark ? b.color : (spiral && p.r > 0.62 ? '#cfe3ff' : b.type === 'galaxyElliptical' ? '#ffeccc' : '#ffffff');
+    const size = Math.max(0.7, R * 0.012 * (p.s || 1));
+    ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr * flat, size, 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1; ctx.restore();
 }
@@ -1267,7 +1379,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === 'KeyT') cycleSpeed();
   else if (e.code === 'KeyS') singleStep();
   else if (e.code === 'KeyR') document.getElementById('btnReset').click();
-  else if (e.code === 'Escape') { selected = null; updateObjectInfo(); }
+  else if (e.code === 'Escape') { if (landing) closeLanding(); else { selected = null; updateObjectInfo(); } }
 });
 
 /* ================= 二维场景与演示 ================= */
@@ -1405,9 +1517,12 @@ function demoWhiteHole() {
 function demoGalaxyCollision() {
   startDemo();
   const cx = cam.x, cy = cam.y;
-  spawnBody(cx - 210, cy - 60, 1.1, 0.2, 2400, 'galaxySpiral');
-  spawnBody(cx + 210, cy + 60, -1.1, -0.2, 2400, 'galaxySpiral');
-  cam.zoom = 0.8;
+  // 两盘面各自半径 150：初始中心距 420 > 两半径之和，先靠近再并合，
+  // 相向切向速度让潮汐拉伸方向可见，而不是瞬间重叠。
+  spawnBody(cx - 230, cy - 70, 0.85, 0.28, 2400, 'galaxySpiral');
+  spawnBody(cx + 230, cy + 70, -0.85, -0.28, 2400, 'galaxyIrregular');
+  cam.zoom = 0.62;
+  showNotice('星系碰撞：两个星系将在引力下靠近、潮汐拉伸并最终并合。');
 }
 function demoTidalLock() {
   startDemo();
@@ -1753,6 +1868,7 @@ function loop() {
   }
   updateHillSphere();
   render(simTime);
+  updateLanding();
   if (performance.now() - lastAssessmentAt > 200) {
     const observed = bodies.includes(inspectedBody) ? inspectedBody
       : bodies.find(b => b.type === 'planet') || bodies[0];
@@ -1779,6 +1895,246 @@ const initialScene = new URLSearchParams(location.search).get('scene');
 if (initialScene && SCENES[initialScene]) SCENES[initialScene]();
 else randomSystem();
 updateObjectInfo();
+// loop() 在文件最末尾启动，确保所有模块级状态（含地表视图）已初始化
+
+/* ================= 登陆星球：纯二维地表剖面视图 =================
+   不引入 Z 轴、WebGL 或透视相机：把选中天体拉近，下半屏以弧形地平线
+   铺一段二维地表纹理，上半屏是它所在环境的星空，配天体资料卡。 */
+const surfaceView = document.getElementById('surfaceView');
+const surfaceCanvas = document.getElementById('surfaceCanvas');
+const sctx = surfaceCanvas.getContext('2d');
+let landing = null;         // { body, fromCam, t }
+let landingTarget = null;   // 平滑拉近的目标镜头
+const SURFACE_NAMES = { planet:'行星', ringplanet:'环行星', gasGiant:'气态巨行星', asteroid:'小行星',
+  comet:'彗星', star:'恒星', redDwarf:'红矮星', orangeDwarf:'橙矮星', subdwarf:'次矮星',
+  hotSubdwarf:'热亚矮星', wolfRayet:'沃尔夫–拉叶星', blueGiant:'蓝巨星', redGiant:'红巨星',
+  redSupergiant:'红超巨星', redHypergiant:'红特超巨星', cepheid:'造父变星', sakurai:'酒井星',
+  whiteDwarf:'白矮星', neutron:'中子星', quarkStar:'夸克星', blackhole:'黑洞', whitehole:'白洞',
+  wormhole:'虫洞', quasar:'类星体', gravastar:'引力真空星', strangeStar:'奇异星',
+  electroweakStar:'电弱星', preonStar:'先子星', bosonStar:'玻色星', solitonStar:'孤子星',
+  qStar:'Q 星', blackDwarf:'黑矮星', blackNeutron:'黑中子星', brownDwarf:'褐矮星',
+  openCluster:'疏散星团', globularCluster:'球状星团', galaxySpiral:'旋涡星系',
+  galaxyElliptical:'椭圆星系', galaxyIrregular:'不规则星系', darkMatter:'暗物质团',
+  darkHalo:'暗物质晕', probe:'探测器' };
+function surfaceName(t) { return SURFACE_NAMES[t] || TYPE_NAMES[t] || t; }
+const SURFACE_CATEGORY = {
+  rocky: ['planet','ringplanet','asteroid','comet','probe'],
+  gas: ['gasGiant','brownDwarf'],
+  star: ['star','redDwarf','orangeDwarf','subdwarf','hotSubdwarf','wolfRayet','blueGiant',
+    'redGiant','redSupergiant','redHypergiant','cepheid','sakurai','whiteDwarf'],
+  degenerate: ['neutron','quarkStar','strangeStar','electroweakStar','preonStar','bosonStar',
+    'solitonStar','qStar','blackDwarf','blackNeutron','gravastar'],
+  hole: ['blackhole','whitehole','wormhole','quasar'],
+  diffuse: ['openCluster','globularCluster','galaxySpiral','galaxyElliptical','galaxyIrregular',
+    'darkMatter','darkHalo']
+};
+function surfaceCategory(type) {
+  for (const k in SURFACE_CATEGORY) if (SURFACE_CATEGORY[k].includes(type)) return k;
+  return 'rocky';
+}
+function surfaceGravity(b) {
+  // 游戏示意：以质量为尺度给一个相对重力，不是真实天体参数
+  return Math.max(0.01, b.mass / 40);
+}
+function surfaceTemp(b) {
+  const cat = surfaceCategory(b.type);
+  if (cat === 'star') return Math.round(1200 + Math.min(28000, b.mass * 6));
+  if (cat === 'degenerate') return Math.round(6000 + Math.min(40000, b.mass * 4));
+  if (cat === 'hole' || cat === 'diffuse') return '—';
+  const heat = Math.min(1, (b.heat || 0));
+  return Math.round(120 + heat * 900 + Math.min(400, b.mass * 0.2));
+}
+function fillSurfaceFacts(b) {
+  const h2 = surfaceView.querySelector('#surfaceCard h2');
+  const sub = surfaceView.querySelector('#surfaceCard .sub');
+  const facts = surfaceView.querySelector('#surfaceFacts');
+  const note = surfaceView.querySelector('#surfaceCard .note');
+  h2.textContent = '🛬 ' + b.name;
+  const cat = surfaceCategory(b.type);
+  const catLabel = { rocky:'岩石地表', gas:'气态巨行星云顶', star:'恒星表层',
+    degenerate:'致密星表面', hole:'强引力天体', diffuse:'弥散天体' }[cat];
+  sub.textContent = catLabel + ' · 二维地表剖面示意';
+  const g = surfaceGravity(b), t = surfaceTemp(b);
+  facts.innerHTML =
+    '<div>质量<b>' + b.mass.toFixed(1) + '</b></div>' +
+    '<div>模拟半径<b>' + b.r.toFixed(1) + '</b></div>' +
+    '<div>相对重力<b>×' + g.toFixed(2) + '</b></div>' +
+    '<div>估算地表温度<b>' + (typeof t === 'number' ? t + ' K' : t) + '</b></div>' +
+    '<div>自转<b>' + Math.abs(b.spinW * 60).toFixed(2) + ' rad/s</b></div>' +
+    '<div>撞击坑<b>' + (b.craters ? b.craters.length : 0) + '</b></div>';
+  note.textContent = cat === 'hole' || cat === 'diffuse'
+    ? '该天体没有可站立的固体表面；画面为引力/恒星群体分布的游戏示意。'
+    : cat === 'gas' ? '气态巨行星没有固体表面，这里以云顶作为示意着陆点。'
+    : cat === 'star' ? '恒星表层为高温等离子体，无法真正站立；画面与数值均为游戏示意。'
+    : '地平线弧形、地表纹理与温度均为二维游戏示意，不代表真实地貌或测量值。';
+}
+function openLanding() {
+  if (landing) return;
+  ensureAudio();
+  if (!selected || !bodies.includes(selected)) {
+    findNextBody(); // 直接设置 selected（该函数不返回值）
+  }
+  if (!selected || !bodies.includes(selected)) { showNotice('场景里还没有天体，先放置一个再登陆。'); return; }
+  const b = selected;
+  // 选中天体居中，轻微放大以便返回轨道时能看到刚降落的位置；
+  // 真正的「降落」观感由地表剖面的地平线从底部上升动画承担。
+  landing = { body: b, fromCam: { x: cam.x, y: cam.y, zoom: cam.zoom }, t: 0, wasPaused: paused };
+  landingTarget = { x: b.x, y: b.y, zoom: clamp(cam.zoom * 1.2, cam.zoom, cam.zoom * 1.2) };
+  paused = true;
+  document.getElementById('btnPause').textContent = '▶ 继续';
+  resizeSurface();
+  surfaceView.classList.add('open');
+  fillSurfaceFacts(b);
+  drawLanding(0);
+  showNotice('已降落到 ' + b.name + ' · 按 Esc 或点「返回轨道」离开。');
+}
+function closeLanding() {
+  if (!landing) return;
+  const c = landing.fromCam;
+  cam.x = c.x; cam.y = c.y; cam.zoom = c.zoom;
+  paused = landing.wasPaused;
+  document.getElementById('btnPause').textContent = paused ? '▶ 继续' : '⏸ 暂停';
+  landing = null; landingTarget = null;
+  surfaceView.classList.remove('open');
+}
+function resizeSurface() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  surfaceCanvas.width = Math.round(window.innerWidth * dpr);
+  surfaceCanvas.height = Math.round(window.innerHeight * dpr);
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function drawLanding(t) {
+  const w = window.innerWidth, h = window.innerHeight;
+  const b = landing.body;
+  const cat = surfaceCategory(b.type);
+  // 降落动画：地平线从画面底部升到 62%，像从轨道俯冲到地表
+  const ease = t <= 1 ? 1 - Math.pow(1 - t, 3) : 1;
+  const horizon = h * (1.05 - 0.43 * ease);
+  // 天空：由附近恒星与天体类型决定的渐变
+  const sky = sctx.createLinearGradient(0, 0, 0, horizon);
+  const lit = bodies.some(o => o !== b && LIT_TYPES.has(o.type) &&
+    Math.hypot(o.x - b.x, o.y - b.y) < 900);
+  const skyTop = cat === 'hole' ? '#05030c' : cat === 'diffuse' ? '#0a1024'
+    : (cat === 'star' || cat === 'degenerate') ? '#1b0d12' : (lit ? '#0a1730' : '#050912');
+  sky.addColorStop(0, skyTop);
+  sky.addColorStop(1, cat === 'hole' ? '#0d0718' : '#13243f');
+  sctx.fillStyle = sky; sctx.fillRect(0, 0, w, horizon);
+  // 环境星空（有限个点，位置稳定）
+  sctx.fillStyle = 'rgba(210,225,255,0.7)';
+  for (let i = 0; i < 90; i++) {
+    const sx = ((i * 137.5 + b.id * 31) % 1000) / 1000 * w;
+    const sy = ((i * 71.3 + b.id * 17) % 620) / 620 * (horizon - 20);
+    sctx.globalAlpha = 0.25 + ((i * 37) % 10) / 14;
+    sctx.fillRect(sx, sy, 1.3, 1.3);
+  }
+  sctx.globalAlpha = 1;
+  // 若附近有明亮恒星，画一个低垂的「太阳/母星」
+  const source = bodies.filter(o => o !== b && LIT_TYPES.has(o.type))
+    .sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y))[0];
+  if (source && cat !== 'hole') {
+    const sunX = w * 0.76, sunY = horizon - 90;
+    const gr = sctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, 120);
+    gr.addColorStop(0, hexA(source.color, 0.95));
+    gr.addColorStop(0.2, hexA(source.color, 0.45));
+    gr.addColorStop(1, hexA(source.color, 0));
+    sctx.fillStyle = gr; sctx.beginPath(); sctx.arc(sunX, sunY, 120, 0, TAU); sctx.fill();
+    sctx.fillStyle = '#fff6df'; sctx.beginPath(); sctx.arc(sunX, sunY, 22, 0, TAU); sctx.fill();
+  }
+  // 地表：以大圆的下缘形成弧形地平线（仍是二维圆弧，不是三维透视）
+  const bulge = Math.min(220, w * 0.16);
+  sctx.beginPath();
+  sctx.moveTo(-40, horizon + 60);
+  sctx.quadraticCurveTo(w / 2, horizon - bulge, w + 40, horizon + 60);
+  sctx.lineTo(w + 40, h + 10); sctx.lineTo(-40, h + 10); sctx.closePath();
+  const ground = sctx.createLinearGradient(0, horizon - bulge * 0.3, 0, h);
+  const base = b.color;
+  ground.addColorStop(0, hexA(base, cat === 'diffuse' ? 0.5 : 0.85));
+  ground.addColorStop(0.25, hexA(base, 0.55));
+  ground.addColorStop(1, 'rgba(6,8,16,0.98)');
+  sctx.fillStyle = ground; sctx.fill();
+  // 地表纹理：按类别画不同细节
+  sctx.save();
+  sctx.clip();
+  if (cat === 'gas') {
+    for (let i = 0; i < 14; i++) {
+      const y = horizon + i * ((h - horizon) / 14) + Math.sin(i * 1.7 + t * 0.2) * 6;
+      sctx.strokeStyle = hexA(i % 2 ? '#ffffff' : base, 0.16 + (i % 3) * 0.05);
+      sctx.lineWidth = 8 + (i % 3) * 6;
+      sctx.beginPath(); sctx.moveTo(-20, y);
+      sctx.bezierCurveTo(w * 0.3, y - 18, w * 0.7, y + 18, w + 20, y); sctx.stroke();
+    }
+  } else if (cat === 'hole') {
+    for (let i = 0; i < 8; i++) {
+      const ang = t * 0.2 + i * TAU / 8;
+      sctx.strokeStyle = hexA(base, 0.18); sctx.lineWidth = 3;
+      sctx.beginPath();
+      sctx.ellipse(w / 2, horizon + 120 + i * 26, 180 + i * 60, 26 + i * 8, ang, 0, TAU);
+      sctx.stroke();
+    }
+  } else if (cat === 'diffuse') {
+    for (let i = 0; i < 160; i++) {
+      const px = ((i * 197.3 + b.id * 13) % 1000) / 1000 * w;
+      const py = horizon + ((i * 89.7 + b.id * 7) % 400) / 400 * (h - horizon);
+      sctx.fillStyle = i % 4 ? hexA(base, 0.5) : '#ffffff';
+      sctx.fillRect(px, py, 1.6, 1.6);
+    }
+  } else {
+    // 岩石/恒星/致密星：起伏地表 + 撞击坑圆盘
+    sctx.fillStyle = 'rgba(0,0,0,0.22)';
+    sctx.beginPath(); sctx.moveTo(-20, h);
+    for (let x = -20; x <= w + 20; x += 26) {
+      const y = horizon + 40 + Math.sin(x * 0.011 + b.id) * 26 + Math.sin(x * 0.037 + b.id * 2) * 12;
+      sctx.lineTo(x, y);
+    }
+    sctx.lineTo(w + 20, h); sctx.closePath(); sctx.fill();
+    const craters = b.craters && b.craters.length ? b.craters : [{ a:0.4,r:0.5,s:0.1 },{ a:2.1,r:0.7,s:0.08 }];
+    craters.forEach((c, i) => {
+      const px = ((c.a / TAU) % 1) * w;
+      const py = horizon + 70 + ((i * 97) % 100) / 100 * (h - horizon - 110);
+      const rad = Math.max(10, (c.s || 0.12) * 320);
+      sctx.strokeStyle = 'rgba(0,0,0,0.35)'; sctx.lineWidth = Math.max(2, rad * 0.25);
+      sctx.beginPath(); sctx.ellipse(px, py, rad, rad * 0.5, 0, 0, TAU); sctx.stroke();
+      sctx.fillStyle = hexA(base, 0.22);
+      sctx.beginPath(); sctx.ellipse(px, py, rad * 0.75, rad * 0.36, 0, 0, TAU); sctx.fill();
+    });
+    if (cat === 'star' || cat === 'degenerate') {
+      sctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 5; i++) {
+        const fx = ((i * 233 + b.id * 29) % 1000) / 1000 * w;
+        const fy = horizon + 30 + ((i * 61) % 100) / 100 * (h - horizon - 60);
+        const fg = sctx.createRadialGradient(fx, fy, 0, fx, fy, 60);
+        fg.addColorStop(0, hexA(base, 0.5)); fg.addColorStop(1, hexA(base, 0));
+        sctx.fillStyle = fg; sctx.beginPath(); sctx.arc(fx, fy, 60, 0, TAU); sctx.fill();
+      }
+      sctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  sctx.restore();
+  // 地平线亮边
+  sctx.strokeStyle = hexA(base, 0.75); sctx.lineWidth = 2;
+  sctx.beginPath(); sctx.moveTo(-40, horizon + 60);
+  sctx.quadraticCurveTo(w / 2, horizon - bulge, w + 40, horizon + 60); sctx.stroke();
+}
+function updateLanding() {
+  if (!landing || !landingTarget) return;
+  landing.t = Math.min(1, landing.t + 0.045);
+  const e = landing.t < 0.5 ? 2 * landing.t * landing.t : 1 - Math.pow(-2 * landing.t + 2, 2) / 2;
+  const c = landing.fromCam, g = landingTarget;
+  cam.x = c.x + (g.x - c.x) * e;
+  cam.y = c.y + (g.y - c.y) * e;
+  cam.zoom = c.zoom + (g.zoom - c.zoom) * e;
+  if (!bodies.includes(landing.body)) { closeLanding(); return; }
+  // 每帧重绘地表剖面：前 1.2 秒完成「俯冲降落」的地平线上升动画，之后保持静态
+  drawLanding(landing.t);
+}
+document.getElementById('btnLand').addEventListener('click', openLanding);
+document.getElementById('btnLand').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLanding(); }
+});
+document.getElementById('btnLeaveSurface').addEventListener('click', closeLanding);
+window.addEventListener('resize', () => { resizeSurface(); });
+
+resizeSurface();
 loop();
 </script>
 </body>

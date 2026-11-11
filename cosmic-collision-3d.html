@@ -63,7 +63,33 @@
     font:11px "Microsoft YaHei",sans-serif; text-align:center; pointer-events:none; }
   @media(max-width:640px) { #gridLegend { top:auto; bottom:170px; max-width:80%; font-size:10px; } .body-label { font-size:10px; } }
   .panel { max-height:calc(100dvh - 65px); overflow-y:auto; }
-  @media (max-width:640px){ .panel{ width:170px; padding:10px; } .hint{ font-size:10px; white-space:normal; width:95%; text-align:center; } }
+  /* 登陆星球：面板顶部入口 + 地表观察资料卡 */
+  #landBar { margin:2px 0 12px; }
+  #landBar .btn { background:linear-gradient(135deg,rgba(90,150,255,.34),rgba(150,110,255,.22));
+    border-color:rgba(160,190,255,.5); color:#eaf1ff; font-weight:600; letter-spacing:.5px; }
+  #landBar .btn:hover { background:linear-gradient(135deg,rgba(110,170,255,.5),rgba(170,130,255,.36)); }
+  #surfaceCard { position:fixed; left:50%; top:22px; transform:translateX(-50%); z-index:30;
+    width:min(560px,calc(100% - 40px)); background:rgba(9,14,28,.84); border:1px solid rgba(150,180,255,.3);
+    border-radius:14px; padding:14px 18px; backdrop-filter:blur(8px); color:#e6eeff; display:none; }
+  #surfaceCard.open { display:block; }
+  #surfaceCard h2 { margin:0 0 4px; font-size:17px; font-weight:600; letter-spacing:1px; }
+  #surfaceCard .sub { font-size:11px; color:#9fb2d8; margin-bottom:10px; }
+  #surfaceFacts { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 14px; font-size:11px; }
+  #surfaceFacts div { border-top:1px solid rgba(150,180,255,.16); padding-top:6px; }
+  #surfaceFacts b { display:block; color:#cfe0ff; font-size:13px; font-weight:600; margin-top:2px; }
+  #surfaceCard .note { font-size:10px; color:#7f92b6; line-height:1.6; margin-top:10px; }
+  #btnLeaveSurface { position:fixed; right:18px; bottom:18px; z-index:31; padding:10px 18px;
+    background:rgba(30,44,80,.92); border:1px solid rgba(160,190,255,.5); border-radius:10px;
+    color:#eaf1ff; font-size:13px; cursor:pointer; display:none; }
+  #btnLeaveSurface.open { display:block; }
+  #btnLeaveSurface:hover { background:rgba(60,84,140,.95); }
+  /* 地表观察时隐藏轨道界面，避免网格、标签与控制面板盖住地平线 */
+  body.landing-active .panel, body.landing-active .planet-inspector,
+  body.landing-active .shockwave-actions, body.landing-active #measurementOverlay,
+  body.landing-active #gridLegend, body.landing-active .hint { visibility:hidden; pointer-events:none; }
+  @media (max-width:640px){ .panel{ width:170px; padding:10px; } .hint{ font-size:10px; white-space:normal; width:95%; text-align:center; }
+    #surfaceCard{ top:12px; padding:10px 13px; } #surfaceCard h2{ font-size:14px; }
+    #surfaceFacts{ grid-template-columns:repeat(2,1fr); gap:6px 10px; } #surfaceCard .note{ display:none; } }
 </style>
 <script type="importmap">
 {
@@ -81,6 +107,9 @@
 
 <div class="panel">
   <a class="home-link" href="index.html">← 游戏选择 / 作者信息</a>
+  <div class="row" id="landBar">
+    <button class="btn" id="btnLand" type="button" title="降落到选中天体的表面">🛬 登陆星球</button>
+  </div>
   <h1>🌌 宇宙碰撞模拟器<span class="tag">3D</span></h1>
   <div class="row" id="featuredTools" aria-label="新增天体快捷入口">
     <button class="btn" type="button" data-type="darkMatter">🟣 暗物质</button>
@@ -234,6 +263,10 @@
 <div id="launchNotice" role="status" aria-live="polite" hidden style="position:fixed;z-index:20;left:50%;bottom:105px;transform:translateX(-50%);max-width:85%;padding:8px 12px;border-radius:8px;background:#101d36ed;color:#d7e9ff;font-size:12px;text-align:center;pointer-events:none"></div>
 <div class="hint">点击空白处放置 · 左键拖动发射 · 右键拖动旋转视角 · 滚轮缩放 · T 键加速时间 · 触屏：单指发射 / 双指旋转</div>
 <button class="shockwave-trigger" id="btnShockwave">◎ 冲击波演示</button>
+<div id="surfaceCard" aria-label="地表观察资料">
+  <h2></h2><div class="sub"></div><div id="surfaceFacts"></div><div class="note"></div>
+</div>
+<button id="btnLeaveSurface" type="button">↩ 返回轨道</button>
 <script src="celestial-size.js?v=11"></script>
 <script src="planet-assessment.js?v=6"></script>
 
@@ -2720,7 +2753,14 @@ findBodyButton.addEventListener('click', findNextBody);
 findBodyButton.addEventListener('keydown', e => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); findNextBody(); }
 });
-window.addEventListener('keydown', e => { if (e.key === 'Escape') selectBody(null); });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (landing) closeLanding3D(false);
+  else selectBody(null);
+});
+document.getElementById('btnLand').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLanding3D(); }
+});
 let downX = -9999, downY = -9999;              // 点击判定基准点
 
 function planePoint(e, out) {
@@ -3602,7 +3642,7 @@ function projectMeasurement(position, out) {
 function updateMeasurements() {
   camera.updateMatrixWorld();
   const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
-  referenceGrid.visible = gridOn; gridLegend.hidden = !gridOn;
+  referenceGrid.visible = gridOn && !landing; gridLegend.hidden = !gridOn || !!landing;
   if (gridOn) {
     gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
     referenceGrid.scale.setScalar(gridSpacing);
@@ -3692,6 +3732,177 @@ document.getElementById('stellarPulseToggle').addEventListener('change',()=>{
   for (const b of bodies) if (b.type==='cepheid') b.mesh.scale.set(...shapeScale(b.r,b.deform,b.tide,0));
   updateFocusLabel();
 });
+/* ================= 登陆星球：相机降落到选中天体表面 =================
+   沿用首页「地月探索」的降落思路：相机平滑移动到天体表面上方，
+   以表面法线为 up 看向地平线，显示天体资料卡与「返回轨道」。 */
+const SURFACE_CATEGORY_3D = {
+  rocky: ['planet','ringplanet','asteroid','comet','probe'],
+  gas: ['gasGiant','brownDwarf'],
+  star: ['star','redDwarf','orangeDwarf','subdwarf','hotSubdwarf','wolfRayet','blueGiant',
+    'redGiant','redSupergiant','redHypergiant','cepheid','sakurai','whiteDwarf'],
+  degenerate: ['neutron','quarkStar','strangeStar','electroweakStar','preonStar','bosonStar',
+    'solitonStar','qStar','blackDwarf','blackNeutron','gravastar'],
+  hole: ['blackhole','whitehole','wormhole','quasar'],
+  diffuse: ['openCluster','globularCluster','galaxySpiral','galaxyElliptical','galaxyIrregular',
+    'darkMatter','darkHalo']
+};
+function surfaceCategory3D(type) {
+  for (const k in SURFACE_CATEGORY_3D) if (SURFACE_CATEGORY_3D[k].includes(type)) return k;
+  return 'rocky';
+}
+function captureLandingOverlays() {
+  const items = [];
+  const add = o => { if (o) items.push([o, o.visible]); };
+  add(hillSphere.group);
+  for (const item of otherHillSpheres) add(item.group);
+  for (const b of bodies) add(b.trail.line);
+  add(lensDemoGrid);
+  add(referenceGrid);
+  return items;
+}
+function restoreLandingOverlays(items) {
+  if (!items) return;
+  for (const [object, visible] of items) object.visible = visible;
+}
+function suppressLandingOverlays() {
+  // 地表观察只保留天体本身与资料卡；希尔球、轨迹、透镜网格会像细线一样穿过地平线。
+  hillSphere.group.visible = false;
+  for (const item of otherHillSpheres) item.group.visible = false;
+  for (const b of bodies) b.trail.line.visible = false;
+  if (lensDemoGrid) lensDemoGrid.visible = false;
+  referenceGrid.visible = false;
+  selRing.visible = false;
+}
+let landing = null;   // { body, state, t, from:{pos,target,up}, to:{pos,target,up}, wasPaused }
+const _landPos = new THREE.Vector3(), _landTarget = new THREE.Vector3(), _landUp = new THREE.Vector3();
+function landingPose(b) {
+  // 从当前视线方向选一个落点法线，相机停在表面上方的低空，视线切向球面。
+  // 目标点取几何地平线略下方，这样画面下半部是地表，上半部是天空。
+  const center = b.mesh.position;
+  const R = Math.max(0.05, b.r);
+  const camDir = camera.position.clone().sub(center);
+  if (camDir.lengthSq() < 1e-12) camDir.set(0, 0, 1);
+  camDir.normalize();
+  const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+  const n = camDir.applyAxisAngle(axis, 0.35 + Math.random() * 0.5).normalize();
+  let tangent = new THREE.Vector3(0, 1, 0).cross(n);
+  if (tangent.lengthSq() < 0.01) tangent = new THREE.Vector3(1, 0, 0).cross(n);
+  tangent.normalize();
+  const height = 1.08;
+  const horizonCos = 1 / height;
+  const horizonSin = Math.sqrt(Math.max(0, 1 - horizonCos * horizonCos));
+  const target = center.clone()
+    .addScaledVector(n, R * (horizonCos - 0.06))
+    .addScaledVector(tangent, R * horizonSin * 0.92);
+  return {
+    pos: center.clone().addScaledVector(n, R * height),
+    target,
+    up: n.clone()
+  };
+}
+function fillSurfaceFacts3D(b) {
+  const card = document.getElementById('surfaceCard');
+  const cat = surfaceCategory3D(b.type);
+  const catLabel = { rocky:'岩石地表', gas:'气态巨行星云顶', star:'恒星表层',
+    degenerate:'致密星表面', hole:'强引力天体', diffuse:'弥散天体' }[cat];
+  card.querySelector('h2').textContent = '🛬 ' + (TYPE_NAMES[b.type] || b.type) + ' #' + b.labelNumber;
+  card.querySelector('.sub').textContent = catLabel + ' · 表面观察（游戏示意）';
+  const temp = cat === 'star' ? Math.round(1200 + Math.min(28000, b.mass * 6))
+    : cat === 'degenerate' ? Math.round(6000 + Math.min(40000, b.mass * 4))
+    : cat === 'hole' || cat === 'diffuse' ? '—'
+    : Math.round(120 + Math.min(1, b.heat || 0) * 900 + Math.min(400, b.mass * 0.2));
+  card.querySelector('#surfaceFacts').innerHTML =
+    '<div>质量<b>' + b.mass.toFixed(1) + '</b></div>' +
+    '<div>模拟半径<b>' + b.r.toPrecision(3) + '</b></div>' +
+    '<div>相对重力<b>×' + Math.max(0.01, b.mass / 40).toFixed(2) + '</b></div>' +
+    '<div>估算表面温度<b>' + (typeof temp === 'number' ? temp + ' K' : temp) + '</b></div>' +
+    '<div>自转<b>' + Math.abs(b.spinW * 60).toFixed(2) + ' rad/s</b></div>' +
+    '<div>表面痕迹<b>' + (b.craters ? b.craters.length : 0) + ' 处</b></div>';
+  card.querySelector('.note').textContent = cat === 'hole' || cat === 'diffuse'
+    ? '该天体没有可站立的固体表面；画面为强引力场/恒星群体分布的游戏示意。'
+    : cat === 'gas' ? '气态巨行星没有固体表面，这里以云顶作为示意着陆点。'
+    : cat === 'star' ? '恒星表层为高温等离子体，无法真正站立；画面与数值均为游戏示意。'
+    : '相机已降至天体表面附近；温度与重力为游戏示意，不代表真实测量值。';
+}
+function openLanding3D() {
+  if (landing) return;
+  if (!selected || !bodies.includes(selected)) findNextBody();
+  if (!selected || !bodies.includes(selected)) { showNotice('场景里还没有天体，先放置一个再登陆。'); return; }
+  const b = selected;
+  const to = landingPose(b);
+  const orbit = { pos: camera.position.clone(), target: controls.target.clone(), up: camera.up.clone() };
+  landing = {
+    body: b, state: 'descending', t: 0, wasPaused: paused,
+    overlays: captureLandingOverlays(),
+    from: { pos: orbit.pos.clone(), target: orbit.target.clone(), up: orbit.up.clone() },
+    orbit,
+    to
+  };
+  paused = true;
+  document.getElementById('btnPause').textContent = '▶ 继续';
+  controls.enabled = false;
+  suppressLandingOverlays();
+  document.body.classList.add('landing-active');
+  fillSurfaceFacts3D(b);
+  document.getElementById('surfaceCard').classList.add('open');
+  document.getElementById('btnLeaveSurface').classList.add('open');
+  showNotice('正在降落到 ' + (TYPE_NAMES[b.type] || b.type) + ' #' + b.labelNumber + ' · 按 Esc 或点「返回轨道」离开。');
+}
+function closeLanding3D(immediate) {
+  if (!landing) return;
+  if (immediate) {
+    camera.position.copy(landing.from.pos);
+    controls.target.copy(landing.from.target);
+    camera.up.copy(landing.from.up);
+    controls.enabled = true;
+    paused = landing.wasPaused;
+    document.getElementById('btnPause').textContent = paused ? '▶ 继续' : '⏸ 暂停';
+    selRing.visible = !!selected;
+    document.getElementById('surfaceCard').classList.remove('open');
+    document.getElementById('btnLeaveSurface').classList.remove('open');
+    document.body.classList.remove('landing-active');
+    restoreLandingOverlays(landing.overlays);
+    controls.update();
+    landing = null;
+  } else {
+    landing.state = 'ascending';
+    landing.t = 0;
+    landing.from = { pos: camera.position.clone(), target: controls.target.clone(), up: camera.up.clone() };
+    landing.to = landing.orbit;
+    document.getElementById('surfaceCard').classList.remove('open');
+    document.getElementById('btnLeaveSurface').classList.remove('open');
+  }
+}
+function updateLanding3D() {
+  if (!landing) return;
+  if (!bodies.includes(landing.body)) { closeLanding3D(true); return; }
+  suppressLandingOverlays();
+  landing.t = Math.min(1, landing.t + 0.018);
+  const e = landing.t < 0.5 ? 2 * landing.t * landing.t : 1 - Math.pow(-2 * landing.t + 2, 2) / 2;
+  _landPos.copy(landing.from.pos).lerp(landing.to.pos, e);
+  _landTarget.copy(landing.from.target).lerp(landing.to.target, e);
+  _landUp.copy(landing.from.up).lerp(landing.to.up, e).normalize();
+  camera.position.copy(_landPos);
+  camera.up.copy(_landUp);
+  controls.target.copy(_landTarget);
+  camera.lookAt(controls.target);
+  if (landing.t >= 1) {
+    if (landing.state === 'descending') landing.state = 'landed';
+    else if (landing.state === 'ascending') {
+      controls.enabled = true;
+      paused = landing.wasPaused;
+      document.getElementById('btnPause').textContent = paused ? '▶ 继续' : '⏸ 暂停';
+      restoreLandingOverlays(landing.overlays);
+      selRing.visible = !!selected;
+      document.body.classList.remove('landing-active');
+      controls.update();
+      landing = null;
+    }
+  }
+}
+document.getElementById('btnLand').addEventListener('click', openLanding3D);
+document.getElementById('btnLeaveSurface').addEventListener('click', () => closeLanding3D(false));
+
 function loop() {
   requestAnimationFrame(loop);
   if (!paused) {
@@ -3817,17 +4028,22 @@ function loop() {
   updateOortClouds();
   updateHabitableZone();
   updateHillSphere();
-  controls.update();
-  // 跟随观察：相机锁定选中天体 + 选中环 + 温度读数
-  if (selected && bodies.includes(selected)) {
-    _tv.copy(selected.mesh.position).sub(controls.target);
-    camera.position.add(_tv);
-    controls.target.copy(selected.mesh.position);
-    selRing.position.copy(selected.mesh.position);
-    selRing.scale.setScalar(selected.r * 2.5 * (1 + 0.07 * Math.sin(simT * 6)));
-    selRing.lookAt(camera.position);
-    if (ringDemoPreview || frameNo % 12 === 0) updateFocusLabel();
-  } else if (selected) selectBody(null);
+  if (landing) {
+    // 地表观察：相机由登陆动画接管，跳过轨道控制与跟随
+    updateLanding3D();
+  } else {
+    controls.update();
+    // 跟随观察：相机锁定选中天体 + 选中环 + 温度读数
+    if (selected && bodies.includes(selected)) {
+      _tv.copy(selected.mesh.position).sub(controls.target);
+      camera.position.add(_tv);
+      controls.target.copy(selected.mesh.position);
+      selRing.position.copy(selected.mesh.position);
+      selRing.scale.setScalar(selected.r * 2.5 * (1 + 0.07 * Math.sin(simT * 6)));
+      selRing.lookAt(camera.position);
+      if (ringDemoPreview || frameNo % 12 === 0) updateFocusLabel();
+    } else if (selected) selectBody(null);
+  }
 
   if (performance.now() - lastAssessmentAt > 200) {
     const observed = bodies.includes(selected) ? selected : bodies.find(b => b.type === 'planet') || bodies[0];

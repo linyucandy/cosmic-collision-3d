@@ -50,7 +50,8 @@
   const controlsBody = document.createElement('div');
   controlsBody.id = 'panelControls';
   for (const child of [...controls.children]) {
-    if (!child.matches('a, h1, #featuredTools')) controlsBody.appendChild(child);
+    // 返回链接、标题、快捷入口和登陆入口常驻顶部；移动端折叠其余控制时仍可直接登陆。
+    if (!child.matches('a, h1, #featuredTools, #landBar')) controlsBody.appendChild(child);
   }
   const toggle = document.createElement('button');
   toggle.id = 'toggleControls';
