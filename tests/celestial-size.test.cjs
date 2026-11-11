@@ -31,10 +31,12 @@ test('white hole reference horizon uses the same illustrative scale as a black h
 });
 
 test('new stellar classes have representative relative sizes',()=>{
-  const t={star:{base:600,rk:2.2},redDwarf:{base:180,rk:1.3},orangeDwarf:{base:450,rk:1.8},hotSubdwarf:{base:300,rk:1.6},wolfRayet:{base:2200,rk:3}};
+  const t={star:{base:600,rk:2.2},redDwarf:{base:180,rk:1.3},orangeDwarf:{base:450,rk:1.8},subdwarf:{base:150,rk:1.1},hotSubdwarf:{base:300,rk:1.6},wolfRayet:{base:2200,rk:3},brownDwarf:{base:90,rk:1.15}};
   const r=k=>size.radiusFor(k,t[k].base,t,'reference');
   assert.ok(r('hotSubdwarf')<r('redDwarf')); assert.ok(r('redDwarf')<r('orangeDwarf'));
   assert.ok(r('orangeDwarf')<r('star')); assert.ok(r('wolfRayet')>r('star'));
+  assert.ok(r('brownDwarf')<r('subdwarf')); assert.ok(r('subdwarf')<r('redDwarf'));
+  assert.ok(r('hotSubdwarf')<r('subdwarf'));
 });
 
 test('red supergiant examples are hundreds to over a thousand times the Sun radius',()=>{

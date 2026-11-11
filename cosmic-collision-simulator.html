@@ -214,7 +214,8 @@ resize();
 const RAW_TYPES = {
   asteroid:{base:3,rk:2.0,color:0xb9b3a8}, planet:{base:40,rk:1.7,color:0x5fb2ff},
   star:{base:600,rk:2.2,color:0xffd27d}, redDwarf:{base:180,rk:1.3,color:0xff705d},
-  orangeDwarf:{base:450,rk:1.8,color:0xffad63}, hotSubdwarf:{base:300,rk:1.6,color:0xb5dbff},
+  orangeDwarf:{base:450,rk:1.8,color:0xffad63}, subdwarf:{base:150,rk:1.1,color:0xe89a70},
+  hotSubdwarf:{base:300,rk:1.6,color:0xb5dbff},
   wolfRayet:{base:2200,rk:3,color:0xb5eaff}, blackhole:{base:2500,rk:0.85,color:0x8a5cff},
   whitehole:{base:2500,rk:0.85,color:0xdffaff}, darkMatter:{base:1000,rk:80,color:0x8e7cf0},
   darkHalo:{base:4000,rk:1800,color:0x7a91ef}, gravastar:{base:2500,rk:.85,color:0x8cd9ff},
@@ -240,7 +241,7 @@ for (const key in RAW_TYPES) {
   TYPES[key] = { base: raw.base, rk: raw.rk, color: '#' + raw.color.toString(16).padStart(6, '0') };
 }
 const TYPE_NAMES = {
-  redDwarf:'红矮星',orangeDwarf:'橙矮星',hotSubdwarf:'热亚矮星',wolfRayet:'沃尔夫–拉叶星',
+  redDwarf:'红矮星',orangeDwarf:'橙矮星',subdwarf:'次矮星',hotSubdwarf:'热亚矮星',wolfRayet:'沃尔夫–拉叶星',
   star:'恒星',planet:'行星',ringplanet:'环行星',gasGiant:'气态巨行星',asteroid:'小行星',comet:'彗星',
   blackhole:'黑洞',whitehole:'白洞',darkMatter:'暗物质团',darkHalo:'暗物质晕',gravastar:'引力真空星',
   openCluster:'疏散星团',globularCluster:'球状星团',galaxySpiral:'旋涡星系',galaxyElliptical:'椭圆星系',
@@ -264,7 +265,8 @@ const EXOTIC_INFO = {
   whitehole:['理论概念','白洞是某些时空解中黑洞的时间反演，无确认观测证据。'],
   redDwarf:['已观测','低质量 M 型主序星，较冷且寿命很长。'],
   orangeDwarf:['已观测','K 型主序星，通常比太阳更冷、更小。'],
-  hotSubdwarf:['已观测','此处以热亚矮星为例；亚矮星包含多种类别。'],
+  subdwarf:['已观测','冷次矮星（sdG/sdK/sdM）金属丰度低、光度偏弱，多属第二星族。'],
+  hotSubdwarf:['已观测','热亚矮星（sdB/sdO）是高温紧凑的氦燃烧恒星，与冷次矮星不同。'],
   wolfRayet:['已观测','炽热的大质量演化恒星，通常有强恒星风。'],
   sakurai:['已观测','樱井天体是经历极晚期热脉冲的恒星残骸。'],
   cepheid:['已观测','造父变星周期性膨胀和变亮；这里使用加快的模拟周期。'],
@@ -293,7 +295,7 @@ const WHITE_DWARF_VARIANTS = {
 };
 const WHITE_DWARF_SOLAR_UNIT = 3000, CHANDRASEKHAR_LIMIT = 4200;
 const NOVA_THRESHOLD = 18, NOVA_RATE = 8;
-const LIT_TYPES = new Set(['star','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet','blueGiant',
+const LIT_TYPES = new Set(['star','redDwarf','orangeDwarf','subdwarf','hotSubdwarf','wolfRayet','blueGiant',
   'redGiant','redSupergiant','redHypergiant','whiteDwarf','cepheid','quasar','sakurai']);
 const DENSE_TYPES = new Set(['blackhole','neutron','quarkStar','quasar','strangeStar','electroweakStar',
   'preonStar','bosonStar','solitonStar','qStar','blackDwarf','blackNeutron','gravastar']);
@@ -1537,7 +1539,7 @@ function findNextBody() {
 }
 
 /* ================= UI 生成与绑定 ================= */
-/* 天体面板：与 3D 版同一套 41 种类型，逐个铺开而不是收进一个折叠框 */
+/* 天体面板：与 3D 版同一套 42 种类型，逐个铺开而不是收进一个折叠框 */
 const PALETTE_LABELS = {
   asteroid:'☄️ 小行星', planet:'🪐 行星', star:'⭐ 恒星', blackhole:'🕳️ 黑洞',
   whitehole:'⚪ 白洞', openCluster:'✨ 疏散星团', globularCluster:'🌟 球状星团',
@@ -1546,7 +1548,7 @@ const PALETTE_LABELS = {
   brownDwarf:'🟤 褐矮星', whiteDwarf:'⚪ 白矮星', redGiant:'🔴 红巨星',
   redSupergiant:'🌟 红超巨星', redHypergiant:'🌟 红特超巨星', blueGiant:'🔵 蓝巨星',
   quarkStar:'🟣 夸克星', redDwarf:'🔴 红矮星', orangeDwarf:'🟠 橙矮星',
-  hotSubdwarf:'🔵 热亚矮星', wolfRayet:'✨ 沃尔夫–拉叶星', wormhole:'🌀 虫洞',
+  subdwarf:'🟠 次矮星', hotSubdwarf:'🔵 热亚矮星', wolfRayet:'✨ 沃尔夫–拉叶星', wormhole:'🌀 虫洞',
   probe:'🛰️ 探测器', darkMatter:'🟣 暗物质', darkHalo:'🌌 暗物质晕', gravastar:'🔮 引力真空星',
   sakurai:'🌫️ 樱井天体', cepheid:'💓 造父变星', quasar:'🌌 类星体', strangeStar:'🟣 奇异星',
   electroweakStar:'⚡ 电弱星', preonStar:'✦ 先子星', bosonStar:'🔵 玻色子星',
@@ -1555,7 +1557,7 @@ const PALETTE_LABELS = {
 const MAIN_PALETTE = ['asteroid','planet','star','blackhole','whitehole','openCluster',
   'globularCluster','galaxySpiral','galaxyElliptical','galaxyIrregular','comet','ringplanet',
   'gasGiant','neutron','brownDwarf','whiteDwarf','redGiant','redSupergiant','redHypergiant',
-  'blueGiant','quarkStar','redDwarf','orangeDwarf','hotSubdwarf','wolfRayet','wormhole','probe'];
+  'blueGiant','quarkStar','redDwarf','orangeDwarf','subdwarf','hotSubdwarf','wolfRayet','wormhole','probe'];
 const EXOTIC_PALETTE = ['sakurai','cepheid','quasar','strangeStar','electroweakStar','preonStar',
   'bosonStar','solitonStar','qStar','blackDwarf','blackNeutron'];
 for (const [hostId, types] of [['tools', MAIN_PALETTE], ['exoticTools', EXOTIC_PALETTE]]) {

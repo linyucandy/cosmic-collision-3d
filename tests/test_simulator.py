@@ -72,7 +72,9 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get ghostMarker() { return typeof ghostMarker === "undefined" ? null : ghostMarker; },
   get selected() { return selected; },
   get shapeScale() { return typeof shapeScale === 'function' ? shapeScale : null; },
-  get updateFocusLabel() { return typeof updateFocusLabel === 'function' ? updateFocusLabel : null; } };
+  get updateFocusLabel() { return typeof updateFocusLabel === 'function' ? updateFocusLabel : null; },
+  get defs() { return { types: TYPES, names: TYPE_NAMES, info: EXOTIC_INFO,
+    lit: [...LIT_TYPES], habitable: HABITABLE_INTENSITY, cme: [...CME_STARS], oort: [...OORT_HOST_TYPES] }; } };
 loop();''')
         self.page.route('**/cosmic-collision-3d.html*', lambda route: route.fulfill(body=source, content_type='text/html'))
         self.page.goto(self.url + '/cosmic-collision-3d.html?scene=bh')
@@ -113,7 +115,7 @@ loop();''')
 
     def test_new_stars_and_nova_accretion(self):
         self.open_sim()
-        for kind in ['redDwarf', 'orangeDwarf', 'hotSubdwarf', 'wolfRayet']:
+        for kind in ['redDwarf', 'orangeDwarf', 'subdwarf', 'hotSubdwarf', 'wolfRayet']:
             self.assertEqual(self.page.locator(f'#tools [data-type="{kind}"]').count(), 1)
         result = self.page.evaluate('''() => {
           sim.clear();
@@ -131,6 +133,40 @@ loop();''')
         self.assertTrue(result['alive'], result)
         self.assertGreater(result['mass'], 3000, result)
         self.assertTrue(result['disposed'] and result['streamGone'], result)
+        self.assertEqual(self.errors, [])
+
+    def test_subdwarf_is_fully_registered_in_3d(self):
+        self.open_sim()
+        result = self.page.evaluate('''() => {
+          sim.clear();
+          const d = sim.defs, def = d.types.subdwarf;
+          const b = sim.spawnBody(1000, 0, 0, 0, 0, 0, def.base, 'subdwarf');
+          const wd = sim.spawnBody(0, 0, 0, 0, 0, 0, 3000, 'whiteDwarf');
+          const donor = sim.spawnBody(40, 0, 0, 0, 0, 0, def.base, 'subdwarf');
+          sim.updateNovaAccretion(1);
+          return {
+            button: document.querySelectorAll('#tools [data-type="subdwarf"]').length,
+            name: d.names.subdwarf, base: def.base, rk: def.rk, radius: b.r,
+            types: Object.keys(d.types).length,
+            lit: d.lit.includes('subdwarf'), cme: d.cme.includes('subdwarf'),
+            oort: d.oort.includes('subdwarf'),
+            habitable: d.habitable.subdwarf, redDwarfHabitable: d.habitable.redDwarf,
+            info: d.info.subdwarf ? d.info.subdwarf[1] : '',
+            hotInfo: d.info.hotSubdwarf ? d.info.hotSubdwarf[1] : '',
+            novaDonor: !!wd.novaStream
+          };
+        }''')
+        self.assertEqual(result['button'], 1)
+        self.assertEqual(result['name'], '次矮星')
+        self.assertEqual(result['types'], 42)
+        self.assertEqual(result['base'], 150)
+        self.assertGreater(result['radius'], 0)
+        self.assertTrue(result['lit'] and result['cme'] and result['oort'], result)
+        self.assertGreater(result['habitable'], 0)
+        self.assertLess(result['habitable'], result['redDwarfHabitable'])
+        self.assertIn('冷次矮星', result['info'])
+        self.assertIn('热亚矮星', result['hotInfo'])
+        self.assertTrue(result['novaDonor'], result)
         self.assertEqual(self.errors, [])
 
     def test_red_supergiants_create_and_follow_massive_star_evolution(self):
@@ -1901,9 +1937,9 @@ loop();''')
             bodies: bodies.length
           };
         }''')
-        self.assertEqual(result['types'], 41)
-        self.assertEqual(result['catalog'], 41)
-        self.assertEqual(result['unique'], 41)
+        self.assertEqual(result['types'], 42)
+        self.assertEqual(result['catalog'], 42)
+        self.assertEqual(result['unique'], 42)
         self.assertEqual(result['missing'], [])
         self.assertEqual(result['wdVariantOptions'], 8)
         self.assertEqual(result['wdGallery'], 8)
@@ -1923,6 +1959,39 @@ loop();''')
           return fail;
         }''')
         self.assertEqual(failures, [])
+        self.assertEqual(self.errors, [])
+
+    def test_subdwarf_is_fully_registered_in_2d(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)
+        result = self.page.evaluate('''() => {
+          const b = spawnBody(600, 600, 0, 0, TYPES.subdwarf.base, 'subdwarf');
+          selected = b; updateObjectInfo();
+          const flux = assessPlanet({ type:'planet', mass:40, r:4 },
+            [{ type:'subdwarf', mass:TYPES.subdwarf.base, distance:390 }]);
+          const hab = habitableRange(b);
+          return {
+            button: document.querySelectorAll('#tools [data-type="subdwarf"]').length,
+            name: TYPE_NAMES.subdwarf, base: TYPES.subdwarf.base,
+            color: TYPES.subdwarf.color, radius: b.r,
+            lit: LIT_TYPES.has('subdwarf'), types: Object.keys(TYPES).length,
+            info: document.getElementById('objectInfo').textContent,
+            reference: CelestialSize.radiusFor('subdwarf', TYPES.subdwarf.base, TYPES, 'reference'),
+            redReference: CelestialSize.radiusFor('redDwarf', TYPES.redDwarf.base, TYPES, 'reference'),
+            temperature: flux.temperature, habitable: hab.inner
+          };
+        }''')
+        self.assertEqual(result['button'], 1)
+        self.assertEqual(result['name'], '次矮星')
+        self.assertEqual(result['types'], 42)
+        self.assertEqual(result['color'], '#e89a70')
+        self.assertGreater(result['radius'], 0)
+        self.assertTrue(result['lit'], result)
+        self.assertIn('冷次矮星', result['info'])
+        self.assertGreater(result['reference'], 0)
+        self.assertLess(result['reference'], result['redReference'])
+        self.assertIsInstance(result['temperature'], (int, float))
+        self.assertGreater(result['habitable'], 0)
         self.assertEqual(self.errors, [])
 
     def test_2d_white_dwarf_samples_and_iax_eruption(self):

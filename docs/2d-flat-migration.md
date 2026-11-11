@@ -15,7 +15,7 @@
 
 | 类别 | 内容 |
 | --- | --- |
-| 天体类型 | 41 种，参数表与 3D 版一致；面板布局也对齐 3D：`#featuredTools` 快捷 3 种（暗物质、暗物质晕、引力真空星）、`#tools` 主面板 27 种、`#exoticCatalog` 特殊与假想天体 11 种，全部带图标与悬浮说明 |
+| 天体类型 | 42 种，参数表与 3D 版一致（含冷次矮星 `subdwarf` 与热亚矮星 `hotSubdwarf`）；面板布局也对齐 3D：`#featuredTools` 快捷 3 种（暗物质、暗物质晕、引力真空星）、`#tools` 主面板 28 种、`#exoticCatalog` 特殊与假想天体 11 种，全部带图标与悬浮说明 |
 | 尺寸模型 | 复用 `CelestialSize.radiusFor`，提供「易观察 / 参考大小」两种模式，切换时重算全部半径 |
 | 物理 | 二维 N 体积分、扫掠碰撞检测、白洞近场排斥、暗物质软化引力、虫洞配对传送、动量守恒合并、撞击碎片、潮汐撕扯、离心解体、恒星演化、白矮星吸积新星、钱德拉塞卡极限 |
 | 叠加层 | 希尔球（含双体 L1 估计与最多 24 个其他天体）、宜居带、平面距离网格与刻度、标签与距离、轨迹、X 射线/暗物质伪彩、致密星平面光环、奥尔特云、彗尾、撞击坑 |
@@ -61,6 +61,6 @@
 
 ## 验证
 
-`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_2d_white_dwarf_samples_and_iax_eruption`、`test_2d_binary_and_triple_star_systems_stay_bound`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、41 种类型与面板一一对应、白矮星样例与 Iax 残骸、双星/三星系 1200 步束缚轨道、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。
+`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_subdwarf_is_fully_registered_in_2d`、`test_subdwarf_is_fully_registered_in_3d`、`test_2d_white_dwarf_samples_and_iax_eruption`、`test_2d_binary_and_triple_star_systems_stay_bound`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、42 种类型与面板一一对应、次矮星在两版中的注册与科学说明、白矮星样例与 Iax 残骸、双星/三星系 1200 步束缚轨道、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。`tests/celestial-size.test.cjs` 同时断言次矮星参考半径介于褐矮星与红矮星之间、且比热亚矮星更大。
 
-本地用 Chrome + `puppeteer-core` 做过两轮真实浏览器回归：界面与演示 24/24 通过（41 个按钮逐一点击、41 种天体创建绘制、8 个白矮星样例、Iax 两个分支、17 个演示按钮、希尔球两种估算、移动端折叠高度 127px、零运行时错误）；轨道稳定性 19/19 通过（4000 步手动积分，三种恒星系均无合并、无抛失、间距保持束缚）。3D 页面依赖 CDN 加载后处理模块，本机离线未能实跑，但它的质心构建是本次移植的参考实现。
+本地用 Chrome + `puppeteer-core` 做过三轮真实浏览器回归：界面与演示 24/24 通过（42 个按钮逐一点击、42 种天体创建绘制、8 个白矮星样例、Iax 两个分支、17 个演示按钮、希尔球两种估算、移动端折叠高度 127px、零运行时错误）；轨道稳定性 19/19 通过（4000 步手动积分，三种恒星系均无合并、无抛失、间距保持束缚）；次矮星两版一致性 23/23 通过（42 种类型、按钮与说明、创建与绘制、发光/日冕/奥尔特云/宜居带/评分注册、两版参考半径一致、3D 可作为新星伴星、零运行时错误）。3D 页面通过 CDN 加载 Three.js 后已可在本机实测，其质心构建仍是 2D 恒星系预设的参考实现。

@@ -1,6 +1,6 @@
 # 新增恒星与新星爆发
 
-3D 沙盒提供红矮星、橙矮星、热亚矮星和沃尔夫–拉叶星。亚矮星有多种类别，这里选取热亚矮星作为示例。恒星的半径、颜色、光照和恒星风效果均为代表性游戏示意，并不覆盖各类天体的完整范围。沃尔夫–拉叶星的强风参考 [NASA 的介绍](https://science.nasa.gov/missions/hubble/stellar-fireworks/)。
+3D 与 2D 沙盒都提供红矮星、橙矮星、次矮星（冷次矮星 sdG/sdK/sdM）、热亚矮星（sdB/sdO）和沃尔夫–拉叶星。次矮星与热亚矮星是不同类别：前者金属丰度低、光度偏弱，多属第二星族；后者是高温紧凑的氦燃烧恒星。恒星的半径、颜色、光照和恒星风效果均为代表性游戏示意，并不覆盖各类天体的完整范围。沃尔夫–拉叶星的强风参考 [NASA 的介绍](https://science.nasa.gov/missions/hubble/stellar-fireworks/)。
 
 点击“新星爆发演示”可观察白矮星与红矮星组成的双星。白矮星靠近适合的伴星时，模拟会以连线显示物质转移；选中白矮星可查看燃料进度。达到阈值后会出现闪光和膨胀的气体壳，白矮星保留并可再次吸积、爆发。现实中的新星是在白矮星表面积累的物质发生热核失控，参见 [NASA 新星科普](https://science.nasa.gov/universe/whats-a-nova-inside-the-chaos-of-erupting-and-exploding-stars/)。
 
