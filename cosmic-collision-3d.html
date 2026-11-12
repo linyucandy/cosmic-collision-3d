@@ -56,6 +56,7 @@
     font:11px "Microsoft YaHei",sans-serif; color:#d9edff; text-shadow:0 1px 4px #000,0 0 6px #000; }
   .body-label { padding:2px 5px; border-radius:5px; background:#101a30c9; border:1px solid #91bdff50;
     max-width:calc(100vw - 16px); overflow:hidden; text-overflow:ellipsis; }
+  .body-label .label-mass { display:block; color:#ffd98a; font-size:.94em; }
   .body-label.selected { border-color:#ffdf96; color:#fff0c2; }
   .grid-tick { color:#a9d8e7; font-size:10px; }
   #gridLegend { position:fixed; z-index:7; left:50%; top:12px; transform:translateX(-50%); max-width:46%;
@@ -201,6 +202,7 @@
   <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">造父变星的半径会周期变化；普通恒星只改变光晕，光晕不是本体。</div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
+  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
   <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 显示暗物质伪彩分布</label></div>
@@ -211,7 +213,7 @@
   <div class="check"><input type="checkbox" id="hillShowAll" checked><label for="hillShowAll">显示其他天体的估算范围</label></div>
   <div class="check"><input type="checkbox" id="hillFullScale" checked><label for="hillFullScale">选中天体的希尔球按计算比例显示</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4">其他范围缩小示意，最多显示 24 个。希尔球不是引力截止线，球外仍受引力；G 滑块可调节引力。</div>
-  <div id="hillSphereInfo" style="font-size:11px;color:#a9d9ff;line-height:1.4;margin-bottom:8px">选中天体后，按最近较重天体估算希尔半径。</div>
+  <div id="hillSphereInfo" style="font-size:11px;color:#a9d9ff;line-height:1.4;margin-bottom:8px">选中天体后，按最近较重天体估算希尔半径；无合适主星时显示有界示意范围（非真实希尔球）。</div>
   <div class="check"><input type="checkbox" id="lensToggle" checked><label for="lensToggle">🕳️ 黑洞引力透镜</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">黑洞附近的画面弯曲是增强的视觉模拟，不改变天体运动。</div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">蓝紫射线表示模拟的高能辐射与碰撞热量，仅供观察，并非真实测量。</div>
@@ -1511,17 +1513,24 @@ function estimateHillSphere(body) {
     if (d<fallbackDistance) { fallback=candidate; fallbackDistance=d; }
   }
   const primary=heavier || fallback, distance=heavier ? heavyDistance : fallbackDistance;
-  if (!primary) return null;
-  const ratio=body.mass/primary.mass;
-  if (ratio<.02) return {primary,radius:distance*Math.cbrt(ratio/3),method:'hill'};
-  // Circular two-body L1 distance, used when the small-mass Hill formula is inappropriate.
-  let lo=1e-8, hi=1-1e-8;
-  const m=body.mass, M=primary.mass, barycenter=M/(m+M);
-  for (let i=0;i<48;i++) {
-    const x=(lo+hi)/2, force=-m/(x*x)+M/((1-x)*(1-x))+(m+M)*(x-barycenter);
-    if (force>0) hi=x; else lo=x;
+  if (primary) {
+    const ratio=body.mass/primary.mass;
+    if (ratio<.02) return {primary,radius:distance*Math.cbrt(ratio/3),method:'hill'};
+    // Circular two-body L1 distance, used when the small-mass Hill formula is inappropriate.
+    let lo=1e-8, hi=1-1e-8;
+    const m=body.mass, M=primary.mass, barycenter=M/(m+M);
+    for (let i=0;i<48;i++) {
+      const x=(lo+hi)/2, force=-m/(x*x)+M/((1-x)*(1-x))+(m+M)*(x-barycenter);
+      if (force>0) hi=x; else lo=x;
+    }
+    return {primary,radius:distance*(lo+hi)/2,method:'binary'};
   }
-  return {primary,radius:distance*(lo+hi)/2,method:'binary'};
+  // 没有引力束缚的合适参考天体（孤立天体、高速飞掠等）时，仍给一个有界示意范围，
+  // 让选中的天体基本都能看到范围。示意半径只按天体自身质量标度，绝不使用到参考天体的距离，
+  // 因此飞掠天体不会凭空获得巨大希尔球；同时以自身半径设下限、以固定上限封顶。
+  const selfScale=Math.cbrt(Math.max(0.001,body.mass));
+  const radius=Math.max(8,Math.min(420,Math.max(selfScale*26,body.r*2.6)));
+  return {primary:null,radius,method:'illustrative'};
 }
 function hillVisualRadius(body, radius) {
   if (body===selected && document.getElementById('hillFullScale').checked) return radius;
@@ -1538,13 +1547,19 @@ function updateHillSphere() {
     const estimate=estimateHillSphere(body);
     if (estimate && Number.isFinite(estimate.radius) && estimate.radius>0) {
       hillSphere.primary=estimate.primary; hillSphere.radius=estimate.radius; hillSphere.method=estimate.method;
-      const visual=hillVisualRadius(body,estimate.radius);
+      let visual=hillVisualRadius(body,estimate.radius);
+      // 示意圈只作观察提示，即使「按计算比例显示」也不让它撑满视野。
+      if (estimate.method==='illustrative') visual=Math.min(visual, camera.position.distanceTo(body.mesh.position)*.55);
       hillSphere.group.position.copy(body.mesh.position); hillSphere.group.scale.setScalar(visual); hillSphere.group.visible=true;
-      const kind=estimate.method==='hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
       const scale=visual/estimate.radius;
       const percent=scale*100<1 ? '<1%' : `${Math.round(scale*100)}%`;
-      message=`${kind}约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[estimate.primary.type] || estimate.primary.type} #${estimate.primary.labelNumber}；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}。球外仍有引力，范围不是引力截止线。`;
-    } else message='没有引力束缚的较重或其他合适天体，无法估算希尔球；显示不改变引力。';
+      if (estimate.method==='illustrative') {
+        message=`示意范围约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 没有引力束缚的合适主星，按天体自身质量给出有界参考圈（不是真实希尔球、不代表稳定轨道）；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}。球外仍有引力，范围不是引力截止线。`;
+      } else {
+        const kind=estimate.method==='hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
+        message=`${kind}约 ${estimate.radius.toPrecision(3)} 游戏距离单位 · 参考 ${TYPE_NAMES[estimate.primary.type] || estimate.primary.type} #${estimate.primary.labelNumber}；${scale<.999 ? `图形缩小至 ${percent}` : '按计算比例显示'}。球外仍有引力，范围不是引力截止线。`;
+      }
+    } else message='该天体不参与希尔球估算；显示不改变引力。';
   }
   if (enabled && document.getElementById('hillShowAll').checked) {
     let used=0;
@@ -3603,6 +3618,15 @@ function formatGameDistance(value) {
   if (value < 100) return value.toFixed(1).replace(/\.0$/, '');
   return String(Math.round(value));
 }
+// 标签质量与 2D 版保持同一显示口径；与距离格式分开，避免语义混淆。
+function formatLabelMass(value) {
+  if (!Number.isFinite(value)) return '?';
+  const a = Math.abs(value);
+  if (a < 0.01 || a >= 1e6) return value.toExponential(1);
+  if (a < 1) return value.toFixed(2);
+  if (a < 100) return value.toFixed(1).replace(/\.0$/, '');
+  return String(Math.round(value));
+}
 function niceGridSpacing(distance) {
   const rough = Math.max(1e-9, distance / 6);
   const power = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -3642,6 +3666,7 @@ function projectMeasurement(position, out) {
 function updateMeasurements() {
   camera.updateMatrixWorld();
   const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
+  const massOn = document.getElementById('massLabelsToggle').checked;
   referenceGrid.visible = gridOn && !landing; gridLegend.hidden = !gridOn || !!landing;
   if (gridOn) {
     gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
@@ -3677,15 +3702,22 @@ function updateMeasurements() {
     if (occupied.length >= limit) break;
     const body = item.body;
     const distance = body.mesh.position.distanceTo(reference ? reference.mesh.position : controls.target);
-    const text = `${body.whiteDwarfVariant ? WHITE_DWARF_VARIANTS[body.whiteDwarfVariant].name : (TYPE_NAMES[body.type] || body.type)} #${body.labelNumber} · ` +
+    const head = `${body.whiteDwarfVariant ? WHITE_DWARF_VARIANTS[body.whiteDwarfVariant].name : (TYPE_NAMES[body.type] || body.type)} #${body.labelNumber}`;
+    const mainText = head + ' · ' +
       (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
-    const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(text).width) + 14);
+    // 质量单独占第二行（名字下方）。宽度只按主行测量：质量行更短，不会让标签变宽，
+    // 因此拥挤场景的水平避让与开关关闭时完全一致，不会挤掉相邻标签。
+    const massLine = massOn ? '⚖ 质量 ' + formatLabelMass(body.mass) : '';
+    const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(mainText).width) + 14);
     const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
     const y = Math.max(24, Math.min(window.innerHeight - 4,
       item.y - Math.max(13, Math.min(80, body.r * focal / Math.max(.001,item.distance) + 8))));
-    if (body !== reference && occupied.some(p => Math.abs(p.x-x) < (p.width + width)/2 + 6 && Math.abs(p.y-y)<24)) continue;
+    const rowGap = massOn ? 36 : 24;
+    if (body !== reference && occupied.some(p => Math.abs(p.x-x) < (p.width + width)/2 + 6 && Math.abs(p.y-y)<rowGap)) continue;
     occupied.push({x,y,width});
-    if (body.labelEl.textContent !== text) body.labelEl.textContent = text;
+    // 内容均为内部生成的类型名/数字，无外部输入；用 innerHTML 渲染第二行，dataset.key 避免每帧重写。
+    const html = mainText + (massOn ? '<br><span class="label-mass">' + massLine + '</span>' : '');
+    if (body.labelEl.dataset.key !== html) { body.labelEl.innerHTML = html; body.labelEl.dataset.key = html; }
     body.labelEl.classList.toggle('selected',body === reference);
     body.labelEl.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-100%)`;
     if (body.labelEl.hidden) body.labelEl.hidden = false;

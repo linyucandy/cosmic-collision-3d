@@ -176,12 +176,13 @@
 
   <div class="check"><input type="checkbox" id="trails" checked><label for="trails">显示轨迹尾迹</label></div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示标签与距离</label></div>
+  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示平面距离网格</label></div>
   <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
   <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
   <div class="check"><input type="checkbox" id="hillShowAll" checked><label for="hillShowAll">显示其他天体估算范围</label></div>
   <div class="check"><input type="checkbox" id="hillFullScale" checked><label for="hillFullScale">选中球体按计算比例</label></div>
-  <div class="info" id="hillSphereInfo">选中天体后，按最近较重天体估算希尔半径。</div>
+  <div class="info" id="hillSphereInfo">选中天体后，按最近较重天体估算希尔半径；无合适主星时显示有界示意范围（非真实希尔球）。</div>
   <div class="info amber" id="habitableZoneInfo">宜居带为简化光照示意，不代表存在生命。</div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ X 射线伪彩</label></div>
   <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 暗物质伪彩分布</label></div>
@@ -839,17 +840,24 @@ function estimateHillSphere(body) {
     if (d < fallbackDistance) { fallback = candidate; fallbackDistance = d; }
   }
   const primary = heavier || fallback, distance = heavier ? heavyDistance : fallbackDistance;
-  if (!primary) return null;
-  const ratio = body.mass / primary.mass;
-  if (ratio < 0.02) return { primary, radius: distance * Math.cbrt(ratio / 3), method: 'hill' };
-  let lo = 1e-8, hi = 1 - 1e-8;
-  const m = body.mass, M = primary.mass, barycenter = M / (m + M);
-  for (let i = 0; i < 48; i++) {
-    const x = (lo + hi) / 2;
-    const force = -m / (x * x) + M / ((1 - x) * (1 - x)) + (m + M) * (x - barycenter);
-    if (force > 0) hi = x; else lo = x;
+  if (primary) {
+    const ratio = body.mass / primary.mass;
+    if (ratio < 0.02) return { primary, radius: distance * Math.cbrt(ratio / 3), method: 'hill' };
+    let lo = 1e-8, hi = 1 - 1e-8;
+    const m = body.mass, M = primary.mass, barycenter = M / (m + M);
+    for (let i = 0; i < 48; i++) {
+      const x = (lo + hi) / 2;
+      const force = -m / (x * x) + M / ((1 - x) * (1 - x)) + (m + M) * (x - barycenter);
+      if (force > 0) hi = x; else lo = x;
+    }
+    return { primary, radius: distance * (lo + hi) / 2, method: 'binary' };
   }
-  return { primary, radius: distance * (lo + hi) / 2, method: 'binary' };
+  // 没有引力束缚的合适参考天体（孤立天体、高速飞掠等）时，仍给一个有界示意范围，
+  // 让选中的天体基本都能看到范围。示意半径只按天体自身质量标度，绝不使用到参考天体的距离，
+  // 因此飞掠天体不会凭空获得巨大希尔球；同时以自身半径设下限、以固定上限封顶。
+  const selfScale = Math.cbrt(Math.max(0.001, body.mass));
+  const radius = clamp(Math.max(selfScale * 26, body.r * 2.6), 8, 420);
+  return { primary: null, radius, method: 'illustrative' };
 }
 function hillVisualRadius(body, radius) {
   if (body === selected && document.getElementById('hillFullScale').checked) return radius;
@@ -868,13 +876,22 @@ function updateHillSphere() {
       hillState.body = body; hillState.primary = estimate.primary;
       hillState.radius = estimate.radius; hillState.method = estimate.method;
       hillState.visual = hillVisualRadius(body, estimate.radius);
-      const kind = estimate.method === 'hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
+      // 示意圈只作观察提示，即使「按计算比例显示」也不让它撑满画布。
+      if (estimate.method === 'illustrative') hillState.visual = Math.min(hillState.visual, 150 / cam.zoom);
       const scale = hillState.visual / estimate.radius;
       const percent = scale * 100 < 1 ? '<1%' : Math.round(scale * 100) + '%';
-      message = kind + '约 ' + estimate.radius.toPrecision(3) + ' 距离单位 · 参考 ' +
-        estimate.primary.name + '；' + (scale < 0.999 ? '图形缩小至 ' + percent : '按计算比例显示') +
-        '。球外仍有引力，范围不是引力截止线。';
-    } else message = '没有引力束缚的较重或其他合适天体，无法估算希尔球；显示不改变引力。';
+      if (estimate.method === 'illustrative') {
+        message = '示意范围约 ' + estimate.radius.toPrecision(3) + ' 距离单位 · 没有引力束缚的合适主星，' +
+          '按天体自身质量给出有界参考圈（不是真实希尔球、不代表稳定轨道）；' +
+          (scale < 0.999 ? '图形缩小至 ' + percent : '按计算比例显示') +
+          '。球外仍有引力，范围不是引力截止线。';
+      } else {
+        const kind = estimate.method === 'hill' ? '希尔半径' : '双体 L1 距离（非标准希尔半径）';
+        message = kind + '约 ' + estimate.radius.toPrecision(3) + ' 距离单位 · 参考 ' +
+          estimate.primary.name + '；' + (scale < 0.999 ? '图形缩小至 ' + percent : '按计算比例显示') +
+          '。球外仍有引力，范围不是引力截止线。';
+      }
+    } else message = '该天体不参与希尔球估算；显示不改变引力。';
   }
   if (enabled && document.getElementById('hillShowAll').checked) {
     for (const other of bodies) {
@@ -944,8 +961,17 @@ function drawHillCircles() {
   }
   ctx.setLineDash([]);
 }
+function formatLabelMass(m) {
+  if (!Number.isFinite(m)) return '?';
+  const a = Math.abs(m);
+  if (a < 0.01 || a >= 1e6) return m.toExponential(1);
+  if (a < 1) return m.toFixed(2);
+  if (a < 100) return m.toFixed(1).replace(/\.0$/, '');
+  return String(Math.round(m));
+}
 function drawLabels() {
   if (!document.getElementById('labelsToggle').checked) return;
+  const showMass = document.getElementById('massLabelsToggle').checked;
   const taken = [];
   const limit = W < 640 ? 18 : 46;
   let drawn = 0;
@@ -954,19 +980,30 @@ function drawLabels() {
     if (drawn >= limit) break;
     const p = worldToScreen(b.x, b.y);
     if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) continue;
-    const text = b.name;
-    const w = ctx.measureText(text).width + 10;
-    const box = { x: p.x + Math.max(8, b.r * cam.zoom + 4), y: p.y - 8, w, h: 16 };
+    const name = b.name;
+    const massText = showMass ? '⚖ ' + formatLabelMass(b.mass) : '';
+    const w = Math.max(ctx.measureText(name).width, ctx.measureText(massText).width) + 10;
+    // 质量占第二行，距离在第三行；盒高随实际行数变化，避免文字溢出背景框。
+    const hasDistance = !!(selected && b !== selected);
+    const lines = 1 + (showMass ? 1 : 0) + (hasDistance ? 1 : 0);
+    const lineH = 14;
+    const box = { x: p.x + Math.max(8, b.r * cam.zoom + 4), y: p.y - 8, w, h: lines * lineH + 2 };
     if (taken.some(t => Math.abs(t.x - box.x) < (t.w + box.w) / 2 && Math.abs(t.y - box.y) < 18)) continue;
     taken.push(box); drawn++;
     ctx.fillStyle = 'rgba(10,16,34,0.7)';
     ctx.fillRect(box.x, box.y, box.w, box.h);
     ctx.fillStyle = b === selected ? '#ffffff' : '#b9cdff';
-    ctx.fillText(text, box.x + 5, box.y + 12);
-    if (selected && b !== selected) {
+    ctx.fillText(name, box.x + 5, box.y + 12);
+    let row = 1;
+    if (showMass) {
+      ctx.fillStyle = '#ffd98a';
+      ctx.fillText(massText, box.x + 5, box.y + 12 + row * lineH);
+      row++;
+    }
+    if (hasDistance) {
       const d = Math.hypot(b.x - selected.x, b.y - selected.y);
       ctx.fillStyle = '#8fa8e0';
-      ctx.fillText(d.toFixed(0), box.x + 5, box.y + 27);
+      ctx.fillText(d.toFixed(0), box.x + 5, box.y + 12 + row * lineH);
     }
   }
 }

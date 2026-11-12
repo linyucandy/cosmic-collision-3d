@@ -18,7 +18,7 @@
 | 天体类型 | 42 种，参数表与 3D 版一致（含冷次矮星 `subdwarf` 与热亚矮星 `hotSubdwarf`）；面板布局也对齐 3D：`#featuredTools` 快捷 3 种（暗物质、暗物质晕、引力真空星）、`#tools` 主面板 28 种、`#exoticCatalog` 特殊与假想天体 11 种，全部带图标与悬浮说明 |
 | 尺寸模型 | 复用 `CelestialSize.radiusFor`，提供「易观察 / 参考大小」两种模式，切换时重算全部半径 |
 | 物理 | 二维 N 体积分、扫掠碰撞检测、白洞近场排斥、暗物质软化引力、虫洞配对传送、动量守恒合并、撞击碎片、潮汐撕扯、离心解体、恒星演化、白矮星吸积新星、钱德拉塞卡极限 |
-| 叠加层 | 希尔球（含双体 L1 估计与最多 24 个其他天体）、宜居带、平面距离网格与刻度、标签与距离、轨迹、X 射线/暗物质伪彩、致密星平面光环、奥尔特云、彗尾、撞击坑 |
+| 叠加层 | 希尔球（含双体 L1 估计、无主星时的有界示意范围与最多 24 个其他天体）、宜居带、平面距离网格与刻度、标签与距离（可切换常驻质量数值）、轨迹、X 射线/暗物质伪彩、致密星平面光环、奥尔特云、彗尾、撞击坑 |
 | 特效 | 粒子爆炸、球形压力波的二维环、星云残骸、日冕物质抛射、造父变星脉动、光晕与吸积盘 |
 | 评估 | 复用 `planet-assessment.js`，光源覆盖全部发光类型，参考半径按当前尺寸模式计算 |
 | 场景 | 17 个物理演示按钮、单/双/三星恒星系、随机星系、冲击波自动重播、`?scene=` 深链 |
@@ -64,6 +64,12 @@
 
 3D 复用同一资料卡结构：`landingPose()` 把相机停在 `1.08 × 天体半径` 处，以表面法线为 `up`、视线切向球面并略微下俯，形成可见弧形地平线；降落与返回都有相机动画。观察期间隐藏距离网格、轨迹、希尔球、选中环与主控制面板，返回后恢复原相机姿态、暂停状态与辅助线。黑洞、恒星、气态巨行星和星系等没有固体表面的对象会显示对应的科学说明。
 
+## 质量标签与希尔球示意范围
+
+两版在「显示标签」区新增 `#massLabelsToggle`（默认开启）：2D 在 `drawLabels()` 里把 `⚖ 质量 <数值>` 画成标签第二行，3D 在 `updateMeasurements()` 里用 `<span class="label-mass">` 作为名字下方第二行。两版共用同一套数值口径 `formatLabelMass()`：小于 0.01 或大于等于 1e6 用科学计数法，其余按 2 位小数/1 位小数/整数分级。3D 标签的水平避让宽度只按第一行测量，所以开启质量标签不会挤掉相邻标签（`test_crowded_labels_do_not_overlap` 的可见数量在开关前后一致）。关闭开关只隐藏质量，类型与距离文本照常显示。
+
+`estimateHillSphere()` 现在对**所有**选中天体都返回一个可绘制的半径。严格路径保持不变：有引力束缚的较重主星时按 `r = d·∛(m/3M)` 计算希尔半径，质量比过大时改用双体 L1 距离。严格路径失败（孤立天体、高速飞掠、只有更轻伴星等）时返回 `method: 'illustrative'` 的**有界示意半径** `clamp(max(∛m·26, r·2.6), 8, 420)`：它只按天体自身质量与半径标度，**不使用到参考天体的距离**，因此飞掠天体不会像真实希尔球那样随距离膨胀成巨大圈；`primary` 为 null，信息栏明确写「示意范围……不是真实希尔球、不代表稳定轨道」。两版都给示意圈单独的视觉上限（2D 为 `150 / cam.zoom`，3D 为相机距离的 0.55 倍），避免撑满画布。图形仍只用于显示，不参与引力与碰撞。
+
 ## 没有直接平移的 3D 能力
 
 真实三维轨道倾角、透视景深、球面纹理与法线贴图、GPU 后处理、DOM 标签的透镜反投影。这些是渲染层特性，不影响二维下的物理与玩法。
@@ -76,8 +82,10 @@
 
 ## 验证
 
-`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_subdwarf_is_fully_registered_in_2d`、`test_subdwarf_is_fully_registered_in_3d`、`test_2d_white_dwarf_samples_and_iax_eruption`、`test_2d_binary_and_triple_star_systems_stay_bound`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、42 种类型与面板一一对应、次矮星在两版中的注册与科学说明、白矮星样例与 Iax 残骸、双星/三星系 1200 步束缚轨道、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。`tests/celestial-size.test.cjs` 同时断言次矮星参考半径介于褐矮星与红矮星之间、且比热亚矮星更大。
+`tests/test_simulator.py` 中的 `test_2d_flat_simulator_keeps_a_plane_and_all_body_types`、`test_subdwarf_is_fully_registered_in_2d`、`test_subdwarf_is_fully_registered_in_3d`、`test_2d_white_dwarf_samples_and_iax_eruption`、`test_2d_binary_and_triple_star_systems_stay_bound`、`test_2d_hill_sphere_is_a_flat_circle_estimate`、`test_2d_demos_and_camera_roundtrip` 覆盖平面约束、42 种类型与面板一一对应、次矮星在两版中的注册与科学说明、白矮星样例与 Iax 残骸、双星/三星系 1200 步束缚轨道、希尔球估算与演示入口；原有 2D 断言继续覆盖评分面板、移动端折叠、冲击波重播和随机星系上限。`test_2d_isolated_and_flyby_bodies_get_bounded_illustrative_ranges`、`test_2d_mass_labels_toggle_shows_each_body_mass` 覆盖 2D 孤立/飞掠天体的有界示意圈与质量开关；3D 侧 `test_body_labels_show_type_and_three_dimensional_distance_and_can_be_toggled` 增补质量常驻断言，`test_unbound_flyby_gets_bounded_illustrative_range_not_huge_hill_sphere`（由原「飞掠无希尔球」用例改写）与 `test_hill_sphere_demo_and_missing_primary` 改为断言有界示意圈。`tests/celestial-size.test.cjs` 同时断言次矮星参考半径介于褐矮星与红矮星之间、且比热亚矮星更大。
 
 本地用 Chrome + `puppeteer-core` 做过三轮真实浏览器回归：界面与演示 24/24 通过（42 个按钮逐一点击、42 种天体创建绘制、8 个白矮星样例、Iax 两个分支、17 个演示按钮、希尔球两种估算、移动端折叠高度 127px、零运行时错误）；轨道稳定性 19/19 通过（4000 步手动积分，三种恒星系均无合并、无抛失、间距保持束缚）；次矮星两版一致性 23/23 通过（42 种类型、按钮与说明、创建与绘制、发光/日冕/奥尔特云/宜居带/评分注册、两版参考半径一致、3D 可作为新星伴星、零运行时错误）。3D 页面通过 CDN 加载 Three.js 后已可在本机实测，其质心构建仍是 2D 恒星系预设的参考实现。
 
 本轮新增 `test_2d_galaxy_radius_collision_and_merger_stay_bounded`、`test_2d_landing_button_and_flat_surface_view`、`test_3d_landing_descends_to_surface_and_restores_orbit`，并在 3D 测试注入钩子里暴露 `landing` / `landingUi` / `simPaused` / `controlsEnabled`。由于本机没有 Python `playwright`，这些新用例的 JavaScript 断言另用 Chrome + `puppeteer-core` 等价执行 16/16 通过：2D 星系半径 150、点选不吞画布、碰撞演示初始间隔约 181 且零碰撞、并合只剩一个质量 4800 且有潮汐拉伸动画的星系；2D/3D 登陆按钮在桌面与折叠移动端均可见；2D 七类地表资料卡齐全；3D 相机贴地距离约 1.08 倍半径、辅助线隐藏、返回后相机与暂停状态恢复、零运行时错误。2D 与 3D 的专项浏览器回归分别为 18/18 与 17/17，另附截图确认 2D 地表剖面与 3D 弧形地平线。全部 9 个 Node `.test.cjs` 文件共 72 项断言通过。
+
+本轮「质量标签 + 希尔球示意范围」在 3D 测试钩子里再暴露 `estimateHillSphere`。真实 Chrome + `puppeteer-core` 分三组等价执行：功能专项 22/22 通过（两版质量开关默认开启、可单独关闭、数值随天体不同；孤立天体给出 `illustrative` 有界示意圈且文案标注；束缚天体仍走严格 `hill`；飞掠天体仅得有界示意圈、半径远小于两体距离；零运行时错误）；既有回归 17/17 通过（3D 类型/距离文本保留、标签开关仍整体隐藏、拥挤场景在 `?scene=bh` 下质量开关前后可见标签数一致为 3 且零重叠、严格希尔半径与翻倍关系、等质量 L1=150、轻伴星 binary 有界、其他天体上限 24、清空后隐藏；2D 严格希尔与 binary 估算保留、标签绘制无异常）；新增/改写正式用例的 JS 断言 16/16 通过。另以截图确认 2D 质量在标签第二行、3D 质量在名字下方一行且示意希尔圈大小克制。此前「飞掠天体不获得巨大希尔球」由「完全不画圈」改为「有界示意圈」，是本轮有意放宽的行为，其余物理约束不变。

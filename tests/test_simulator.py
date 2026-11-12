@@ -55,6 +55,7 @@ window.sim = { bodies, randomSystem, spawnBody, handleCollisions, removeBody, re
   get hillSphere() { return typeof hillSphere === 'undefined' ? null : hillSphere; },
   get otherHillSpheres() { return typeof otherHillSpheres === 'undefined' ? null : otherHillSpheres; },
   get updateHillSphere() { return typeof updateHillSphere === 'undefined' ? null : updateHillSphere; },
+  get estimateHillSphere() { return typeof estimateHillSphere === 'undefined' ? null : estimateHillSphere; },
   get updateSizeMarkers() { return typeof updateSizeMarkers === 'undefined' ? null : updateSizeMarkers; },
   get pickBody() { return typeof pickBody === 'undefined' ? null : pickBody; },
   get updateNovaAccretion() { return typeof updateNovaAccretion === "undefined" ? null : updateNovaAccretion; },
@@ -949,6 +950,13 @@ loop();''')
           planet:sim.bodies[1].labelEl.textContent,id:sim.bodies[1].labelEl.id})""")
         self.assertIn('恒星',info['star']);self.assertIn('行星',info['planet'])
         self.assertIn('距选中 100',info['planet'])
+        # 质量常驻标签（默认开），可单独关闭/恢复，不影响类型与距离文本。
+        self.assertIn('⚖',info['star']);self.assertIn('⚖ 质量 600',info['star'])
+        self.page.locator('#massLabelsToggle').uncheck()
+        self.page.wait_for_function("!sim.bodies[0].labelEl.textContent.includes('⚖')")
+        self.assertIn('距选中 100',self.page.evaluate('sim.bodies[1].labelEl.textContent'))
+        self.page.locator('#massLabelsToggle').check()
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
         self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
         self.page.locator('#labelsToggle').uncheck()
         self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
@@ -1353,9 +1361,20 @@ loop();''')
             satellite:sim.bodies.some(b=>b.type==='asteroid')};
         }''')
         self.assertTrue(all(result.values()),result)
-        self.page.evaluate('sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,40,"planet"));sim.updateHillSphere()')
-        self.assertFalse(self.page.evaluate('sim.hillSphere.group.visible'))
-        self.assertIn('较重',self.page.locator('#hillSphereInfo').inner_text())
+        # 孤立天体现在也应显示有界的示意范围，而不是完全没有圈。
+        lone=self.page.evaluate('''() => {
+          sim.clear();sim.selectBody(sim.spawnBody(0,0,0,0,0,0,40,"planet"));sim.updateHillSphere();
+          return {visible:sim.hillSphere.group.visible, primary:sim.hillSphere.primary,
+            method:sim.hillSphere.method, radius:sim.hillSphere.radius};
+        }''')
+        self.assertTrue(lone['visible'],lone)
+        self.assertIsNone(lone['primary'])
+        self.assertEqual(lone['method'],'illustrative')
+        self.assertGreater(lone['radius'],0)
+        self.assertLess(lone['radius'],500)
+        note=self.page.locator('#hillSphereInfo').inner_text()
+        self.assertIn('示意',note)
+        self.assertIn('束缚',note)
         self.assertEqual(self.errors,[])
 
     def test_hill_sphere_follows_running_demo_and_primary_removal(self):
@@ -1499,16 +1518,24 @@ loop();''')
         self.assertGreater(result['radius'],0,result)
         self.assertEqual(self.errors,[])
 
-    def test_unbound_flyby_does_not_gain_enormous_hill_sphere(self):
+    def test_unbound_flyby_gets_bounded_illustrative_range_not_huge_hill_sphere(self):
         self.open_sim()
         result=self.page.evaluate('''() => {
           sim.clear();sim.spawnBody(0,0,0,0,0,0,600,'star');
           const p=sim.spawnBody(3000,0,0,100,0,0,40,'planet');sim.selectBody(p);sim.updateHillSphere();
-          return {visible:sim.hillSphere.group.visible, primary:sim.hillSphere.primary};
+          return {visible:sim.hillSphere.group.visible, primary:sim.hillSphere.primary,
+            method:sim.hillSphere.method, radius:sim.hillSphere.radius,
+            estimate:sim.estimateHillSphere(p)};
         }''')
-        self.assertFalse(result['visible'],result)
+        self.assertTrue(result['visible'],result)
         self.assertIsNone(result['primary'])
-        self.assertIn('束缚',self.page.locator('#hillSphereInfo').inner_text())
+        self.assertEqual(result['method'],'illustrative',result)
+        # 示意半径必须远小于到参考天体的 3000 距离，绝不能像真实希尔球那样随距离膨胀。
+        self.assertLess(result['radius'],500,result)
+        self.assertLess(result['estimate']['radius'],500,result)
+        note=self.page.locator('#hillSphereInfo').inner_text()
+        self.assertIn('束缚',note)
+        self.assertIn('示意',note)
         self.assertEqual(self.errors,[])
 
     def test_hill_sphere_collection_is_bounded_and_cleared(self):
@@ -2056,6 +2083,65 @@ loop();''')
         self.assertEqual(result['hill']['method'], 'hill')
         self.assertIn('希尔半径', result['hill']['note'])
         self.assertEqual(result['method'], 'binary')
+        self.assertEqual(self.errors, [])
+
+    def test_2d_isolated_and_flyby_bodies_get_bounded_illustrative_ranges(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("typeof estimateHillSphere === 'function'", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const lone = spawnBody(300, 300, 0, 0, 40, 'planet');
+          selected = lone; updateHillSphere();
+          const isolated = { body: hillState.body === lone, primary: hillState.primary,
+            method: hillState.method, radius: hillState.radius, visual: hillState.visual,
+            note: document.getElementById('hillSphereInfo').textContent };
+          clearScene();
+          const star = spawnBody(300, 300, 0, 0, 600, 'star');
+          const fly = spawnBody(3300, 300, 0, 100, 40, 'planet');
+          selected = fly; updateHillSphere();
+          const flyby = { method: hillState.method, primary: hillState.primary,
+            radius: hillState.radius, distance: Math.hypot(fly.x - star.x, fly.y - star.y),
+            note: document.getElementById('hillSphereInfo').textContent };
+          return { isolated, flyby };
+        }''')
+        iso = result['isolated']
+        self.assertTrue(iso['body'] and iso['method'] == 'illustrative' and iso['primary'] is None, iso)
+        self.assertGreater(iso['radius'], 0)
+        self.assertLess(iso['radius'], 500)
+        self.assertLess(iso['visual'], 160)
+        self.assertIn('示意', iso['note']); self.assertIn('束缚', iso['note'])
+        fly = result['flyby']
+        self.assertEqual(fly['method'], 'illustrative', fly)
+        self.assertIsNone(fly['primary'])
+        self.assertLess(fly['radius'], 500)
+        self.assertLess(fly['radius'], fly['distance'] / 5)
+        self.assertIn('示意', fly['note']); self.assertIn('束缚', fly['note'])
+        self.assertEqual(self.errors, [])
+
+    def test_2d_mass_labels_toggle_shows_each_body_mass(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("typeof drawLabels === 'function'", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const star = spawnBody(400, 300, 0, 0, 600, 'star');
+          const planet = spawnBody(560, 300, 0, 0, 6, 'planet');
+          selected = planet;
+          const orig = CanvasRenderingContext2D.prototype.fillText;
+          const capture = on => {
+            document.getElementById('massLabelsToggle').checked = on;
+            const lines = [];
+            CanvasRenderingContext2D.prototype.fillText = function(t){ lines.push(String(t)); return orig.apply(this, arguments); };
+            try { drawLabels(); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
+            return lines;
+          };
+          const on = capture(true), off = capture(false);
+          document.getElementById('massLabelsToggle').checked = true;
+          return { on, off, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
+        }''')
+        self.assertTrue(any('⚖' in line for line in result['on']), result)
+        self.assertTrue(any(result['starMass'] in line for line in result['on']), result)
+        self.assertTrue(any(result['planetMass'] in line for line in result['on']), result)
+        self.assertFalse(any('⚖' in line for line in result['off']), result)
         self.assertEqual(self.errors, [])
 
     def test_2d_binary_and_triple_star_systems_stay_bound(self):
