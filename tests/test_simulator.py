@@ -957,6 +957,13 @@ loop();''')
         self.assertIn('距选中 100',self.page.evaluate('sim.bodies[1].labelEl.textContent'))
         self.page.locator('#massLabelsToggle').check()
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
+        # 质量单位下拉：真实单位按 3000 游戏单位 = 1 太阳质量换算，可切回游戏单位。
+        self.page.select_option('#massUnitSelect', 'solar')
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 0.20 太阳质量')")
+        self.page.select_option('#massUnitSelect', 'earth')
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('地球质量')")
+        self.page.select_option('#massUnitSelect', 'game')
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
         self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
         self.page.locator('#labelsToggle').uncheck()
         self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
@@ -2136,12 +2143,22 @@ loop();''')
           };
           const on = capture(true), off = capture(false);
           document.getElementById('massLabelsToggle').checked = true;
-          return { on, off, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
+          // 单位换算：3000 游戏单位 = 1 太阳质量；600 → 0.20 太阳质量，6 → 约 666 地球质量。
+          document.getElementById('massUnitSelect').value = 'solar';
+          const solar = capture(true);
+          document.getElementById('massUnitSelect').value = 'earth';
+          const earth = capture(true);
+          document.getElementById('massUnitSelect').value = 'game';
+          const game = capture(true);
+          return { on, off, solar, earth, game, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
         }''')
         self.assertTrue(any('⚖' in line for line in result['on']), result)
         self.assertTrue(any(result['starMass'] in line for line in result['on']), result)
         self.assertTrue(any(result['planetMass'] in line for line in result['on']), result)
         self.assertFalse(any('⚖' in line for line in result['off']), result)
+        self.assertTrue(any('0.20 太阳质量' in line for line in result['solar']), result)
+        self.assertTrue(any('地球质量' in line for line in result['earth']), result)
+        self.assertTrue(any('⚖ 600' in line for line in result['game']), result)
         self.assertEqual(self.errors, [])
 
     def test_2d_binary_and_triple_star_systems_stay_bound(self):

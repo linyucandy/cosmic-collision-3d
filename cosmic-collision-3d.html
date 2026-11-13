@@ -202,7 +202,20 @@
   <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">造父变星的半径会周期变化；普通恒星只改变光晕，光晕不是本体。</div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
-  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
+  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label>
+    <select id="massUnitSelect" title="选择标签质量的显示单位" style="background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px;max-width:112px">
+      <option value="game">游戏单位</option>
+      <option value="galaxy">银河系质量</option>
+      <option value="solar">太阳质量</option>
+      <option value="jupiter">木星质量</option>
+      <option value="earth">地球质量</option>
+      <option value="moon">月球质量</option>
+      <option value="ocean">海洋质量</option>
+      <option value="atmosphere">大气质量</option>
+      <option value="kg">千克</option>
+      <option value="g">克</option>
+      <option value="mg">毫克</option>
+    </select></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
   <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 显示暗物质伪彩分布</label></div>
@@ -3627,6 +3640,29 @@ function formatLabelMass(value) {
   if (a < 100) return value.toFixed(1).replace(/\.0$/, '');
   return String(Math.round(value));
 }
+// 标签质量单位换算：项目约定 3000 游戏质量单位 = 1 个太阳质量（与白矮星演示一致）。
+const KG_PER_GAME_MASS = 1.989e30 / 3000;
+const MASS_UNIT_DEFS = [
+  { id: 'game', name: '游戏单位', kg: KG_PER_GAME_MASS },
+  { id: 'galaxy', name: '银河系质量', kg: 1.5e12 * 1.989e30 },
+  { id: 'solar', name: '太阳质量', kg: 1.989e30 },
+  { id: 'jupiter', name: '木星质量', kg: 1.898e27 },
+  { id: 'earth', name: '地球质量', kg: 5.972e24 },
+  { id: 'moon', name: '月球质量', kg: 7.342e22 },
+  { id: 'ocean', name: '海洋质量', kg: 1.4e21 },
+  { id: 'atmosphere', name: '大气质量', kg: 5.15e18 },
+  { id: 'kg', name: '千克', kg: 1 },
+  { id: 'g', name: '克', kg: 1e-3 },
+  { id: 'mg', name: '毫克', kg: 1e-6 }
+];
+function selectedMassUnit() {
+  const el = document.getElementById('massUnitSelect');
+  return MASS_UNIT_DEFS.find(u => u.id === (el && el.value)) || MASS_UNIT_DEFS[0];
+}
+// 游戏单位保持「⚖ 质量 600」的既有口径；真实单位在数值后写明单位名。
+function formatMassInUnit(gameMass, unit) {
+  return formatLabelMass(gameMass * KG_PER_GAME_MASS / unit.kg) + (unit.id === 'game' ? '' : ' ' + unit.name);
+}
 function niceGridSpacing(distance) {
   const rough = Math.max(1e-9, distance / 6);
   const power = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -3667,6 +3703,7 @@ function updateMeasurements() {
   camera.updateMatrixWorld();
   const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
   const massOn = document.getElementById('massLabelsToggle').checked;
+  const massUnit = massOn ? selectedMassUnit() : null;
   referenceGrid.visible = gridOn && !landing; gridLegend.hidden = !gridOn || !!landing;
   if (gridOn) {
     gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
@@ -3707,7 +3744,7 @@ function updateMeasurements() {
       (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
     // 质量单独占第二行（名字下方）。宽度只按主行测量：质量行更短，不会让标签变宽，
     // 因此拥挤场景的水平避让与开关关闭时完全一致，不会挤掉相邻标签。
-    const massLine = massOn ? '⚖ 质量 ' + formatLabelMass(body.mass) : '';
+    const massLine = massOn ? (massUnit.id === 'game' ? '⚖ 质量 ' + formatLabelMass(body.mass) : '⚖ ' + formatMassInUnit(body.mass, massUnit)) : '';
     const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(mainText).width) + 14);
     const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
     const y = Math.max(24, Math.min(window.innerHeight - 4,
