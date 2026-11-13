@@ -950,20 +950,20 @@ loop();''')
           planet:sim.bodies[1].labelEl.textContent,id:sim.bodies[1].labelEl.id})""")
         self.assertIn('恒星',info['star']);self.assertIn('行星',info['planet'])
         self.assertIn('距选中 100',info['planet'])
-        # 质量常驻标签（默认开），可单独关闭/恢复，不影响类型与距离文本。
-        self.assertIn('⚖',info['star']);self.assertIn('⚖ 质量 600',info['star'])
+        # 质量常驻标签默认开，默认单位太阳质量（3000 游戏单位 = 1 个太阳质量）。
+        self.assertIn('⚖',info['star']);self.assertIn('0.20 太阳质量',info['star'])
         self.page.locator('#massLabelsToggle').uncheck()
         self.page.wait_for_function("!sim.bodies[0].labelEl.textContent.includes('⚖')")
         self.assertIn('距选中 100',self.page.evaluate('sim.bodies[1].labelEl.textContent'))
         self.page.locator('#massLabelsToggle').check()
-        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
-        # 质量单位下拉：真实单位按 3000 游戏单位 = 1 太阳质量换算，可切回游戏单位。
-        self.page.select_option('#massUnitSelect', 'solar')
-        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 0.20 太阳质量')")
-        self.page.select_option('#massUnitSelect', 'earth')
-        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('地球质量')")
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('0.20 太阳质量')")
+        # 质量单位下拉：可切回游戏单位、也可换成地球质量等真实单位。
         self.page.select_option('#massUnitSelect', 'game')
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
+        self.page.select_option('#massUnitSelect', 'earth')
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('地球质量')")
+        self.page.select_option('#massUnitSelect', 'solar')
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('0.20 太阳质量')")
         self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
         self.page.locator('#labelsToggle').uncheck()
         self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
@@ -2134,31 +2134,26 @@ loop();''')
           const planet = spawnBody(560, 300, 0, 0, 6, 'planet');
           selected = planet;
           const orig = CanvasRenderingContext2D.prototype.fillText;
-          const capture = on => {
+          const capture = (on, unit) => {
             document.getElementById('massLabelsToggle').checked = on;
+            if (unit) document.getElementById('massUnitSelect').value = unit;
             const lines = [];
             CanvasRenderingContext2D.prototype.fillText = function(t){ lines.push(String(t)); return orig.apply(this, arguments); };
             try { drawLabels(); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
             return lines;
           };
-          const on = capture(true), off = capture(false);
+          const solar = capture(true, 'solar'), off = capture(false);
+          const game = capture(true, 'game'), earth = capture(true, 'earth');
           document.getElementById('massLabelsToggle').checked = true;
-          // 单位换算：3000 游戏单位 = 1 太阳质量；600 → 0.20 太阳质量，6 → 约 666 地球质量。
           document.getElementById('massUnitSelect').value = 'solar';
-          const solar = capture(true);
-          document.getElementById('massUnitSelect').value = 'earth';
-          const earth = capture(true);
-          document.getElementById('massUnitSelect').value = 'game';
-          const game = capture(true);
-          return { on, off, solar, earth, game, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
+          return { solar, off, game, earth, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
         }''')
-        self.assertTrue(any('⚖' in line for line in result['on']), result)
-        self.assertTrue(any(result['starMass'] in line for line in result['on']), result)
-        self.assertTrue(any(result['planetMass'] in line for line in result['on']), result)
-        self.assertFalse(any('⚖' in line for line in result['off']), result)
+        self.assertTrue(any('⚖' in line for line in result['solar']), result)
         self.assertTrue(any('0.20 太阳质量' in line for line in result['solar']), result)
         self.assertTrue(any('地球质量' in line for line in result['earth']), result)
-        self.assertTrue(any('⚖ 600' in line for line in result['game']), result)
+        self.assertTrue(any(result['starMass'] in line for line in result['game']), result)
+        self.assertTrue(any(result['planetMass'] in line for line in result['game']), result)
+        self.assertFalse(any('⚖' in line for line in result['off']), result)
         self.assertEqual(self.errors, [])
 
     def test_2d_binary_and_triple_star_systems_stay_bound(self):

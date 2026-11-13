@@ -202,11 +202,12 @@
   <div class="check"><input type="checkbox" id="stellarPulseToggle" checked><label for="stellarPulseToggle">恒星脉动与光晕变化</label></div>
   <div style="font-size:11px;color:#abc;line-height:1.4;margin-bottom:8px">造父变星的半径会周期变化；普通恒星只改变光晕，光晕不是本体。</div>
   <div class="check"><input type="checkbox" id="labelsToggle" checked><label for="labelsToggle">显示天体标签和距离</label></div>
-  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label>
-    <select id="massUnitSelect" title="选择标签质量的显示单位" style="background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px;max-width:112px">
+  <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
+  <div class="check"><label for="massUnitSelect" style="color:#9fb0e8">质量单位</label>
+    <select id="massUnitSelect" title="选择标签质量的显示单位" style="flex:1 1 auto;min-width:0;background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px">
       <option value="game">游戏单位</option>
       <option value="galaxy">银河系质量</option>
-      <option value="solar">太阳质量</option>
+      <option value="solar" selected>太阳质量</option>
       <option value="jupiter">木星质量</option>
       <option value="earth">地球质量</option>
       <option value="moon">月球质量</option>
