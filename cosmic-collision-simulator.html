@@ -1135,18 +1135,23 @@ function drawNebula() {
   const n2 = ctx.createRadialGradient(W * 0.8, H * 0.7, 0, W * 0.8, H * 0.7, W * 0.3);
   n2.addColorStop(0, 'rgba(30,90,150,0.08)'); n2.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = n2; ctx.fillRect(0, 0, W, H);
+  const n3 = ctx.createRadialGradient(W * 0.62, H * 0.16, 0, W * 0.62, H * 0.16, W * 0.28);
+  n3.addColorStop(0, 'rgba(150,60,150,0.09)'); n3.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = n3; ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'source-over';
 }
 function drawStars(t) {
+  // 视差：相机平移时远景星空反向缓移（模屏幕尺寸循环），营造纵深
+  const ox = ((cam.x * 0.06 % W) + W) % W, oy = ((cam.y * 0.06 % H) + H) % H;
   // 银河带：一次生成的斜向密集星雾，先画形成连续光带。
   for (const m of milky) {
     ctx.fillStyle = m.c;
-    ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc((m.x - ox + W) % W, (m.y - oy + H) % H, m.r, 0, TAU); ctx.fill();
   }
   for (const s of stars) {
     ctx.fillStyle = s.c;
     ctx.globalAlpha = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc((s.x - ox + W) % W, (s.y - oy + H) % H, s.r, 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
@@ -1251,7 +1256,20 @@ function drawCollection(b, t) {
   ctx.globalAlpha = 1; ctx.restore();
 }
 function drawTerrestrial(b, t) {
-  const g = ctx.createRadialGradient(b.x - b.r * 0.4, b.y - b.r * 0.4, b.r * 0.1, b.x, b.y, b.r);
+  // 昼夜明暗：亮面朝向最近的恒星；没有恒星时保持左上默认光
+  let lx = -0.4, ly = -0.4;
+  let host = null, best = Infinity;
+  for (const s of bodies) {
+    if (!LIT_TYPES.has(s.type) || s === b) continue;
+    const d = Math.hypot(s.x - b.x, s.y - b.y);
+    if (d < best) { best = d; host = s; }
+  }
+  if (host) {
+    const dx = host.x - b.x, dy = host.y - b.y, len = Math.hypot(dx, dy) || 1;
+    lx = dx / len; ly = dy / len;
+  }
+  const g = ctx.createRadialGradient(b.x + lx * b.r * 0.5, b.y + ly * b.r * 0.5,
+    b.r * 0.1, b.x, b.y, b.r);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, b.color); g.addColorStop(1, 'rgba(10,15,40,1)');
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
@@ -1272,6 +1290,19 @@ function drawTerrestrial(b, t) {
     ctx.strokeStyle = 'rgba(255,' + Math.round(160 - b.heat * 90) + ',60,' + Math.min(0.8, b.heat) + ')';
     ctx.lineWidth = Math.max(1, b.r * 0.18);
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.94, 0, TAU); ctx.stroke();
+  }
+  // 大气边缘辉光：屏幕上足够大才画，加色混合出一圈天蓝光晕
+  if (b.r * cam.zoom > 6) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const rim = ctx.createRadialGradient(b.x, b.y, b.r * 0.82, b.x, b.y, b.r * 1.32);
+    rim.addColorStop(0, 'rgba(159,212,255,0)');
+    rim.addColorStop(0.6, 'rgba(159,212,255,0.16)');
+    rim.addColorStop(0.78, 'rgba(159,212,255,0.32)');
+    rim.addColorStop(1, 'rgba(159,212,255,0)');
+    ctx.fillStyle = rim;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.32, 0, TAU); ctx.fill();
+    ctx.restore();
   }
   if (b.ring) {
     ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.ring.phase + t * 0.05);

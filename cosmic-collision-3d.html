@@ -353,7 +353,7 @@ function makeLensPass(shader) {
     dispose() { geometry.dispose(); material.dispose(); }
   };
 }
-let composer = null, lensPass = null;
+let composer = null, lensPass = null, filmPass = null;
 try {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -387,8 +387,25 @@ try {
   composer.addPass(lensPass);
   composer.addPass(new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.85, 0.45, 0.72));
+  // 电影暗角 + 轻微动态颗粒：营造深空摄影质感（画面效果，与物理无关）
+  filmPass = makeLensPass({
+    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+    vertexShader: `varying vec2 vUv;
+      void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; varying vec2 vUv;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))+uTime)*43758.5453); }
+      void main(){
+        vec4 c = texture2D(tDiffuse, vUv);
+        float d = distance(vUv, vec2(0.5));
+        c.rgb *= mix(1.0, smoothstep(0.88, 0.38, d), 0.30);  // 暗角
+        c.rgb += (hash(vUv * 917.0) - 0.5) * 0.016;         // 微颗粒
+        gl_FragColor = c;
+      }`
+  });
+  filmPass.enabled = true;
+  composer.addPass(filmPass);
   composer.addPass(new OutputPass());
-} catch (e) { composer = null; lensPass = null; }
+} catch (e) { composer = null; lensPass = null; filmPass = null; }
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1396,7 +1413,9 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     // 类地行星：海洋 + 大陆 + 草地/沙漠/山脉 + 极冠，叠加云层与大气
     const mapTex = terrTexes[(Math.random() * terrTexes.length) | 0];
     mesh = new THREE.Mesh(sphereGeoHi, new THREE.MeshStandardMaterial({
-      map: mapTex, roughness: 0.92, metalness: 0.02 }));
+      map: mapTex, roughness: 0.92, metalness: 0.02,
+      // 凹凸贴图：直接复用颜色图的亮度作高度，特写时大陆/山脉有立体光影
+      bumpMap: mapTex, bumpScale: Math.min(0.5, Math.max(0.003, r * 0.02)) }));
     const cloudMat = new THREE.MeshStandardMaterial({ map: cloudTex, transparent: true,
       opacity: 0.6, depthWrite: false, roughness: 1 });
     const clouds = new THREE.Mesh(sphereGeoHi, cloudMat);
@@ -4242,6 +4261,10 @@ function loop() {
   updateMeasurements();
   updateXrayEffects();
   updateSizeMarkers();
+  // 恒星表面「流动」：米粒纹理整体缓慢漂移，特写时像对流在翻涌
+  starGranuleTex.offset.x = (simT * 0.004) % 1;
+  starGranuleTex.offset.y = (simT * 0.0013) % 1;
+  if (filmPass) filmPass.uniforms.uTime.value = performance.now() * 0.001;
   if (composer) composer.render(); else renderer.render(scene, camera);
   statBodies.textContent = bodies.length;
   statCollisions.textContent = collisions;
