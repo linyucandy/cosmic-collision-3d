@@ -999,24 +999,49 @@ const MASS_UNIT_DEFS = [
   { id: 'g', name: '克', kg: 1e-3 },
   { id: 'mg', name: '毫克', kg: 1e-6 }
 ];
-// 天体族基准：游戏质量 per ↔ kg。沿用项目既有口径：恒星 3000 = 1 太阳质量（白矮星演示）、
-// 行星 40 = 1 地球质量（行星评分 earthSimilarity 口径）。
+// 天体族回退基准：只有没进 TYPE_REAL_MASS 的类型才用（碎片、临时天体）。
 const MASS_FAMILY_ANCHORS = [
   { types: ['galaxySpiral', 'galaxyElliptical', 'galaxyIrregular', 'darkHalo', 'darkMatter'], per: 2400, kg: 1.5e12 * 1.989e30 },
   { types: ['openCluster', 'globularCluster'], per: 2000, kg: 1e5 * 1.989e30 },
   { types: ['gasGiant', 'brownDwarf'], per: 70, kg: 1.898e27 },
   { types: ['planet', 'ringplanet'], per: 40, kg: 5.972e24 },
-  { types: ['asteroid', 'comet', 'probe'], per: 40 / 81.3, kg: 7.342e22 }
+  { types: ['asteroid', 'comet', 'probe'], per: 3, kg: 1e20 }
 ];
-const MASS_DEFAULT_ANCHOR = { per: 3000, kg: 1.989e30 }; // 恒星、致密星、黑洞、虫洞、类星体等
+const MASS_DEFAULT_ANCHOR = { per: 600, kg: 1.989e30 };
+const SOLAR_KG = 1.989e30, EARTH_KG = 5.972e24, JUPITER_KG = 1.898e27;
+// 每种类型「一个标准天体」（TYPES[type].base 游戏质量）对应的现实典型质量（kg）。
+// 这样质量 600 的恒星显示 1 太阳质量、40 的行星显示 1 地球质量、70 的气巨显示 1 木星质量，
+// 而不是被同一个全局比例换算成明显偏离现实的数值。
+const TYPE_REAL_MASS = {
+  star: SOLAR_KG, redDwarf: 0.3 * SOLAR_KG, orangeDwarf: 0.85 * SOLAR_KG,
+  subdwarf: 0.2 * SOLAR_KG, hotSubdwarf: 0.5 * SOLAR_KG, wolfRayet: 20 * SOLAR_KG,
+  redGiant: 1.2 * SOLAR_KG, blueGiant: 10 * SOLAR_KG,
+  redSupergiant: 18 * SOLAR_KG, redHypergiant: 25 * SOLAR_KG,
+  cepheid: 5 * SOLAR_KG, sakurai: SOLAR_KG,
+  whiteDwarf: 0.6 * SOLAR_KG, blackDwarf: 0.6 * SOLAR_KG,
+  neutron: 1.4 * SOLAR_KG, blackNeutron: 1.4 * SOLAR_KG,
+  quarkStar: 2 * SOLAR_KG, strangeStar: 2 * SOLAR_KG,
+  electroweakStar: 3 * SOLAR_KG, preonStar: 3 * SOLAR_KG,
+  bosonStar: 2 * SOLAR_KG, solitonStar: 2 * SOLAR_KG,
+  qStar: 2.5 * SOLAR_KG, gravastar: 2 * SOLAR_KG,
+  blackhole: 10 * SOLAR_KG, whitehole: 10 * SOLAR_KG,
+  wormhole: 1e6 * SOLAR_KG, quasar: 1e8 * SOLAR_KG,
+  planet: EARTH_KG, ringplanet: 0.3 * JUPITER_KG,
+  gasGiant: JUPITER_KG, brownDwarf: 50 * JUPITER_KG,
+  asteroid: 1e20, comet: 1e14, probe: 1e3,
+  openCluster: 200 * SOLAR_KG, globularCluster: 1e5 * SOLAR_KG,
+  galaxySpiral: 1.5e12 * SOLAR_KG, galaxyElliptical: 1e12 * SOLAR_KG,
+  galaxyIrregular: 1e9 * SOLAR_KG,
+  darkMatter: 1e12 * SOLAR_KG, darkHalo: 1.5e12 * SOLAR_KG
+};
 // 自动模式：按天体类型挑最自然的单位，避免所有标签都写太阳质量。
 const AUTO_MASS_UNIT = {
   galaxySpiral: 'galaxy', galaxyElliptical: 'galaxy', galaxyIrregular: 'galaxy',
   darkHalo: 'galaxy', darkMatter: 'galaxy',
   openCluster: 'solar', globularCluster: 'solar',
   gasGiant: 'jupiter', brownDwarf: 'jupiter',
-  planet: 'earth', ringplanet: 'earth',
-  asteroid: 'moon', comet: 'moon', probe: 'moon'
+  planet: 'earth', ringplanet: 'jupiter',
+  asteroid: 'kg', comet: 'kg', probe: 'kg'
 };
 function massAnchorFor(type) {
   return MASS_FAMILY_ANCHORS.find(a => a.types.includes(type)) || MASS_DEFAULT_ANCHOR;
@@ -1033,12 +1058,18 @@ function unitIdForBody(type) {
   const id = selectedMassUnitId();
   return id === 'auto' ? (AUTO_MASS_UNIT[type] || 'solar') : id;
 }
+// 游戏质量 → 现实质量（kg）：按该类型标准天体的现实质量等比缩放。
+function realMassKg(gameMass, type) {
+  const base = TYPES[type] ? TYPES[type].base : 0;
+  const real = TYPE_REAL_MASS[type];
+  if (real != null && base > 0) return real * (gameMass / base);
+  const anchor = massAnchorFor(type);
+  return gameMass / anchor.per * anchor.kg;
+}
 function formatMassInUnit(gameMass, type, unitId) {
   if (unitId === 'game') return formatLabelMass(gameMass);
-  const anchor = massAnchorFor(type);
-  const kg = gameMass / anchor.per * anchor.kg;
   const unit = unitDefById(unitId);
-  return formatLabelMass(kg / unit.kg) + ' ' + unit.name;
+  return formatLabelMass(realMassKg(gameMass, type) / unit.kg) + ' ' + unit.name;
 }
 function drawLabels() {
   if (!document.getElementById('labelsToggle').checked) return;

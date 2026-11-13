@@ -950,21 +950,22 @@ loop();''')
           planet:sim.bodies[1].labelEl.textContent,id:sim.bodies[1].labelEl.id})""")
         self.assertIn('恒星',info['star']);self.assertIn('行星',info['planet'])
         self.assertIn('距选中 100',info['planet'])
-        # 质量常驻标签默认开，默认「自动（按天体）」：恒星用太阳质量、行星用地球质量。
-        self.assertIn('⚖',info['star']);self.assertIn('0.20 太阳质量',info['star'])
+        # 质量常驻标签默认开，默认「自动（按天体）」，并按现实典型质量换算：
+        # 标准恒星(600)=1 太阳质量、行星按地球质量。
+        self.assertIn('⚖',info['star']);self.assertIn('1 太阳质量',info['star'])
         self.assertIn('地球质量',info['planet'])
         self.page.locator('#massLabelsToggle').uncheck()
         self.page.wait_for_function("!sim.bodies[0].labelEl.textContent.includes('⚖')")
         self.assertIn('距选中 100',self.page.evaluate('sim.bodies[1].labelEl.textContent'))
         self.page.locator('#massLabelsToggle').check()
-        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('0.20 太阳质量')")
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('1 太阳质量')")
         # 质量单位下拉：可切回游戏单位、也可换成地球质量等真实单位。
         self.page.select_option('#massUnitSelect', 'game')
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('⚖ 质量 600')")
         self.page.select_option('#massUnitSelect', 'earth')
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('地球质量')")
         self.page.select_option('#massUnitSelect', 'solar')
-        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('0.20 太阳质量')")
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('1 太阳质量')")
         self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
         self.page.locator('#labelsToggle').uncheck()
         self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
@@ -2147,11 +2148,20 @@ loop();''')
           const game = capture(true, 'game'), earth = capture(true, 'earth'), solar = capture(true, 'solar');
           document.getElementById('massLabelsToggle').checked = true;
           document.getElementById('massUnitSelect').value = 'auto';
-          return { auto, off, game, earth, solar, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
+          // 现实质量锚点：每种类型一个标准天体（base 游戏质量）应对应现实典型质量。
+          const anchors = {};
+          for (const id of ['star', 'planet', 'gasGiant', 'neutron', 'whiteDwarf', 'blackhole', 'galaxySpiral'])
+            anchors[id] = formatMassInUnit(TYPES[id].base, id, unitIdForBody(id));
+          return { auto, off, game, earth, solar, anchors, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
         }''')
-        # 自动模式：恒星标太阳质量、行星标地球质量，不再千篇一律用太阳质量。
+        # 现实锚点：恒星=1太阳、行星=1地球、气巨=1木星、中子星=1.4太阳、白矮星=0.6太阳、黑洞=10太阳、星系=1银河系。
+        self.assertEqual(result['anchors'], {
+          'star': '1 太阳质量', 'planet': '1 地球质量', 'gasGiant': '1 木星质量',
+          'neutron': '1.4 太阳质量', 'whiteDwarf': '0.60 太阳质量',
+          'blackhole': '10 太阳质量', 'galaxySpiral': '1 银河系质量' }, result)
+        # 自动模式：恒星标 1 太阳质量（现实典型值）、行星按地球质量，不再千篇一律。
         self.assertTrue(any('⚖' in line for line in result['auto']), result)
-        self.assertTrue(any('0.20 太阳质量' in line for line in result['auto']), result)
+        self.assertTrue(any('1 太阳质量' in line for line in result['auto']), result)
         self.assertTrue(any('0.15 地球质量' in line for line in result['auto']), result)
         self.assertTrue(any('地球质量' in line for line in result['earth']), result)
         self.assertTrue(any('太阳质量' in line for line in result['solar']), result)
