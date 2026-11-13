@@ -298,8 +298,11 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 /* ================= 渲染基础 ================= */
 const canvas = document.getElementById('space');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-// 像素比封顶 1.5：泛光后处理在高 DPI 下是全屏开销，1.5 与 2 肉眼差异极小
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// 画质档：像素比封顶 2，高 DPI 屏幕按原生分辨率渲染；配合 ACES 色调映射输出电影级色彩。
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// ACES Filmic：高光滚降更自然，恒星/泛光的层次感明显优于线性裁切。
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
 // ANGLE/D3D 下 validateProgram 的空日志误报（画面已验证正常）→ 关闭程序校验
 renderer.debug.checkShaderErrors = false;
 canvas.addEventListener('webglcontextlost', e => e.preventDefault());
@@ -396,17 +399,36 @@ window.addEventListener('resize', () => {
 
 /* ================= 共享纹理 ================= */
 function makeGlowCanvas(inner, mid) {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
-  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
   grad.addColorStop(0, inner);
   grad.addColorStop(0.35, mid);
   grad.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
   return c;
 }
 const glowTex = new THREE.CanvasTexture(makeGlowCanvas('rgba(255,250,235,1)', 'rgba(255,190,100,0.55)'));
 const purpleGlowTex = new THREE.CanvasTexture(makeGlowCanvas('rgba(210,170,255,1)', 'rgba(130,80,255,0.5)'));
+// 恒星「米粒组织」灰度纹理：与天体颜色相乘后得到有表面颗粒感的恒星，
+// 水平方向 wrap 绘制保证球面 UV 环绕无缝。
+function makeGranuleCanvas() {
+  const W = 512, H = 256;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e9e9e9'; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 1400; i++) {
+    const x = Math.random() * W, y = Math.random() * H, r = 1.5 + Math.random() * 6;
+    const dark = Math.random() < 0.55;
+    g.fillStyle = dark ? 'rgba(115,115,115,0.16)' : 'rgba(255,255,255,0.22)';
+    for (const dx of [-W, 0, W]) {
+      g.beginPath(); g.arc(x + dx, y, r, 0, 7); g.fill();
+    }
+  }
+  return c;
+}
+const starGranuleTex = new THREE.CanvasTexture(makeGranuleCanvas());
+starGranuleTex.wrapS = THREE.RepeatWrapping;
 
 function makeDiskCanvas() {
   const c = document.createElement('canvas'); c.width = c.height = 512;
@@ -891,10 +913,36 @@ function makeStarField(count, rMin, rMax, size, opacity, palette) {
     depthWrite: false, vertexColors: true });
   return new THREE.Points(geo, mat);
 }
-scene.add(makeStarField(4200, 2500, 5500, 1.8, 0.95));
-scene.add(makeStarField(2400, 2000, 5000, 1.3, 0.65));
-scene.add(makeStarField(900, 3000, 6000, 2.8, 0.55));   // 亮星
-scene.add(makeStarField(500, 2800, 5500, 3.8, 0.35, [new THREE.Color(0xffe8c0), new THREE.Color(0x9ec1ff)]));
+scene.add(makeStarField(6500, 2500, 5500, 1.8, 0.95));
+scene.add(makeStarField(3600, 2000, 5000, 1.3, 0.65));
+scene.add(makeStarField(1400, 3000, 6000, 2.8, 0.55));   // 亮星
+scene.add(makeStarField(800, 2800, 5500, 3.8, 0.35, [new THREE.Color(0xffe8c0), new THREE.Color(0x9ec1ff)]));
+// 银河带：一条倾斜穿过天球的密集星带，叠加混合后形成连续的银河光带。
+function makeMilkyWayBand(count) {
+  const pos = new Float32Array(count * 3), col = new Float32Array(count * 3);
+  const tints = [new THREE.Color(0xdde6ff), new THREE.Color(0xffe9cd), new THREE.Color(0xcfd9ff), new THREE.Color(0xfff3dd)];
+  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+  const cosT = 0.574, sinT = 0.819;   // 绕 X 轴倾斜约 55°，银河斜跨天空
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const R = 2600 + Math.random() * 2600;
+    const x = Math.cos(ang) * R, z = Math.sin(ang) * R;
+    const y = gauss() * 380 + gauss() * 120;      // 带内厚度近似高斯 + 带外弥散
+    pos[i*3]   = x;
+    pos[i*3+1] = y * cosT + z * sinT;
+    pos[i*3+2] = z * cosT - y * sinT;
+    const c = tints[(Math.random() * tints.length) | 0];
+    const b = 0.35 + Math.random() * 0.65;
+    col[i*3] = c.r * b; col[i*3+1] = c.g * b; col[i*3+2] = c.b * b;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 1.1, transparent: true, opacity: 0.7, sizeAttenuation: false,
+    blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true }));
+}
+scene.add(makeMilkyWayBand(3200));
 
 function addNebula(color, x, y, z, scale, opacity) {
   const mat = new THREE.SpriteMaterial({ map: color, transparent: true,
@@ -1006,8 +1054,8 @@ const shapeScale = CelestialSize.shapeScale;
 /* 解体角速度：赤道线速度达到表面轨道速度时离心力超过引力 */
 const omegaBreak = (mass, r) => Math.sqrt(G * mass / (r * r * r));
 
-const sphereGeo = new THREE.SphereGeometry(1, 28, 20);
-const sphereGeoHi = new THREE.SphereGeometry(1, 48, 32);   // 带贴图的行星需要更密
+const sphereGeo = new THREE.SphereGeometry(1, 40, 28);
+const sphereGeoHi = new THREE.SphereGeometry(1, 64, 44);   // 带贴图/可特写的天体用更高密度
 const ringGeo = new THREE.RingGeometry(1.3, 3.8, 160, 1);
 const probePanelGeo = new THREE.BoxGeometry(1.4, .12, .75);
 
@@ -1078,8 +1126,11 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
       mesh.add(panel);
     }
   } else if (type === 'star' || type === 'blueGiant' || type === 'whiteDwarf' || type === 'cepheid' || ['redDwarf','orangeDwarf','subdwarf','hotSubdwarf','wolfRayet'].includes(type)) {
-    // 发光恒星类：颜色可定制（星系核金黄、旋臂偏蓝）
-    mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color }));
+    // 发光恒星类：颜色可定制（星系核金黄、旋臂偏蓝）。
+    // 除白矮星保持光滑外，其余恒星贴米粒组织灰度纹理，特写时有太阳般的表面颗粒感。
+    const starMat = new THREE.MeshBasicMaterial({ color });
+    if (type !== 'whiteDwarf') starMat.map = starGranuleTex;
+    mesh = new THREE.Mesh(sphereGeoHi, starMat);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true,
       blending: THREE.AdditiveBlending, depthWrite: false }));
     glow.scale.setScalar(4);  // 父级 scale=r
