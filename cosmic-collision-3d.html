@@ -563,6 +563,23 @@ function makePlanetRingCanvas() {
   return c;
 }
 const tailTex = new THREE.CanvasTexture(makeTailCanvas());
+// 尘埃尾纹理：暖白、略弯（尘粒滞后于轨道，尾尖偏向行进反方向）
+function makeDustTailCanvas() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 512;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 512, 0, 0);
+  grad.addColorStop(0, 'rgba(255,244,220,0.8)');
+  grad.addColorStop(0.4, 'rgba(240,210,170,0.28)');
+  grad.addColorStop(1, 'rgba(220,190,150,0)');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.moveTo(46, 512);
+  g.quadraticCurveTo(8, 300, 96, 6);    // 左缘外弯 → 尖端右偏
+  g.quadraticCurveTo(122, 300, 84, 512);
+  g.closePath(); g.fill();
+  return c;
+}
+const dustTailTex = new THREE.CanvasTexture(makeDustTailCanvas());
 const pringTex = new THREE.CanvasTexture(makePlanetRingCanvas());
 
 /* ===== 通用陨石坑绘制：径向渐变暗核 + 亮坑壁 + 定向阴影 =====
@@ -1226,7 +1243,15 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
     const tail = new THREE.Mesh(tailGeo, tailMat);
     tail.scale.set(r * 3.5, r * 18, 1);
     scene.add(tail);
-    extra.tail = tail; extra.tailMat = tailMat; extra.mats = [tailMat];
+    // 尘埃尾：暖白、较短，方向在「背阳」与「轨道滞后」之间
+    const dustMat = new THREE.MeshBasicMaterial({ map: dustTailTex, transparent: true,
+      opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+    const dustTail = new THREE.Mesh(tailGeo, dustMat);
+    dustTail.scale.set(r * 2.4, r * 11, 1);
+    scene.add(dustTail);
+    extra.tail = tail; extra.tailMat = tailMat;
+    extra.dustTail = dustTail; extra.dustMat = dustMat;
+    extra.mats = [tailMat, dustMat];
   } else if (type === 'neutron') {
     mesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xf2fbff }));
     // 脉冲双光束：倾斜轴进动
@@ -1429,6 +1454,7 @@ function spawnBody(x, y, z, vx, vy, vz, mass, type, colorOverride) {
   mesh.position.set(x, y, z);
   scene.add(mesh);
   if (extra.tail) extra.tail.position.copy(mesh.position);   // 防止首帧彗尾落在原点
+  if (extra.dustTail) extra.dustTail.position.copy(mesh.position);
 
   const xray = new THREE.Sprite(new THREE.SpriteMaterial({map:xrayTexture, color:0xa8caff,
     transparent:true, depthWrite:false, depthTest:false, toneMapped:false, blending:THREE.AdditiveBlending}));
@@ -1476,6 +1502,7 @@ function removeBody(b) {
   b.labelEl.remove();
   scene.remove(b.mesh);
   if (b.tail) scene.remove(b.tail);
+  if (b.dustTail) scene.remove(b.dustTail);
   if (b.bridge) { scene.remove(b.bridge); b.bridge.geometry.dispose(); b.bridge.material.dispose(); }
   scene.remove(b.trail.line);
   b.trail.line.geometry.dispose();
@@ -1686,8 +1713,10 @@ function updateLights() {
   }
 }
 
-/* 彗尾：指向背离最近恒星（或中子星）的方向，越近越亮 */
+/* 彗尾：离子尾直指背离最近恒星（或中子星）的方向，越近越亮；
+ * 尘埃尾在「背阳」与「轨道滞后」方向之间，弯曲且略短 */
 const _tailDir = new THREE.Vector3();
+const _dustDir = new THREE.Vector3();
 function updateCometTail(b) {
   let star = null, best = Infinity;
   for (const o of bodies) {
@@ -1695,14 +1724,26 @@ function updateCometTail(b) {
     const d = b.mesh.position.distanceToSquared(o.mesh.position);
     if (d < best) { best = d; star = o; }
   }
-  if (!star) { b.tail.visible = false; return; }
+  if (!star) { b.tail.visible = false; if (b.dustTail) b.dustTail.visible = false; return; }
   b.tail.visible = true;
   b.tail.position.copy(b.mesh.position);
   _tailDir.copy(b.mesh.position).sub(star.mesh.position).normalize();
   b.tail.quaternion.setFromUnitVectors(UP, _tailDir);
   const dist = Math.sqrt(best);
   const inten = Math.min(1, 900 / (dist + 900));
-  b.tailMat.opacity = (0.22 + 0.6 * inten) * (0.92 + 0.08 * Math.sin(simT * 9 + b.spin * 20));
+  const flick = 0.92 + 0.08 * Math.sin(simT * 9 + b.spin * 20);
+  b.tailMat.opacity = (0.22 + 0.6 * inten) * flick;
+  if (b.dustTail) {
+    b.dustTail.visible = true;
+    b.dustTail.position.copy(b.mesh.position);
+    _dustDir.copy(_tailDir);
+    const speed = b.vel.lengthSq();
+    if (speed > 0.04) {                      // 有明显运动才弯向轨道滞后方向
+      _dustDir.addScaledVector(b.vel, -0.45 / Math.sqrt(speed)).normalize();
+    }
+    b.dustTail.quaternion.setFromUnitVectors(UP, _dustDir);
+    b.dustMat.opacity = (0.12 + 0.34 * inten) * flick;
+  }
 }
 
 /* ================= 爆炸特效 ================= */

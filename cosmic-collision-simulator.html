@@ -1170,6 +1170,22 @@ function drawStar(b, t) {
   core.addColorStop(0, '#ffffff'); core.addColorStop(0.5, b.color); core.addColorStop(1, hexA(b.color, 0.85));
   ctx.fillStyle = core;
   ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+  // 衍射光芒：屏幕上足够大的恒星画十字光斑，镜头光晕感
+  if (b.r * cam.zoom > 5) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(b.x, b.y); ctx.rotate(b.id * 0.6);
+    const L = b.r * 4.4 * wave;
+    const sx = ctx.createLinearGradient(-L, 0, L, 0);
+    sx.addColorStop(0, hexA(b.color, 0)); sx.addColorStop(0.5, 'rgba(255,250,230,0.34)'); sx.addColorStop(1, hexA(b.color, 0));
+    ctx.strokeStyle = sx; ctx.lineWidth = Math.max(1, b.r * 0.09);
+    ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(L, 0); ctx.stroke();
+    const sy = ctx.createLinearGradient(0, -L, 0, L);
+    sy.addColorStop(0, hexA(b.color, 0)); sy.addColorStop(0.5, 'rgba(255,250,230,0.28)'); sy.addColorStop(1, hexA(b.color, 0));
+    ctx.strokeStyle = sy;
+    ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(0, L); ctx.stroke();
+    ctx.restore();
+  }
 }
 function drawCompact(b, t) {
   const R = Math.max(2, b.r);
@@ -1351,6 +1367,19 @@ function drawSmallBody(b, t) {
       ctx.strokeStyle = tail; ctx.lineWidth = Math.max(2, b.r * 1.5);
       ctx.beginPath(); ctx.moveTo(b.x, b.y);
       ctx.lineTo(b.x + Math.cos(ang) * len, b.y + Math.sin(ang) * len); ctx.stroke();
+      // 尘埃尾：暖白、略短，从背阳方向弯向轨道滞后方向（速度反向）
+      const spd = Math.hypot(b.vx, b.vy);
+      const trailAng = spd > 0.5 ? Math.atan2(-b.vy, -b.vx) : ang;
+      const delta = Math.atan2(Math.sin(trailAng - ang), Math.cos(trailAng - ang));
+      const dustAng = ang + delta * 0.45, dustLen = len * 0.62;
+      const endX = b.x + Math.cos(dustAng) * dustLen, endY = b.y + Math.sin(dustAng) * dustLen;
+      const dust = ctx.createLinearGradient(b.x, b.y, endX, endY);
+      dust.addColorStop(0, 'rgba(255,242,215,0.5)'); dust.addColorStop(1, 'rgba(255,242,215,0)');
+      ctx.strokeStyle = dust; ctx.lineWidth = Math.max(3, b.r * 2.2); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(b.x, b.y);
+      ctx.quadraticCurveTo(b.x + Math.cos(ang) * dustLen * 0.6, b.y + Math.sin(ang) * dustLen * 0.6,
+        endX, endY);
+      ctx.stroke(); ctx.lineCap = 'butt';
     }
   }
 }
