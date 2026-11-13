@@ -205,9 +205,10 @@
   <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
   <div class="check"><label for="massUnitSelect" style="color:#9fb0e8">质量单位</label>
     <select id="massUnitSelect" title="选择标签质量的显示单位" style="flex:1 1 auto;min-width:0;background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px">
+      <option value="auto" selected>自动（按天体）</option>
       <option value="game">游戏单位</option>
       <option value="galaxy">银河系质量</option>
-      <option value="solar" selected>太阳质量</option>
+      <option value="solar">太阳质量</option>
       <option value="jupiter">木星质量</option>
       <option value="earth">地球质量</option>
       <option value="moon">月球质量</option>
@@ -3641,10 +3642,10 @@ function formatLabelMass(value) {
   if (a < 100) return value.toFixed(1).replace(/\.0$/, '');
   return String(Math.round(value));
 }
-// 标签质量单位换算：项目约定 3000 游戏质量单位 = 1 个太阳质量（与白矮星演示一致）。
-const KG_PER_GAME_MASS = 1.989e30 / 3000;
+// 标签质量单位换算（与 2D 版逐字一致）：按「天体族」参考质量把游戏单位换成千克，
+// 恒星 3000 = 1 太阳质量（白矮星演示口径）、行星 40 = 1 地球质量（行星评分口径）。
 const MASS_UNIT_DEFS = [
-  { id: 'game', name: '游戏单位', kg: KG_PER_GAME_MASS },
+  { id: 'game', name: '游戏单位', kg: null },
   { id: 'galaxy', name: '银河系质量', kg: 1.5e12 * 1.989e30 },
   { id: 'solar', name: '太阳质量', kg: 1.989e30 },
   { id: 'jupiter', name: '木星质量', kg: 1.898e27 },
@@ -3656,13 +3657,42 @@ const MASS_UNIT_DEFS = [
   { id: 'g', name: '克', kg: 1e-3 },
   { id: 'mg', name: '毫克', kg: 1e-6 }
 ];
-function selectedMassUnit() {
-  const el = document.getElementById('massUnitSelect');
-  return MASS_UNIT_DEFS.find(u => u.id === (el && el.value)) || MASS_UNIT_DEFS[0];
+const MASS_FAMILY_ANCHORS = [
+  { types: ['galaxySpiral', 'galaxyElliptical', 'galaxyIrregular', 'darkHalo', 'darkMatter'], per: 2400, kg: 1.5e12 * 1.989e30 },
+  { types: ['openCluster', 'globularCluster'], per: 2000, kg: 1e5 * 1.989e30 },
+  { types: ['gasGiant', 'brownDwarf'], per: 70, kg: 1.898e27 },
+  { types: ['planet', 'ringplanet'], per: 40, kg: 5.972e24 },
+  { types: ['asteroid', 'comet', 'probe'], per: 40 / 81.3, kg: 7.342e22 }
+];
+const MASS_DEFAULT_ANCHOR = { per: 3000, kg: 1.989e30 };
+const AUTO_MASS_UNIT = {
+  galaxySpiral: 'galaxy', galaxyElliptical: 'galaxy', galaxyIrregular: 'galaxy',
+  darkHalo: 'galaxy', darkMatter: 'galaxy',
+  openCluster: 'solar', globularCluster: 'solar',
+  gasGiant: 'jupiter', brownDwarf: 'jupiter',
+  planet: 'earth', ringplanet: 'earth',
+  asteroid: 'moon', comet: 'moon', probe: 'moon'
+};
+function massAnchorFor(type) {
+  return MASS_FAMILY_ANCHORS.find(a => a.types.includes(type)) || MASS_DEFAULT_ANCHOR;
 }
-// 游戏单位保持「⚖ 质量 600」的既有口径；真实单位在数值后写明单位名。
-function formatMassInUnit(gameMass, unit) {
-  return formatLabelMass(gameMass * KG_PER_GAME_MASS / unit.kg) + (unit.id === 'game' ? '' : ' ' + unit.name);
+function unitDefById(id) {
+  return MASS_UNIT_DEFS.find(u => u.id === id) || MASS_UNIT_DEFS[0];
+}
+function selectedMassUnitId() {
+  const el = document.getElementById('massUnitSelect');
+  return (el && el.value) || 'auto';
+}
+function unitIdForBody(type) {
+  const id = selectedMassUnitId();
+  return id === 'auto' ? (AUTO_MASS_UNIT[type] || 'solar') : id;
+}
+function formatMassInUnit(gameMass, type, unitId) {
+  if (unitId === 'game') return formatLabelMass(gameMass);
+  const anchor = massAnchorFor(type);
+  const kg = gameMass / anchor.per * anchor.kg;
+  const unit = unitDefById(unitId);
+  return formatLabelMass(kg / unit.kg) + ' ' + unit.name;
 }
 function niceGridSpacing(distance) {
   const rough = Math.max(1e-9, distance / 6);
@@ -3704,7 +3734,6 @@ function updateMeasurements() {
   camera.updateMatrixWorld();
   const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
   const massOn = document.getElementById('massLabelsToggle').checked;
-  const massUnit = massOn ? selectedMassUnit() : null;
   referenceGrid.visible = gridOn && !landing; gridLegend.hidden = !gridOn || !!landing;
   if (gridOn) {
     gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
@@ -3745,7 +3774,10 @@ function updateMeasurements() {
       (body === reference ? '已选中' : `${reference ? '距选中' : '距观察中心'} ${formatGameDistance(distance)} 单位`);
     // 质量单独占第二行（名字下方）。宽度只按主行测量：质量行更短，不会让标签变宽，
     // 因此拥挤场景的水平避让与开关关闭时完全一致，不会挤掉相邻标签。
-    const massLine = massOn ? (massUnit.id === 'game' ? '⚖ 质量 ' + formatLabelMass(body.mass) : '⚖ ' + formatMassInUnit(body.mass, massUnit)) : '';
+    const massUnitId = massOn ? unitIdForBody(body.type) : 'game';
+    const massLine = massOn
+      ? (massUnitId === 'game' ? '⚖ 质量 ' + formatLabelMass(body.mass) : '⚖ ' + formatMassInUnit(body.mass, body.type, massUnitId))
+      : '';
     const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(mainText).width) + 14);
     const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
     const y = Math.max(24, Math.min(window.innerHeight - 4,

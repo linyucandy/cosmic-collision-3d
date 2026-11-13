@@ -950,8 +950,9 @@ loop();''')
           planet:sim.bodies[1].labelEl.textContent,id:sim.bodies[1].labelEl.id})""")
         self.assertIn('恒星',info['star']);self.assertIn('行星',info['planet'])
         self.assertIn('距选中 100',info['planet'])
-        # 质量常驻标签默认开，默认单位太阳质量（3000 游戏单位 = 1 个太阳质量）。
+        # 质量常驻标签默认开，默认「自动（按天体）」：恒星用太阳质量、行星用地球质量。
         self.assertIn('⚖',info['star']);self.assertIn('0.20 太阳质量',info['star'])
+        self.assertIn('地球质量',info['planet'])
         self.page.locator('#massLabelsToggle').uncheck()
         self.page.wait_for_function("!sim.bodies[0].labelEl.textContent.includes('⚖')")
         self.assertIn('距选中 100',self.page.evaluate('sim.bodies[1].labelEl.textContent'))
@@ -2142,15 +2143,18 @@ loop();''')
             try { drawLabels(); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
             return lines;
           };
-          const solar = capture(true, 'solar'), off = capture(false);
-          const game = capture(true, 'game'), earth = capture(true, 'earth');
+          const auto = capture(true, 'auto'), off = capture(false);
+          const game = capture(true, 'game'), earth = capture(true, 'earth'), solar = capture(true, 'solar');
           document.getElementById('massLabelsToggle').checked = true;
-          document.getElementById('massUnitSelect').value = 'solar';
-          return { solar, off, game, earth, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
+          document.getElementById('massUnitSelect').value = 'auto';
+          return { auto, off, game, earth, solar, starMass: formatLabelMass(600), planetMass: formatLabelMass(6) };
         }''')
-        self.assertTrue(any('⚖' in line for line in result['solar']), result)
-        self.assertTrue(any('0.20 太阳质量' in line for line in result['solar']), result)
+        # 自动模式：恒星标太阳质量、行星标地球质量，不再千篇一律用太阳质量。
+        self.assertTrue(any('⚖' in line for line in result['auto']), result)
+        self.assertTrue(any('0.20 太阳质量' in line for line in result['auto']), result)
+        self.assertTrue(any('0.15 地球质量' in line for line in result['auto']), result)
         self.assertTrue(any('地球质量' in line for line in result['earth']), result)
+        self.assertTrue(any('太阳质量' in line for line in result['solar']), result)
         self.assertTrue(any(result['starMass'] in line for line in result['game']), result)
         self.assertTrue(any(result['planetMass'] in line for line in result['game']), result)
         self.assertFalse(any('⚖' in line for line in result['off']), result)

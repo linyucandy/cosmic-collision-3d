@@ -179,9 +179,10 @@
   <div class="check"><input type="checkbox" id="massLabelsToggle" checked><label for="massLabelsToggle">⚖️ 标签显示天体质量</label></div>
   <div class="check"><label for="massUnitSelect" style="color:#9fb0e8">质量单位</label>
     <select id="massUnitSelect" title="选择标签质量的显示单位" style="flex:1 1 auto;min-width:0;background:#15243d;color:#e6f2ff;border:1px solid #3a4a72;border-radius:5px;padding:2px 4px;font-size:11px">
+      <option value="auto" selected>自动（按天体）</option>
       <option value="game">游戏单位</option>
       <option value="galaxy">银河系质量</option>
-      <option value="solar" selected>太阳质量</option>
+      <option value="solar">太阳质量</option>
       <option value="jupiter">木星质量</option>
       <option value="earth">地球质量</option>
       <option value="moon">月球质量</option>
@@ -983,10 +984,10 @@ function formatLabelMass(m) {
   if (a < 100) return m.toFixed(1).replace(/\.0$/, '');
   return String(Math.round(m));
 }
-// 标签质量单位换算：项目约定 3000 游戏质量单位 = 1 个太阳质量（见钱德拉塞卡演示）。
-const KG_PER_GAME_MASS = 1.989e30 / 3000;
+// 质量单位的千克定义；换算基准按「天体族」给定（见 MASS_FAMILY_ANCHORS），
+// 这样恒星按太阳质量、行星按地球质量显示时数值都在合理量级。
 const MASS_UNIT_DEFS = [
-  { id: 'game', name: '游戏单位', kg: KG_PER_GAME_MASS },
+  { id: 'game', name: '游戏单位', kg: null },
   { id: 'galaxy', name: '银河系质量', kg: 1.5e12 * 1.989e30 },
   { id: 'solar', name: '太阳质量', kg: 1.989e30 },
   { id: 'jupiter', name: '木星质量', kg: 1.898e27 },
@@ -998,18 +999,50 @@ const MASS_UNIT_DEFS = [
   { id: 'g', name: '克', kg: 1e-3 },
   { id: 'mg', name: '毫克', kg: 1e-6 }
 ];
-function selectedMassUnit() {
-  const el = document.getElementById('massUnitSelect');
-  return MASS_UNIT_DEFS.find(u => u.id === (el && el.value)) || MASS_UNIT_DEFS[0];
+// 天体族基准：游戏质量 per ↔ kg。沿用项目既有口径：恒星 3000 = 1 太阳质量（白矮星演示）、
+// 行星 40 = 1 地球质量（行星评分 earthSimilarity 口径）。
+const MASS_FAMILY_ANCHORS = [
+  { types: ['galaxySpiral', 'galaxyElliptical', 'galaxyIrregular', 'darkHalo', 'darkMatter'], per: 2400, kg: 1.5e12 * 1.989e30 },
+  { types: ['openCluster', 'globularCluster'], per: 2000, kg: 1e5 * 1.989e30 },
+  { types: ['gasGiant', 'brownDwarf'], per: 70, kg: 1.898e27 },
+  { types: ['planet', 'ringplanet'], per: 40, kg: 5.972e24 },
+  { types: ['asteroid', 'comet', 'probe'], per: 40 / 81.3, kg: 7.342e22 }
+];
+const MASS_DEFAULT_ANCHOR = { per: 3000, kg: 1.989e30 }; // 恒星、致密星、黑洞、虫洞、类星体等
+// 自动模式：按天体类型挑最自然的单位，避免所有标签都写太阳质量。
+const AUTO_MASS_UNIT = {
+  galaxySpiral: 'galaxy', galaxyElliptical: 'galaxy', galaxyIrregular: 'galaxy',
+  darkHalo: 'galaxy', darkMatter: 'galaxy',
+  openCluster: 'solar', globularCluster: 'solar',
+  gasGiant: 'jupiter', brownDwarf: 'jupiter',
+  planet: 'earth', ringplanet: 'earth',
+  asteroid: 'moon', comet: 'moon', probe: 'moon'
+};
+function massAnchorFor(type) {
+  return MASS_FAMILY_ANCHORS.find(a => a.types.includes(type)) || MASS_DEFAULT_ANCHOR;
 }
-// 把游戏质量换算到所选单位；游戏单位保持原样不加后缀，真实单位在数值后写明单位名。
-function formatMassInUnit(gameMass, unit) {
-  return formatLabelMass(gameMass * KG_PER_GAME_MASS / unit.kg) + (unit.id === 'game' ? '' : ' ' + unit.name);
+function unitDefById(id) {
+  return MASS_UNIT_DEFS.find(u => u.id === id) || MASS_UNIT_DEFS[0];
+}
+function selectedMassUnitId() {
+  const el = document.getElementById('massUnitSelect');
+  return (el && el.value) || 'auto';
+}
+// 自动模式按天体类型给单位；手动选择时所有天体的同一单位用同一套千克基准，切换不会自相矛盾。
+function unitIdForBody(type) {
+  const id = selectedMassUnitId();
+  return id === 'auto' ? (AUTO_MASS_UNIT[type] || 'solar') : id;
+}
+function formatMassInUnit(gameMass, type, unitId) {
+  if (unitId === 'game') return formatLabelMass(gameMass);
+  const anchor = massAnchorFor(type);
+  const kg = gameMass / anchor.per * anchor.kg;
+  const unit = unitDefById(unitId);
+  return formatLabelMass(kg / unit.kg) + ' ' + unit.name;
 }
 function drawLabels() {
   if (!document.getElementById('labelsToggle').checked) return;
   const showMass = document.getElementById('massLabelsToggle').checked;
-  const massUnit = showMass ? selectedMassUnit() : null;
   const taken = [];
   const limit = W < 640 ? 18 : 46;
   let drawn = 0;
@@ -1019,7 +1052,7 @@ function drawLabels() {
     const p = worldToScreen(b.x, b.y);
     if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) continue;
     const name = b.name;
-    const massText = showMass ? '⚖ ' + formatMassInUnit(b.mass, massUnit) : '';
+    const massText = showMass ? '⚖ ' + formatMassInUnit(b.mass, b.type, unitIdForBody(b.type)) : '';
     const w = Math.max(ctx.measureText(name).width, ctx.measureText(massText).width) + 10;
     // 质量占第二行，距离在第三行；盒高随实际行数变化，避免文字溢出背景框。
     const hasDistance = !!(selected && b !== selected);
