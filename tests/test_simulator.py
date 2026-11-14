@@ -966,6 +966,19 @@ loop();''')
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('地球质量')")
         self.page.select_option('#massUnitSelect', 'solar')
         self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('1 太阳质量')")
+        # 温度/密度/体积第三行：默认开。恒星显示典型有效温度与现实密度/体积；
+        # 行星温度随光照动态计算；关闭后质量行保留。
+        self.assertIn('🌡5778K',info['star']);self.assertIn('ρ1.41g/cm³',info['star'])
+        self.assertIn('V1.41e27m³',info['star'])
+        self.assertIn('🌡',info['planet']);self.assertIn('V1.08e21m³',info['planet'])
+        self.assertIn('5.51g/cm³',info['planet'])
+        self.page.locator('#physicsLabelsToggle').uncheck()
+        self.page.wait_for_function("!sim.bodies[0].labelEl.textContent.includes('🌡')")
+        self.assertIn('⚖',self.page.evaluate('sim.bodies[0].labelEl.textContent'))
+        self.assertNotIn('ρ',self.page.evaluate('sim.bodies[0].labelEl.textContent'))
+        self.page.locator('#physicsLabelsToggle').check()
+        self.page.wait_for_function("sim.bodies[0].labelEl.textContent.includes('🌡5778K')")
+        self.assertEqual(self.errors,[])
         self.page.wait_for_function("document.querySelector('#observedName').textContent.includes('#'+sim.selected.labelNumber)")
         self.page.locator('#labelsToggle').uncheck()
         self.page.wait_for_function("sim.bodies.every(b=>b.labelEl.hidden)")
@@ -2168,6 +2181,43 @@ loop();''')
         self.assertTrue(any(result['starMass'] in line for line in result['game']), result)
         self.assertTrue(any(result['planetMass'] in line for line in result['game']), result)
         self.assertFalse(any('⚖' in line for line in result['off']), result)
+        self.assertEqual(self.errors, [])
+
+    def test_2d_physics_labels_show_temperature_density_volume(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("typeof drawLabels === 'function'", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const star = spawnBody(400, 300, 0, 0, 600, 'star');
+          const planet = spawnBody(790, 300, 0, 0, 40, 'planet');
+          const galaxy = spawnBody(1400, 700, 0, 0, 2400, 'galaxySpiral');
+          const bh = spawnBody(300, 700, 0, 0, 2500, 'blackhole');
+          const orig = CanvasRenderingContext2D.prototype.fillText;
+          const capture = (on) => {
+            document.getElementById('physicsLabelsToggle').checked = on;
+            const lines = [];
+            CanvasRenderingContext2D.prototype.fillText = function(t){ lines.push(String(t)); return orig.apply(this, arguments); };
+            try { drawLabels(); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
+            return lines;
+          };
+          const on = capture(true), off = capture(false);
+          document.getElementById('physicsLabelsToggle').checked = true;
+          return { on, off,
+            starText: physicsLabelText(star), planetText: physicsLabelText(planet),
+            galaxyText: physicsLabelText(galaxy), bhText: physicsLabelText(bh) };
+        }''')
+        # 类型锚点：恒星=太阳体积/密度与 5778K；黑洞按 10 太阳质量示出霍金温度量级。
+        self.assertEqual(result['starText'], '🌡5778K ρ1.41g/cm³ V1.41e27m³', result)
+        self.assertRegex(result['planetText'], r'🌡\d+K')
+        self.assertIn('ρ5.51g/cm³', result['planetText'])
+        self.assertIn('V1.08e21m³', result['planetText'])
+        self.assertTrue(result['galaxyText'].startsWith('ρ'), result)   # 弥散系统无单一表面温度
+        self.assertIn('kg/m³', result['galaxyText'])
+        self.assertIn('🌡1e-8K', result['bhText'])
+        # 标签绘制确实包含参数行，且关闭后不再出现。
+        self.assertTrue(any(line == result['starText'] for line in result['on']), result)
+        self.assertFalse(any('🌡' in line for line in result['off']), result)
+        self.assertFalse(any('ρ' in line for line in result['off']), result)
         self.assertEqual(self.errors, [])
 
     def test_2d_binary_and_triple_star_systems_stay_bound(self):

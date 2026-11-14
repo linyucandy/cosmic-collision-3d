@@ -57,6 +57,7 @@
   .body-label { padding:2px 5px; border-radius:5px; background:#101a30c9; border:1px solid #91bdff50;
     max-width:calc(100vw - 16px); overflow:hidden; text-overflow:ellipsis; }
   .body-label .label-mass { display:block; color:#ffd98a; font-size:.94em; }
+  .body-label .label-physics { display:block; color:#a8e6d5; font-size:.94em; }
   .body-label.selected { border-color:#ffdf96; color:#fff0c2; }
   .grid-tick { color:#a9d8e7; font-size:10px; }
   #gridLegend { position:fixed; z-index:7; left:50%; top:12px; transform:translateX(-50%); max-width:46%;
@@ -218,6 +219,7 @@
       <option value="g">克</option>
       <option value="mg">毫克</option>
     </select></div>
+  <div class="check"><input type="checkbox" id="physicsLabelsToggle" checked><label for="physicsLabelsToggle" title="温度为类型典型有效温度（行星随光照动态计算）；密度与体积按现实典型值随质量等比换算，均为示意数值">🌡️ 标签显示温度/密度/体积</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示距离网格</label></div>
   <div class="check"><input type="checkbox" id="xrayToggle" checked><label for="xrayToggle">☢️ 显示 X 射线</label></div>
   <div class="check"><input type="checkbox" id="darkMatterToggle" checked><label for="darkMatterToggle">🟣 显示暗物质伪彩分布</label></div>
@@ -3834,6 +3836,86 @@ function formatMassInUnit(gameMass, type, unitId) {
   const unit = unitDefById(unitId);
   return formatLabelMass(realMassKg(gameMass, type) / unit.kg) + ' ' + unit.name;
 }
+/* ===== 温度 / 密度 / 体积：按类型现实典型值锚定的示意换算 =====
+ * - 体积：该类型标准天体的现实体积，随游戏质量等比缩放（与质量同一比例）；
+ * - 密度：现实质量 ÷ 现实体积，同类型缩放前后一致；
+ * - 温度：类型典型有效温度（K）。行星用 assessPlanet 按光照与热量动态计算；
+ *   白矮星优先用所选样例的光谱温度。弥散系统（星系/星团/暗物质）无单一表面温度，不显示。 */
+const SOLAR_VOL = 1.41e27, EARTH_VOL = 1.083e21, JUPITER_VOL = 1.43e24;
+const TYPE_REAL_VOLUME = {
+  star: SOLAR_VOL, redDwarf: 3.8e25, orangeDwarf: 7.1e26,
+  subdwarf: 4.2e25, hotSubdwarf: 1.1e25, wolfRayet: 4.2e29,
+  redGiant: 1.8e32, blueGiant: 1.8e29,
+  redSupergiant: 4.8e35, redHypergiant: 3.9e36,
+  cepheid: 8.5e31, sakurai: SOLAR_VOL,
+  whiteDwarf: 1.4e21, blackDwarf: 1.4e21,
+  neutron: 5.7e12, blackNeutron: 5.7e12,
+  quarkStar: 4e12, strangeStar: 4e12,
+  electroweakStar: 3e12, preonStar: 2e12,
+  bosonStar: 6e12, solitonStar: 6e12,
+  qStar: 5e12, gravastar: 4e12,
+  blackhole: 1.1e14, whitehole: 1.1e14,
+  wormhole: 1.1e29, quasar: 1.1e35,
+  planet: EARTH_VOL, ringplanet: 8.3e23, gasGiant: JUPITER_VOL,
+  brownDwarf: 1.4e24,
+  asteroid: 5e16, comet: 5e11, probe: 10,
+  openCluster: 4.3e50, globularCluster: 1.2e52,
+  galaxySpiral: 3e63, galaxyElliptical: 2e63, galaxyIrregular: 3e61,
+  darkMatter: 3e63, darkHalo: 1.5e64
+};
+const TYPE_TEMP_K = {
+  star: 5778, redDwarf: 3200, orangeDwarf: 4900, subdwarf: 4000, hotSubdwarf: 30000,
+  wolfRayet: 50000, redGiant: 3500, blueGiant: 25000,
+  redSupergiant: 3500, redHypergiant: 3500,
+  cepheid: 6000, sakurai: 5200,
+  whiteDwarf: 25000, blackDwarf: 0,
+  neutron: 1e6, blackNeutron: 0,
+  quarkStar: 1e9, strangeStar: 1e9, electroweakStar: 1e12, preonStar: 1e12,
+  bosonStar: 0, solitonStar: 0, qStar: 1e9, gravastar: 0,
+  blackhole: 1e-8,
+  quasar: 1e5, gasGiant: 165, ringplanet: 134,
+  brownDwarf: 1200, asteroid: 200, comet: 80, probe: 293
+};
+function realVolumeM3(gameMass, type) {
+  const base = TYPES[type] ? TYPES[type].base : 0;
+  const vol = TYPE_REAL_VOLUME[type];
+  if (vol != null && base > 0) return vol * (gameMass / base);
+  return realMassKg(gameMass, type) / 3000;   // 无锚点类型按岩石密度估体积
+}
+function fmtPhysVal(v) {
+  if (!isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1e5 || a < 0.01)
+    return v.toExponential(2).replace('e+', 'e').replace(/(\.\d*?)0+e/, '$1e').replace(/\.e/, 'e');
+  return v >= 100 ? String(Math.round(v)) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+}
+function fmtPhysDensity(kgM3) {
+  const gcm = kgM3 / 1000;
+  return Math.abs(gcm) >= 0.01 ? fmtPhysVal(gcm) + 'g/cm³' : fmtPhysVal(kgM3) + 'kg/m³';
+}
+function litSourcesFor(b) {
+  const sources = [];
+  for (const s of bodies) {
+    if (!LIT_TYPES.has(s.type) || s === b) continue;
+    sources.push({ type: s.type, mass: s.mass,
+      distance: s.mesh.position.distanceTo(b.mesh.position) });
+  }
+  return sources;
+}
+function physicsLabelText(b) {
+  const vol = realVolumeM3(b.mass, b.type);
+  const dens = realMassKg(b.mass, b.type) / vol;
+  let tempK = TYPE_TEMP_K[b.type];
+  if (b.whiteDwarfVariant && WHITE_DWARF_VARIANTS[b.whiteDwarfVariant])
+    tempK = WHITE_DWARF_VARIANTS[b.whiteDwarfVariant].temp;
+  else if (b.type === 'planet') {
+    const c = assessPlanet(b, litSourcesFor(b)).temperature;
+    if (c != null) tempK = c + 273;
+  }
+  const tPart = tempK == null ? '' : '🌡' + fmtPhysVal(tempK) + 'K ';
+  return tPart + 'ρ' + fmtPhysDensity(dens) + ' V' + fmtPhysVal(vol) + 'm³';
+}
 function niceGridSpacing(distance) {
   const rough = Math.max(1e-9, distance / 6);
   const power = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -3874,6 +3956,7 @@ function updateMeasurements() {
   camera.updateMatrixWorld();
   const gridOn = gridToggle.checked, labelsOn = labelsToggle.checked;
   const massOn = document.getElementById('massLabelsToggle').checked;
+  const physOn = document.getElementById('physicsLabelsToggle').checked;
   referenceGrid.visible = gridOn && !landing; gridLegend.hidden = !gridOn || !!landing;
   if (gridOn) {
     gridSpacing = niceGridSpacing(camera.position.distanceTo(controls.target));
@@ -3918,15 +4001,18 @@ function updateMeasurements() {
     const massLine = massOn
       ? (massUnitId === 'game' ? '⚖ 质量 ' + formatLabelMass(body.mass) : '⚖ ' + formatMassInUnit(body.mass, body.type, massUnitId))
       : '';
+    // 温度/密度/体积第三行：同样只占行高、不参与水平避让宽度。
+    const physLine = physOn ? physicsLabelText(body) : '';
     const width = Math.min(window.innerWidth - 16, Math.ceil(labelMeasureContext.measureText(mainText).width) + 14);
     const x = Math.max(width/2 + 4, Math.min(window.innerWidth - width/2 - 4, item.x));
     const y = Math.max(24, Math.min(window.innerHeight - 4,
       item.y - Math.max(13, Math.min(80, body.r * focal / Math.max(.001,item.distance) + 8))));
-    const rowGap = massOn ? 36 : 24;
+    const rowGap = (massOn ? 36 : 24) + (physOn ? 12 : 0);
     if (body !== reference && occupied.some(p => Math.abs(p.x-x) < (p.width + width)/2 + 6 && Math.abs(p.y-y)<rowGap)) continue;
     occupied.push({x,y,width});
-    // 内容均为内部生成的类型名/数字，无外部输入；用 innerHTML 渲染第二行，dataset.key 避免每帧重写。
-    const html = mainText + (massOn ? '<br><span class="label-mass">' + massLine + '</span>' : '');
+    // 内容均为内部生成的类型名/数字，无外部输入；用 innerHTML 渲染额外行，dataset.key 避免每帧重写。
+    const html = mainText + (massOn ? '<br><span class="label-mass">' + massLine + '</span>' : '')
+      + (physOn ? '<br><span class="label-physics">' + physLine + '</span>' : '');
     if (body.labelEl.dataset.key !== html) { body.labelEl.innerHTML = html; body.labelEl.dataset.key = html; }
     body.labelEl.classList.toggle('selected',body === reference);
     body.labelEl.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-100%)`;

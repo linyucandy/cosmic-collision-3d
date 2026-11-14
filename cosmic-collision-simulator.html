@@ -192,6 +192,7 @@
       <option value="g">克</option>
       <option value="mg">毫克</option>
     </select></div>
+  <div class="check"><input type="checkbox" id="physicsLabelsToggle" checked><label for="physicsLabelsToggle" title="温度为类型典型有效温度（行星随光照动态计算）；密度与体积按现实典型值随质量等比换算，均为示意数值">🌡️ 标签显示温度/密度/体积</label></div>
   <div class="check"><input type="checkbox" id="gridToggle" checked><label for="gridToggle">显示平面距离网格</label></div>
   <div class="check"><input type="checkbox" id="habitableZoneToggle" checked><label for="habitableZoneToggle">🌱 显示宜居带</label></div>
   <div class="check"><input type="checkbox" id="hillSphereToggle" checked><label for="hillSphereToggle">🔵 显示希尔球</label></div>
@@ -1087,9 +1088,89 @@ function formatMassInUnit(gameMass, type, unitId) {
   const unit = unitDefById(unitId);
   return formatLabelMass(realMassKg(gameMass, type) / unit.kg) + ' ' + unit.name;
 }
+/* ===== 温度 / 密度 / 体积：按类型现实典型值锚定的示意换算 =====
+ * - 体积：该类型标准天体的现实体积，随游戏质量等比缩放（与质量同一比例）；
+ * - 密度：现实质量 ÷ 现实体积，同类型缩放前后一致；
+ * - 温度：类型典型有效温度（K）。行星用 assessPlanet 按光照与热量动态计算；
+ *   白矮星优先用所选样例的光谱温度。弥散系统（星系/星团/暗物质）无单一表面温度，不显示。 */
+const SOLAR_VOL = 1.41e27, EARTH_VOL = 1.083e21, JUPITER_VOL = 1.43e24;
+const TYPE_REAL_VOLUME = {
+  star: SOLAR_VOL, redDwarf: 3.8e25, orangeDwarf: 7.1e26,
+  subdwarf: 4.2e25, hotSubdwarf: 1.1e25, wolfRayet: 4.2e29,
+  redGiant: 1.8e32, blueGiant: 1.8e29,
+  redSupergiant: 4.8e35, redHypergiant: 3.9e36,
+  cepheid: 8.5e31, sakurai: SOLAR_VOL,
+  whiteDwarf: 1.4e21, blackDwarf: 1.4e21,
+  neutron: 5.7e12, blackNeutron: 5.7e12,
+  quarkStar: 4e12, strangeStar: 4e12,
+  electroweakStar: 3e12, preonStar: 2e12,
+  bosonStar: 6e12, solitonStar: 6e12,
+  qStar: 5e12, gravastar: 4e12,
+  blackhole: 1.1e14, whitehole: 1.1e14,
+  wormhole: 1.1e29, quasar: 1.1e35,
+  planet: EARTH_VOL, ringplanet: 8.3e23, gasGiant: JUPITER_VOL,
+  brownDwarf: 1.4e24,
+  asteroid: 5e16, comet: 5e11, probe: 10,
+  openCluster: 4.3e50, globularCluster: 1.2e52,
+  galaxySpiral: 3e63, galaxyElliptical: 2e63, galaxyIrregular: 3e61,
+  darkMatter: 3e63, darkHalo: 1.5e64
+};
+const TYPE_TEMP_K = {
+  star: 5778, redDwarf: 3200, orangeDwarf: 4900, subdwarf: 4000, hotSubdwarf: 30000,
+  wolfRayet: 50000, redGiant: 3500, blueGiant: 25000,
+  redSupergiant: 3500, redHypergiant: 3500,
+  cepheid: 6000, sakurai: 5200,
+  whiteDwarf: 25000, blackDwarf: 0,
+  neutron: 1e6, blackNeutron: 0,
+  quarkStar: 1e9, strangeStar: 1e9, electroweakStar: 1e12, preonStar: 1e12,
+  bosonStar: 0, solitonStar: 0, qStar: 1e9, gravastar: 0,
+  blackhole: 1e-8,
+  quasar: 1e5, gasGiant: 165, ringplanet: 134,
+  brownDwarf: 1200, asteroid: 200, comet: 80, probe: 293
+};
+function realVolumeM3(gameMass, type) {
+  const base = TYPES[type] ? TYPES[type].base : 0;
+  const vol = TYPE_REAL_VOLUME[type];
+  if (vol != null && base > 0) return vol * (gameMass / base);
+  return realMassKg(gameMass, type) / 3000;   // 无锚点类型按岩石密度估体积
+}
+function fmtPhysVal(v) {
+  if (!isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1e5 || a < 0.01)
+    return v.toExponential(2).replace('e+', 'e').replace(/(\.\d*?)0+e/, '$1e').replace(/\.e/, 'e');
+  return v >= 100 ? String(Math.round(v)) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+}
+function fmtPhysDensity(kgM3) {
+  const gcm = kgM3 / 1000;
+  return Math.abs(gcm) >= 0.01 ? fmtPhysVal(gcm) + 'g/cm³' : fmtPhysVal(kgM3) + 'kg/m³';
+}
+function litSourcesFor(b) {
+  const sources = [];
+  for (const s of bodies) {
+    if (!LIT_TYPES.has(s.type) || s === b) continue;
+    sources.push({ type: s.type, mass: s.mass, distance: Math.hypot(s.x - b.x, s.y - b.y) });
+  }
+  return sources;
+}
+function physicsLabelText(b) {
+  const vol = realVolumeM3(b.mass, b.type);
+  const dens = realMassKg(b.mass, b.type) / vol;
+  let tempK = TYPE_TEMP_K[b.type];
+  if (b.whiteDwarfVariant && WHITE_DWARF_VARIANTS[b.whiteDwarfVariant])
+    tempK = WHITE_DWARF_VARIANTS[b.whiteDwarfVariant].temp;
+  else if (b.type === 'planet') {
+    const c = assessPlanet(b, litSourcesFor(b)).temperature;
+    if (c != null) tempK = c + 273;
+  }
+  const tPart = tempK == null ? '' : '🌡' + fmtPhysVal(tempK) + 'K ';
+  return tPart + 'ρ' + fmtPhysDensity(dens) + ' V' + fmtPhysVal(vol) + 'm³';
+}
 function drawLabels() {
   if (!document.getElementById('labelsToggle').checked) return;
   const showMass = document.getElementById('massLabelsToggle').checked;
+  const showPhys = document.getElementById('physicsLabelsToggle').checked;
   const taken = [];
   const limit = W < 640 ? 18 : 46;
   let drawn = 0;
@@ -1100,10 +1181,12 @@ function drawLabels() {
     if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) continue;
     const name = b.name;
     const massText = showMass ? '⚖ ' + formatMassInUnit(b.mass, b.type, unitIdForBody(b.type)) : '';
-    const w = Math.max(ctx.measureText(name).width, ctx.measureText(massText).width) + 10;
-    // 质量占第二行，距离在第三行；盒高随实际行数变化，避免文字溢出背景框。
+    const physText = showPhys ? physicsLabelText(b) : '';
+    const w = Math.max(ctx.measureText(name).width, ctx.measureText(massText).width,
+      ctx.measureText(physText).width) + 10;
+    // 质量占第二行，距离第三行，温度/密度/体积第四行；盒高随实际行数变化，避免文字溢出背景框。
     const hasDistance = !!(selected && b !== selected);
-    const lines = 1 + (showMass ? 1 : 0) + (hasDistance ? 1 : 0);
+    const lines = 1 + (showMass ? 1 : 0) + (hasDistance ? 1 : 0) + (showPhys ? 1 : 0);
     const lineH = 14;
     const box = { x: p.x + Math.max(8, b.r * cam.zoom + 4), y: p.y - 8, w, h: lines * lineH + 2 };
     if (taken.some(t => Math.abs(t.x - box.x) < (t.w + box.w) / 2 && Math.abs(t.y - box.y) < 18)) continue;
@@ -1122,6 +1205,11 @@ function drawLabels() {
       const d = Math.hypot(b.x - selected.x, b.y - selected.y);
       ctx.fillStyle = '#8fa8e0';
       ctx.fillText(d.toFixed(0), box.x + 5, box.y + 12 + row * lineH);
+      row++;
+    }
+    if (showPhys) {
+      ctx.fillStyle = '#a8e6d5';
+      ctx.fillText(physText, box.x + 5, box.y + 12 + row * lineH);
     }
   }
 }
