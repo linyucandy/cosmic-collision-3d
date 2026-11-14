@@ -2431,7 +2431,11 @@ function handleCollisions(swept = false) {
         const big = a.mass >= b.mass ? a : b;
         const small = big === a ? b : a;
         const isHole = body => body.type === 'blackhole' || body.type === 'quasar';
-        const survivor = isHole(a) !== isHole(b) ? (isHole(a) ? a : b) : big;
+        // 引力真空星是黑洞的假想替代模型：质量不逊于黑洞/类星体时，其真空核心可湮灭对方视界
+        const gravKill = (a.type === 'gravastar' && isHole(b) && a.mass >= b.mass) ||
+          (b.type === 'gravastar' && isHole(a) && b.mass >= a.mass);
+        const survivor = gravKill ? (a.type === 'gravastar' ? a : b)
+          : isHole(a) !== isHole(b) ? (isHole(a) ? a : b) : big;
         const other = survivor === big ? small : big;
         const impactSpeed=survivor.vel.distanceTo(other.vel);
         const impactDirection=other.mesh.position.clone().sub(survivor.mesh.position);
@@ -2453,7 +2457,7 @@ function handleCollisions(swept = false) {
         const vT = relV.addScaledVector(impactDirection,-relV.dot(impactDirection)).length();
         survivor.spinW += (other.mass * vT) / (0.4 * M * survivor.r) * 0.5;
         const impactPoint=survivor.mesh.position.clone().addScaledVector(impactDirection,survivor.r);
-        explode(impactPoint, other, Math.min(1000,Math.max(1,survivor.r*.025)));
+        explode(impactPoint, other, gravKill ? 2.2 : Math.min(1000,Math.max(1,survivor.r*.025)));
         const isKilonova = other.type === 'neutron' && (survivor.type === 'neutron' || survivor.type === 'blackhole' || survivor.type === 'quasar');
         if (isKilonova) {
           triggerKilonova(survivor, other, impactDirection);   // 千新星：致密星并合
@@ -2462,8 +2466,12 @@ function handleCollisions(swept = false) {
             !isStarCollection(survivor.type) && !isStarCollection(other.type) && survivor.type!=='probe' && other.type!=='probe') {
           impactEvents.push({body:survivor,mass:other.mass,speed:impactSpeed});
         }
-        if (selected === other || selected === survivor) {
-          selectBody(survivor);
+        if (selected === other || selected === survivor) selectBody(survivor);
+        if (gravKill) {
+          // 真空核心吞没视界：青白色湮灭星云 + 强闪光（假想情景，仅作示意）
+          createNebula('nova', survivor.mesh.position, Math.max(2, survivor.r * 3));
+          showNotice(`引力真空星湮灭${TYPE_NAMES[other.type] || other.type}：真空核心吞没视界，质量 ${M.toFixed(1)} 并入引力真空星（假想情景，仅作示意）。`);
+        } else if (selected === other || selected === survivor) {
           showNotice(`碰撞合并：继续跟随${TYPE_NAMES[survivor.type] || survivor.type}，质量 ${M.toFixed(1)}`);
         }
         dead.add(other);

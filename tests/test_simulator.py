@@ -2254,6 +2254,34 @@ loop();''')
         self.assertEqual(result['collisions'], 1, result)
         self.assertEqual(self.errors, [])
 
+    def test_2d_gravastar_annihilates_comparable_black_hole(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("typeof gravastarKillHole === 'function'", timeout=60000)
+        result = self.page.evaluate('''() => {
+          const fight = (gvMass, holeType, holeMass) => {
+            clearScene();
+            spawnBody(600, 300, 1.0, 0, gvMass, 'gravastar');
+            spawnBody(700, 300, -1.0, 0, holeMass, holeType);
+            paused = true;
+            for (let i = 0; i < 900 && bodies.length > 1; i++) step();
+            const winner = bodies[0];
+            return { type: winner.type, mass: winner.mass,
+              waves: shockwaves.length, flash: particles.some(p => p.flash) };
+          };
+          // 等质量：引力真空星湮灭黑洞/类星体，质量并入并放出涟漪环与闪光
+          const out = { kill: fight(2500, 'blackhole', 2500), quasar: fight(2500, 'quasar', 2500) };
+          // 明显更小的引力真空星仍被黑洞吞掉
+          out.eaten = fight(500, 'blackhole', 2500);
+          return out;
+        }''')
+        self.assertEqual(result['kill']['type'], 'gravastar', result)
+        self.assertEqual(result['kill']['mass'], 5000, result)
+        self.assertGreaterEqual(result['kill']['waves'], 2, result)
+        self.assertTrue(result['kill']['flash'], result)
+        self.assertEqual(result['quasar']['type'], 'gravastar', result)
+        self.assertEqual(result['eaten']['type'], 'blackhole', result)
+        self.assertEqual(self.errors, [])
+
     def test_2d_binary_and_triple_star_systems_stay_bound(self):
         self.page.goto(self.url + '/cosmic-collision-simulator.html')
         self.page.wait_for_function("document.getElementById('earthScore')?.textContent.includes('%')", timeout=60000)

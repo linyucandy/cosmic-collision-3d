@@ -615,7 +615,12 @@ function handleCollisions() {
       const relSpeed = Math.hypot(a.vx - b.vx, a.vy - b.vy);
       const big = a.mass >= b.mass ? a : b;
       const small = big === a ? b : a;
-      const survivor = (small.type === 'blackhole' || small.type === 'quasar') ? small : big;
+      // 引力真空星是黑洞的假想替代模型：质量不逊于黑洞/类星体时，其真空核心可湮灭对方视界
+      const isHoleT = t => t === 'blackhole' || t === 'quasar';
+      const gravKill = (a.type === 'gravastar' && isHoleT(b.type) && a.mass >= b.mass) ||
+        (b.type === 'gravastar' && isHoleT(a.type) && b.mass >= a.mass);
+      const survivor = gravKill ? (a.type === 'gravastar' ? a : b)
+        : (small.type === 'blackhole' || small.type === 'quasar') ? small : big;
       const other = survivor === big ? small : big;
       const M = survivor.mass + other.mass;
       survivor.heat = Math.min(2, survivor.heat + other.mass / M);
@@ -636,6 +641,8 @@ function handleCollisions() {
         startGalaxyMerger(survivor, other);
       } else if (kilonova) {
         triggerKilonova(survivor, other, relSpeed);
+      } else if (gravKill) {
+        gravastarKillHole(survivor, other);
       } else {
         createImpactFragments(other, survivor, relSpeed);
         if (M > 120) tidalStrip(survivor, other, relSpeed);
@@ -770,6 +777,17 @@ function triggerKilonova(survivor, other, relSpeed) {
   const collapse = survivor.type === 'neutron' && survivor.mass >= 12000;
   showNotice('千新星：两颗致密星并合，抛射金、铂等 r 过程重元素，伴随引力波与伽马暴喷流（示意）。' +
     (collapse ? '总质量超过中子星稳定极限，即将坍缩为黑洞。' : '并合产物是一颗更重的中子星（磁星级快自转）。'));
+}
+function gravastarKillHole(survivor, other) {
+  // 引力真空星湮灭黑洞/类星体（假想情景）：真空核心吞没视界，
+  // 放出青白色湮灭闪光与双重涟漪环，质量并入引力真空星。不抛射普通撞击碎屑。
+  shockwaves.push({ x: survivor.x, y: survivor.y, r: survivor.r * 0.3, vr: 5, alpha: 0.9, width: 3 });
+  shockwaves.push({ x: survivor.x, y: survivor.y, r: survivor.r * 0.2, vr: 3.4, alpha: 0.6, width: 7 });
+  particles.push({ x: survivor.x, y: survivor.y, vx: 0, vy: 0, life: 0.45, maxLife: 0.45,
+    size: survivor.r * 14, color: '#bfe6ff', flash: true });
+  boom(0.6);
+  showNotice('引力真空星湮灭' + TYPE_NAMES[other.type] + '：真空核心吞没视界，质量并入引力真空星' +
+    '（假想情景，仅作示意）。');
 }
 function triggerIax(body) {
   if (!body || !bodies.includes(body) || body.type !== 'whiteDwarf' || body.iaxRemnant ||
