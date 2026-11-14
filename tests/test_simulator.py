@@ -2211,13 +2211,47 @@ loop();''')
         self.assertRegex(result['planetText'], r'🌡\d+K')
         self.assertIn('ρ5.51g/cm³', result['planetText'])
         self.assertIn('V1.08e21m³', result['planetText'])
-        self.assertTrue(result['galaxyText'].startsWith('ρ'), result)   # 弥散系统无单一表面温度
+        self.assertTrue(result['galaxyText'].startswith('ρ'), result)   # 弥散系统无单一表面温度
         self.assertIn('kg/m³', result['galaxyText'])
         self.assertIn('🌡1e-8K', result['bhText'])
         # 标签绘制确实包含参数行，且关闭后不再出现。
         self.assertTrue(any(line == result['starText'] for line in result['on']), result)
         self.assertFalse(any('🌡' in line for line in result['off']), result)
         self.assertFalse(any('ρ' in line for line in result['off']), result)
+        self.assertEqual(self.errors, [])
+
+    def test_2d_kilonova_on_neutron_star_merger(self):
+        self.page.goto(self.url + '/cosmic-collision-simulator.html')
+        self.page.wait_for_function("typeof triggerKilonova === 'function'", timeout=60000)
+        result = self.page.evaluate('''() => {
+          clearScene();
+          const a = spawnBody(0, 0, 0, 0, 6000, 'neutron');
+          const b = spawnBody(30, 0, 0, 0, 6000, 'neutron');
+          triggerKilonova(a, b, 2);
+          const fx = {
+            nebula: nebulae.some(n => n.type === 'kilonova'),
+            jets: kiloJets.length,
+            waves: shockwaves.length,
+            gold: bodies.filter(x => x.type === 'asteroid' && x.color === '#ffd98a').length
+          };
+          // 自然并合：两颗静止中子星靠引力吸积对撞，总质量达极限应坍缩为黑洞
+          clearScene();
+          spawnBody(600, 300, 1.4, 0, 6000, 'neutron');
+          spawnBody(700, 300, -1.4, 0, 6000, 'neutron');
+          paused = true;
+          for (let i = 0; i < 900 && !bodies.some(x => x.type === 'blackhole'); i++) step();
+          fx.collapsed = bodies.some(x => x.type === 'blackhole');
+          fx.neutronGone = !bodies.some(x => x.type === 'neutron');
+          fx.collisions = collisions;
+          return fx;
+        }''')
+        self.assertTrue(result['nebula'], result)
+        self.assertEqual(result['jets'], 1, result)
+        self.assertGreaterEqual(result['waves'], 2, result)
+        self.assertGreaterEqual(result['gold'], 5, result)
+        self.assertTrue(result['collapsed'], result)
+        self.assertTrue(result['neutronGone'], result)
+        self.assertEqual(result['collisions'], 1, result)
         self.assertEqual(self.errors, [])
 
     def test_2d_binary_and_triple_star_systems_stay_bound(self):

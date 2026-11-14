@@ -250,6 +250,7 @@
     <button class="btn" id="btnHillDemo" type="button">🔵 希尔球演示</button>
     <button class="btn" id="btnDarkMatterDemo" type="button">🌌 暗物质晕演示</button>
     <div class="btn" id="btnSupernova">🌟 超新星演示</div>
+    <div class="btn" id="btnKilonova">💫 千新星演示</div>
     <div class="btn" id="btnPlanetaryNebula">🌈 行星状星云</div>
     <button class="btn" id="btnRingTides" type="button">💍 星环潮汐演示</button>
     <button class="btn" id="btnLensDemo" type="button">🕳️ 黑洞透镜演示</button>
@@ -1756,6 +1757,8 @@ const shockwaves = [];   // 冲击波球壳
 const flashes = [];      // 闪光
 let lensDemoGrid = null;
 const nebulae = [];     // Expanding gas visualization; not a collidable body.
+const kiloJets = [];    // 千新星伽马暴双向喷流（视觉）
+let kiloJetGeo = null;
 let shockwaveReplay = false, nextShockwaveAt = 0;
 window.addEventListener('stop-shockwave-replay', () => {
   shockwaveReplay = false;
@@ -1792,8 +1795,9 @@ function createNebula(type, position, sourceRadius) {
   if (nebulae.length >= 12) removeNebula(nebulae.shift());
   const group = new THREE.Group(); group.position.copy(position);
   const count = 420, vertices = new Float32Array(count * 3), colors = new Float32Array(count * 3);
-  const c1 = new THREE.Color(type === 'nova' ? 0x8fdfff : type === 'planetary' ? 0x44dfe4 : 0xffb35a);
-  const c2 = new THREE.Color(type === 'planetary' ? 0xc66fff : 0xc46bff);
+  const c1 = new THREE.Color(type === 'nova' ? 0x8fdfff : type === 'planetary' ? 0x44dfe4 :
+    type === 'kilonova' ? 0xffd9a0 : 0xffb35a);
+  const c2 = new THREE.Color(type === 'planetary' ? 0xc66fff : type === 'kilonova' ? 0xff7043 : 0xc46bff);
   for (let i = 0; i < count; i++) {
     const theta = Math.random() * Math.PI * 2, y = Math.random() * 2 - 1;
     const shell = .65 + Math.random() * .35, radial = Math.sqrt(1 - y*y) * shell;
@@ -1810,16 +1814,45 @@ function createNebula(type, position, sourceRadius) {
     transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));
   points.frustumCulled = false; group.add(points);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:purpleGlowTex,
-    color:type === 'planetary' ? 0x55dce6 : 0xff9c65,transparent:true,opacity:.35,
+    color:type === 'planetary' ? 0x55dce6 : type === 'kilonova' ? 0xffc27d : 0xff9c65,transparent:true,opacity:.35,
     blending:THREE.AdditiveBlending,depthWrite:false}));
   glow.scale.setScalar(2.5); group.add(glow);
   const ring = new THREE.Sprite(new THREE.SpriteMaterial({map:shockwaveTexture,
-    color:type === 'planetary' ? 0x80e9ff : 0xffaa75,transparent:true,opacity:.65,
+    color:type === 'planetary' ? 0x80e9ff : type === 'kilonova' ? 0xffb95a : 0xffaa75,transparent:true,opacity:.65,
     blending:THREE.AdditiveBlending,depthWrite:false}));
   ring.scale.setScalar(2.1); group.add(ring);
-  const initialRadius = type === 'nova' ? Math.max(1, sourceRadius * 3) : Math.max(12, sourceRadius * .75);
+  const initialRadius = type === 'nova' || type === 'kilonova' ? Math.max(1, sourceRadius * 3) : Math.max(12, sourceRadius * .75);
   group.scale.setScalar(initialRadius); scene.add(group);
-  nebulae.push({type,group,points,glow,ring,age:0,duration:type === 'nova' ? 15 : type === 'planetary' ? 60 : 45,initialRadius});
+  nebulae.push({type,group,points,glow,ring,age:0,duration:type === 'nova' ? 15 : type === 'kilonova' ? 35 : type === 'planetary' ? 60 : 45,initialRadius});
+}
+/* 千新星伽马暴喷流：沿并合角动量轴的双向锥形光束，快速伸展后渐隐 */
+function makeKilonovaJets(position, axis, radius) {
+  if (!kiloJetGeo) kiloJetGeo = new THREE.ConeGeometry(1, 1, 14, 1, true);
+  const group = new THREE.Group(); group.position.copy(position);
+  group.quaternion.setFromUnitVectors(UP, axis);
+  const mats = [];
+  for (const s of [1, -1]) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: .85,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const cone = new THREE.Mesh(kiloJetGeo, mat);
+    cone.scale.set(Math.max(.12, radius * .3), 1, Math.max(.12, radius * .3));
+    cone.position.y = s * .5;                    // 底面贴着并合点，尖端向外
+    if (s < 0) cone.rotation.x = Math.PI;
+    group.add(cone); mats.push(mat);
+  }
+  scene.add(group);
+  kiloJets.push({ group, mats, age: 0, duration: 3.2, len: Math.max(30, radius * 24) });
+}
+function updateKiloJets(dt) {
+  for (let i = kiloJets.length - 1; i >= 0; i--) {
+    const j = kiloJets[i]; j.age += dt;
+    const t = j.age / j.duration;
+    const stretch = Math.min(1, j.age * 6);      // 快速伸展，随后缓慢加宽
+    j.group.scale.set(1 + t * .8, stretch * j.len, 1 + t * .8);
+    const fade = Math.max(0, 1 - t);
+    for (const m of j.mats) m.opacity = .85 * fade * fade;
+    if (t >= 1) { scene.remove(j.group); for (const m of j.mats) m.dispose(); kiloJets.splice(i, 1); }
+  }
 }
 function clearScene() {
   if (lensDemoGrid) {
@@ -1836,6 +1869,7 @@ function clearScene() {
   for (const e of explosions.splice(0)) { scene.remove(e.pts); e.geo.dispose(); e.mat.dispose(); }
   for (const s of shockwaves.splice(0)) removeShockwave(s);
   for (const n of nebulae.splice(0)) removeNebula(n);
+  for (const j of kiloJets.splice(0)) { scene.remove(j.group); for (const m of j.mats) m.dispose(); }
   for (const f of flashes.splice(0)) { scene.remove(f.light, f.sp); f.sp.material.dispose(); }
   collisions = 0;
   document.querySelectorAll('#systems .btn').forEach(b => b.classList.remove('active'));
@@ -1954,9 +1988,10 @@ document.getElementById('cmeToggle').addEventListener('change',e=>{
 });
 
 function updateEffects() {
+  updateKiloJets(timeScale / 60);
   for (let i = nebulae.length - 1; i >= 0; i--) {
     const n = nebulae[i]; n.age += timeScale / 60;
-    n.group.scale.setScalar(n.initialRadius * (1 + n.age * (n.type === 'nova' ? .5 : .055)));
+    n.group.scale.setScalar(n.initialRadius * (1 + n.age * (n.type === 'nova' ? .5 : n.type === 'kilonova' ? .3 : .055)));
     n.group.rotation.y += .0015 * timeScale;
     const fade = Math.max(0, 1 - n.age / n.duration);
     n.points.material.opacity = .85 * fade; n.glow.material.opacity = .35 * fade;
@@ -2334,7 +2369,15 @@ function handleCollisions(swept = false) {
       if (a.type.startsWith('galaxy') !== b.type.startsWith('galaxy')) continue;
       const bothGalaxies = a.type.startsWith('galaxy') && b.type.startsWith('galaxy');
       // Diffuse galactic disks can overlap; merge only when their cores meet.
-      const rr = (a.r + b.r) * (bothGalaxies ? .22 : 1);
+      let rr = (a.r + b.r) * (bothGalaxies ? .22 : 1);
+      // 致密星对（中子星之间 / 中子星×黑洞·类星体）在极近处并合：
+      // 参考大小下这类天体半径只有 ~1e-4，纯几何判据几乎不可能命中；
+      // 真实物理中引力波辐射会耗散轨道能量使双致密星旋近并合，故给一个最小并合距离。
+      if ((a.type === 'neutron' || b.type === 'neutron') &&
+          (a.type === 'neutron' || a.type === 'blackhole' || a.type === 'quasar') &&
+          (b.type === 'neutron' || b.type === 'blackhole' || b.type === 'quasar')) {
+        rr = Math.max(rr, 1.6);
+      }
       const pa = a.mesh.position, pb = b.mesh.position;
       const _dx = pb.x - pa.x, _dy = pb.y - pa.y, _dz = pb.z - pa.z;
       const d2 = _dx * _dx + _dy * _dy + _dz * _dz;
@@ -2411,7 +2454,11 @@ function handleCollisions(swept = false) {
         survivor.spinW += (other.mass * vT) / (0.4 * M * survivor.r) * 0.5;
         const impactPoint=survivor.mesh.position.clone().addScaledVector(impactDirection,survivor.r);
         explode(impactPoint, other, Math.min(1000,Math.max(1,survivor.r*.025)));
-        if (impactSpeed>1e-6 && !isHole(survivor) && !isHole(other) &&
+        const isKilonova = other.type === 'neutron' && (survivor.type === 'neutron' || survivor.type === 'blackhole' || survivor.type === 'quasar');
+        if (isKilonova) {
+          triggerKilonova(survivor, other, impactDirection);   // 千新星：致密星并合
+        }
+        if (impactSpeed>1e-6 && !isKilonova && !isHole(survivor) && !isHole(other) &&
             !isStarCollection(survivor.type) && !isStarCollection(other.type) && survivor.type!=='probe' && other.type!=='probe') {
           impactEvents.push({body:survivor,mass:other.mass,speed:impactSpeed});
         }
@@ -2429,7 +2476,8 @@ function handleCollisions(swept = false) {
         if (isStarCollection(small.type)) continue;
         const tideR = rr * 1.45;
         if (d2 < tideR * tideR) {
-          if (small.mass > 8 && small.type !== 'blackhole' && small.type !== 'quasar' && small.type !== 'wormhole' && !dead.has(small)) {
+          if (small.mass > 8 && small.type !== 'blackhole' && small.type !== 'quasar' &&
+              small.type !== 'wormhole' && small.type !== 'neutron' && !dead.has(small)) {
             small.tideT = big; small.tideD = Math.sqrt(d2); small.tideR = tideR;
           }
         } else if (HEATABLE.has(small.type) && HEATERS.has(big.type)) {
@@ -2585,6 +2633,39 @@ function transformBody(b, newType) {
   }
   nb.shedCd = 1;                                 // 防止转化瞬间连锁甩碎片
   return nb;
+}
+
+/* 千新星：两颗致密星（中子星×中子星或中子星×黑洞）并合。
+   抛射金、铂等 r 过程重元素（金色碎屑示意），伴随引力波涟漪与短伽马暴双向喷流；
+   总质量超过中子星稳定极限时，幸存者在下一步演化中坍缩为黑洞。 */
+function triggerKilonova(survivor, other, impactDirection) {
+  const pos = survivor.mesh.position;
+  createNebula('kilonova', pos, Math.max(2, survivor.r * 3));
+  explode(pos, other, 2.5);                     // 更强的闪光与冲击波（含引力波涟漪示意）
+  // r 过程金色碎屑：抛射物速度需超过幸存者逃逸速度，否则会被立即吸回（参考大小下中子星半径仅 ~1e-4，不能按半径布点）
+  const launchR = Math.max(survivor.r * 1.5, 1.5);
+  const escape = Math.sqrt(2 * G * survivor.mass / Math.sqrt(launchR * launchR + 60));
+  const goldSpeed = Math.max(2, escape * 1.35);
+  for (let i = 0; i < 5 && bodies.length < 300; i++) {
+    const dir = new THREE.Vector3().randomDirection();
+    const frag = spawnBody(pos.x + dir.x * launchR, pos.y + dir.y * launchR,
+      pos.z + dir.z * launchR, survivor.vel.x + dir.x * goldSpeed,
+      survivor.vel.y + dir.y * goldSpeed, survivor.vel.z + dir.z * goldSpeed, .6, 'asteroid', 0xffd98a);
+    if (frag) { frag.heat = 1; frag.impactDebris = true; }
+  }
+  // 喷流沿并合角动量轴（近似取接近方向的垂线）
+  const axis = impactDirection.clone().cross(Math.abs(impactDirection.y) < .9 ?
+    new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0));
+  if (axis.lengthSq() < 1e-6) axis.set(0, 0, 1);
+  makeKilonovaJets(pos, axis.normalize(), Math.max(1, survivor.r));
+  // 并合角动量 → 磁星级快自转；但钳制在离心解体阈值之下，
+  // 否则幸存中子星会持续甩出碎块、质量掉到坍缩极限以下而无法成黑洞。
+  const ob = omegaBreak(survivor.mass, survivor.r);
+  survivor.spinW = Math.min(survivor.spinW + .35, ob * .92);
+  survivor.shedCd = Math.max(survivor.shedCd, 1.5);
+  const collapse = survivor.type === 'neutron' && survivor.mass >= 12000;
+  showNotice('千新星：两颗致密星并合，抛射金、铂等 r 过程重元素，伴随引力波与伽马暴喷流（示意）。' +
+    (collapse ? '总质量超过中子星稳定极限，即将坍缩为黑洞。' : '并合产物是一颗更重的中子星（磁星级快自转）。'));
 }
 
 /* Ia 超新星高速碎屑 */
@@ -3185,6 +3266,18 @@ function demoStellarEvolution(type) {
   controls.target.set(0, 0, 0);
   showNotice(type === 'planetary' ? '红巨星抛出气体，形成行星状星云与白矮星。' : '恒星爆发超新星，留下扩散的残骸和黑洞。');
 }
+function demoKilonova() {
+  clearScene(); paused = false;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  const d = 110;
+  // 纯对撞（无切向速度）：中子星必须几乎零角动量才能并合，保证演示一定爆发。
+  const a = spawnBody(-d, 0, 0, .85, 0, 0, 6000, 'neutron');
+  spawnBody(d, 0, 0, -.85, 0, 0, 6000, 'neutron');
+  camera.position.set(0, d * .7, d * 3.1);
+  controls.target.set(0, 0, 0);
+  selectBody(a);
+  showNotice('千新星演示：两颗中子星并合时将爆发千新星、引力波涟漪与伽马暴喷流（示意），并抛射金、铂等 r 过程重元素。');
+}
 function demoChandrasekhar() {
   clearScene(); paused = true; timeScale = 1;
   document.getElementById('btnPause').textContent = '▶ 继续';
@@ -3531,6 +3624,7 @@ document.getElementById('darkMatterToggle').addEventListener('change', event => 
   for (const b of bodies) if (b.darkMatterPoints) b.darkMatterPoints.visible=event.target.checked;
 });
 document.getElementById('btnSupernova').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('supernova'); });
+document.getElementById('btnKilonova').addEventListener('click', () => { ensureAudio(); demoKilonova(); });
 document.getElementById('btnChandraDemo').addEventListener('click', () => { ensureAudio(); demoChandrasekhar(); });
 document.getElementById('btnPlanetaryNebula').addEventListener('click', () => { ensureAudio(); demoStellarEvolution('planetary'); });
 document.getElementById('btnRingTides').addEventListener('click', () => { ensureAudio(); demoRingTides(); });

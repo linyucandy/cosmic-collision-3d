@@ -461,7 +461,7 @@ class Body {
 }
 
 /* ================= 全局状态 ================= */
-let bodies = [], particles = [], shockwaves = [], nebulae = [], cmeEvents = [];
+let bodies = [], particles = [], shockwaves = [], nebulae = [], cmeEvents = [], kiloJets = [];
 let G = 3, mMul = 1, spinMul = 0.4, curType = 'star';
 let paused = false, timeScale = 1, muted = false;
 let collisions = 0, simTime = 0, frameNo = 0;
@@ -496,7 +496,7 @@ function removeBody(b) {
   if (inspectedBody === b) inspectedBody = null;
 }
 function clearScene() {
-  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = []; kiloJets = [];
   collisions = 0; selected = null; inspectedBody = null;
   for (const b of bodies) if (b.partner) b.partner = null;
 }
@@ -626,12 +626,16 @@ function handleCollisions() {
       survivor.mass = M;
       survivor.r = radiusFor(survivor.type, M);
       const galaxyMerge = survivor.type.startsWith('galaxy') && other.type.startsWith('galaxy');
+      const kilonova = other.type === 'neutron' && (survivor.type === 'neutron' ||
+        survivor.type === 'blackhole' || survivor.type === 'quasar');
       survivor.spinW += (other.x - survivor.x) * (other.vy - survivor.vy) / (M * Math.max(1, survivor.r)) * 0.01;
       if (survivor.type === 'planet' || survivor.type === 'ringplanet') addCrater(survivor);
       if (galaxyMerge) {
         // 星系并合是恒星群体的潮汐融合，不是恒星碰撞：不抛射大量碎片与彗星。
         // 把被并星系的盘面星点并入幸存者，做一段短暂拉伸动画后再归一。
         startGalaxyMerger(survivor, other);
+      } else if (kilonova) {
+        triggerKilonova(survivor, other, relSpeed);
       } else {
         createImpactFragments(other, survivor, relSpeed);
         if (M > 120) tidalStrip(survivor, other, relSpeed);
@@ -730,6 +734,39 @@ function applyWhiteDwarfVariant(body, key) {
   body.whiteDwarfVariant = key; body.color = variant.color;
   return true;
 }
+function triggerKilonova(survivor, other, relSpeed) {
+  // 千新星：两颗致密星并合，抛射金、铂等 r 过程重元素。
+  // 抛射物不透明度高，光谱偏红/红外；并合伴随引力波涟漪与短伽马暴喷流（示意）。
+  const x = (survivor.x * survivor.mass + other.x * other.mass) / (survivor.mass + other.mass);
+  const y = (survivor.y * survivor.mass + other.y * other.mass) / (survivor.mass + other.mass);
+  createNebula(x, y, 'kilonova');
+  const neb = nebulae[nebulae.length - 1];
+  neb.vr = 2.6 + Math.random(); neb.alpha = 0.95;
+  // 双引力波涟漪（示意环）
+  shockwaves.push({ x, y, r: survivor.r * 0.3, vr: 5.5, alpha: 0.9, width: 3 });
+  shockwaves.push({ x, y, r: survivor.r * 0.2, vr: 3.8, alpha: 0.6, width: 7 });
+  // r 过程金色碎屑（金、铂等重元素示意）
+  const ejecta = Math.min(6, MAX_BODIES - bodies.length);
+  const launch = survivor.r + 8;
+  for (let i = 0; i < ejecta; i++) {
+    const ang = i / ejecta * TAU + Math.random() * 0.5;
+    const frag = spawnBody(x + Math.cos(ang) * launch, y + Math.sin(ang) * launch,
+      survivor.vx + Math.cos(ang) * 2.4, survivor.vy + Math.sin(ang) * 2.4, 0.6, 'asteroid');
+    frag.color = '#ffd98a'; frag.heat = 1; frag.impactDebris = true; frag.spawnGrace = 10;
+  }
+  // 短伽马暴双向喷流：沿并合角动量轴（近似取接近方向的垂线）
+  const jetAng = Math.atan2(other.vy - survivor.vy, other.vx - survivor.vx) + Math.PI / 2;
+  kiloJets.push({ x, y, ang: jetAng, len: 120 + survivor.r * 2, life: 1.6, maxLife: 1.6 });
+  particles.push({ x, y, vx: 0, vy: 0, life: 0.4, maxLife: 0.4,
+    size: survivor.r * 12, color: '#fff2d0', flash: true });
+  boom(1);
+  // 并合角动量 → 磁星级快自转；钳制在离心解体阈值之下，避免幸存者持续甩块掉质量
+  const breakW = Math.sqrt(G * survivor.mass / Math.max(1, survivor.r * survivor.r * survivor.r));
+  survivor.spinW = Math.min(survivor.spinW + 0.35, breakW * 0.92);
+  const collapse = survivor.type === 'neutron' && survivor.mass >= 12000;
+  showNotice('千新星：两颗致密星并合，抛射金、铂等 r 过程重元素，伴随引力波与伽马暴喷流（示意）。' +
+    (collapse ? '总质量超过中子星稳定极限，即将坍缩为黑洞。' : '并合产物是一颗更重的中子星（磁星级快自转）。'));
+}
 function triggerIax(body) {
   if (!body || !bodies.includes(body) || body.type !== 'whiteDwarf' || body.iaxRemnant ||
       body.mass >= CHANDRASEKHAR_LIMIT) return false;
@@ -804,7 +841,7 @@ function explode(x, y, body) {
   boom(0.1 + power * 0.9);
 }
 function createNebula(x, y, kind) {
-  const palette = { nova:'#b9d6ff', planetary:'#7de0c0', iax:'#ffc48b', supernova:'#ff9a6b' };
+  const palette = { nova:'#b9d6ff', planetary:'#7de0c0', iax:'#ffc48b', supernova:'#ff9a6b', kilonova:'#ffc98a' };
   nebulae.push({ x, y, type: kind, r: 6, vr: 1.4 + Math.random(), alpha: 0.8,
     color: palette[kind] || '#ffffff', life: 1, maxLife: 1 });
 }
@@ -828,6 +865,8 @@ function updateEffects() {
     c.x += c.dx * c.vr; c.y += c.dy * c.vr; c.r += c.vr * 0.35; c.alpha *= 0.955;
   }
   cmeEvents = cmeEvents.filter(c => c.alpha > 0.02);
+  for (const j of kiloJets) j.life -= 0.016;
+  kiloJets = kiloJets.filter(j => j.life > 0);
   if (document.getElementById('cmeToggle').checked && frameNo % 420 === 0) {
     const stars = bodies.filter(b => LIT_TYPES.has(b.type) && b.mass > 200);
     if (stars.length) emitCME(stars[(Math.random() * stars.length) | 0]);
@@ -1538,6 +1577,20 @@ function drawWorldEffects() {
     ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.stroke();
   }
   ctx.globalCompositeOperation = 'lighter';
+  // 伽马暴双向喷流：中心白热、向外渐透明的对称光束
+  for (const j of kiloJets) {
+    const a = Math.max(0, j.life / j.maxLife);
+    const fade = a * a;
+    for (const dir of [0, Math.PI]) {
+      const ex = j.x + Math.cos(j.ang + dir) * j.len, ey = j.y + Math.sin(j.ang + dir) * j.len;
+      const g = ctx.createLinearGradient(j.x, j.y, ex, ey);
+      g.addColorStop(0, 'rgba(255,245,215,' + (0.75 * fade) + ')');
+      g.addColorStop(0.4, 'rgba(190,225,255,' + (0.4 * fade) + ')');
+      g.addColorStop(1, 'rgba(190,225,255,0)');
+      ctx.strokeStyle = g; ctx.lineWidth = 3 + 5 * a;
+      ctx.beginPath(); ctx.moveTo(j.x, j.y); ctx.lineTo(ex, ey); ctx.stroke();
+    }
+  }
   for (const p of particles) {
     const a = Math.max(0, p.life / p.maxLife);
     if (p.flash) {
@@ -1710,7 +1763,7 @@ function demoCollision() {
 }
 function randomSystem() {
   stopShockwaveReplay();
-  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = []; kiloJets = [];
   collisions = 0; selected = null; inspectedBody = null;
   const cx = W / 2, cy = H / 2, M = 700 + Math.random() * 500;
   spawnBody(cx, cy, 0, 0, M, 'star');
@@ -1880,6 +1933,15 @@ function demoStellarEvolution(kind) {
   createNebula(cx, cy, kind === 'supernova' ? 'supernova' : 'planetary');
   selected = star; updateObjectInfo();
 }
+function demoKilonova() {
+  startDemo();
+  const cx = cam.x, cy = cam.y, d = 95;
+  const a = spawnBody(cx - d, cy, 1.2, -0.3, 6000, 'neutron');
+  spawnBody(cx + d, cy, -1.2, 0.3, 6000, 'neutron');
+  selected = a; updateObjectInfo();
+  cam.zoom = 1.5;
+  showNotice('千新星演示：两颗中子星正在靠近并合，爆发时将抛射金、铂等 r 过程重元素。');
+}
 function demoChandrasekhar() {
   startDemo();
   const cx = cam.x, cy = cam.y;
@@ -2000,6 +2062,7 @@ const DEMOS = [
   ['btnTidalLockDemo','🌗 潮汐锁定',demoTidalLock], ['btnOortDemo','☄️ 奥尔特云',demoOortCloud],
   ['btnHillDemo','🔵 希尔球',demoHillSphere], ['btnDarkMatterDemo','🟣 暗物质晕',demoDarkMatter],
   ['btnSupernova','💥 超新星',() => demoStellarEvolution('supernova')],
+  ['btnKilonovaDemo','💫 千新星',demoKilonova],
   ['btnPlanetaryNebula','🌫 行星状星云',() => demoStellarEvolution('planetary')],
   ['btnRingTides','💍 星环潮汐',demoRingTides], ['btnChandraDemo','⚖️ 钱德拉塞卡',demoChandrasekhar],
   ['btnLensDemo','🕳️ 黑洞吸积',demoBlackHole], ['btnCme','☀️ 日冕抛射',demoCME],
@@ -2117,7 +2180,7 @@ function singleStep() {
 document.getElementById('btnStep').addEventListener('click', singleStep);
 document.getElementById('btnReset').addEventListener('click', () => {
   stopShockwaveReplay();
-  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = []; kiloJets = [];
   collisions = 0; selected = null; inspectedBody = null; updateObjectInfo();
 });
 document.getElementById('btnDemo').addEventListener('click', () => { ensureAudio(); demoCollision(); });
@@ -2142,7 +2205,7 @@ function stopShockwaveReplay() {
 }
 window.addEventListener('stop-shockwave-replay', stopShockwaveReplay);
 function demoShockwave() {
-  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = [];
+  bodies = []; particles = []; shockwaves = []; nebulae = []; cmeEvents = []; kiloJets = [];
   collisions = 0; paused = false;
   document.getElementById('btnPause').textContent = '⏸ 暂停';
   const x = W * 0.57, y = H * 0.55;
