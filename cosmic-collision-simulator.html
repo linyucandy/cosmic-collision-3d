@@ -747,11 +747,15 @@ function triggerKilonova(survivor, other, relSpeed) {
   shockwaves.push({ x, y, r: survivor.r * 0.2, vr: 3.8, alpha: 0.6, width: 7 });
   // r 过程金色碎屑（金、铂等重元素示意）
   const ejecta = Math.min(6, MAX_BODIES - bodies.length);
-  const launch = survivor.r + 8;
+  // 从软化势阱较浅处发射：阱底（d≈r）处 dt=0.25 的子步积分误差会吃掉逃逸余量，碎屑会掉回残骸
+  const launch = Math.max(survivor.r * 2 + 8, 60);
+  // 抛射速度须超过残骸逃逸速度（按软化势能 Φ=GM/√(d²+60) 计算，3D 同公式）
+  const escape = Math.sqrt(2 * G * survivor.mass / Math.sqrt(launch * launch + 60));
+  const speed = Math.max(2.4, escape * 1.4);
   for (let i = 0; i < ejecta; i++) {
     const ang = i / ejecta * TAU + Math.random() * 0.5;
     const frag = spawnBody(x + Math.cos(ang) * launch, y + Math.sin(ang) * launch,
-      survivor.vx + Math.cos(ang) * 2.4, survivor.vy + Math.sin(ang) * 2.4, 0.6, 'asteroid');
+      survivor.vx + Math.cos(ang) * speed, survivor.vy + Math.sin(ang) * speed, 0.6, 'asteroid');
     frag.color = '#ffd98a'; frag.heat = 1; frag.impactDebris = true; frag.spawnGrace = 10;
   }
   // 短伽马暴双向喷流：沿并合角动量轴（近似取接近方向的垂线）
